@@ -62,9 +62,8 @@ First build, 2026-09-25, on a 12-thread, 31 GB x64 Linux box: 9 h 33 min for
 94,835 steps, giving Chromium 156.0.8071.0. A rebuild after a one-file change
 takes under a minute, plus about 4 minutes to repack.
 
-To debug from the Mac, start it with DevTools on the Frame:
-`ssh frame 'DISPLAY=:0 ~/.local/bin/chromium-xr --remote-debugging-port=9223 URL'`, or
-launch it as a panel with
+To debug from the Mac, launch it as a panel with DevTools on the Frame
+(verified 2026-09-27):
 `scripts/panel-on-frame.sh -- '~/.local/bin/chromium-xr' --remote-debugging-port=9223 URL`
 ([panels.md](panels.md)). DevTools has no authentication. It listens on
 loopback, but with the userspace Tailscale from [tailscale.md](tailscale.md)
