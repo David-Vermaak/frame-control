@@ -1433,9 +1433,11 @@ async function sendFiles(files, dirs = new Set()) {
 // ---- sideloaded titles (a Linux or Windows build as a Steam Devkit Game) ----
 const RESERVED_IDS = ["steam", "steamdeckard", "steamvr", "steamvrdeckard", "devkit-steam"];
 function titleId(name) {  // mirrors frame_titles.title_id: the name Steam shows
-  const trim = x => x.replace(/^[_-]+|[_-]+$/g, "");
-  let s = trim(trim(String(name).trim().replace(/[^A-Za-z0-9_-]+/g, "_").replace(/_+/g, "_")).slice(0, 64));
-  if (RESERVED_IDS.includes(s.toLowerCase())) s += "-game";
+  const trim = x => x.replace(/^_+|_+$/g, "");
+  let s = trim(trim(String(name).trim().replace(/[^A-Za-z0-9]+/g, "_")).slice(0, 64));
+  if (!s) return s;
+  if (/^[0-9]/.test(s)) s = "_" + s.slice(0, 63);
+  if (s.length < 2 || RESERVED_IDS.includes(s.toLowerCase())) s += "_game";
   return s;
 }
 const ARCH = { arm64: "ARM64", x86_64: "x86-64", x86: "32-bit x86" };
