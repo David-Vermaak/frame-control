@@ -93,7 +93,8 @@ controls to place each panel. See [docs/panels.md](panels.md).
 | `scripts/install-apps.sh` | Mac → Frame | Install Flatpaks (Remmina, Moonlight, …) on the Frame over SSH as `--user` (**verified** with Remmina) |
 | `scripts/paste-to-frame.sh` | Mac → Frame | Send the Mac clipboard (or stdin) to the Frame clipboard (**verified**) |
 | `scripts/install-apk.sh` | Mac → Frame | Install APKs, each as its own persistent Lepton instance with a Steam library shortcut (`--dev`: old ADB path into Lepton Development) (**verified**; see [docs/apks.md](apks.md)) |
-| `scripts/panel-on-frame.sh` | Mac → Frame | Start an app as its own floating VR panel, outside the desktop (**verified**: overlays created; in-headset placement not yet checked) |
+| `scripts/panel-on-frame.sh` | Mac → Frame | Start an app as its own floating VR panel, outside the desktop (**verified**, including `mac-screen` in the headset) |
+| `scripts/mac-cursor-ring.lua` | Mac | Hammerspoon script: a ring around the Mac pointer so it shows in the VNC mirror (**verified**) |
 | `scripts/run-on-frame.sh` | Mac → Frame | Start an app on the headset desktop, e.g. `mac-screen` opens Remmina straight into the Mac (**verified**) |
 | `scripts/frame-ui.sh` | Mac | Start the Frame Control web UI (`ui/server.py`) and open it (**verified**) |
 | `scripts/apk-catalog.sh` | Mac | Refresh the rated F-Droid catalogue that Frame Control's Android section shows (**verified**) |
