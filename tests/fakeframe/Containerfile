@@ -2,8 +2,10 @@
 # Valve's steamos-devkit-service and hooks, a fake Steam client and stubs for
 # the Frame-only commands Frame Control runs. See docs/testing.md.
 #
-# BASE: archlinux:base on x86_64, menci/archlinuxarm:base on arm64 (a daily
-# Arch Linux ARM build); scripts/e2e.sh picks one from `uname -m`.
+# BASE: archlinux:base on x86_64; on arm64, Valve's Holo Core aarch64 preview
+# (registry.gitlab.steamos.cloud/holo/holo-core-aarch64-preview/base-devel), the
+# Arch Linux ARM64 port the Frame's SteamOS is built on (docs/recovery-and-images.md).
+# scripts/e2e.sh picks one from `uname -m`.
 ARG BASE=archlinux:base
 FROM ${BASE}
 

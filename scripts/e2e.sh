@@ -6,7 +6,7 @@
 # harness itself didn't come up). See docs/testing.md.
 #
 # Usage: scripts/e2e.sh [TEST...]     e.g. scripts/e2e.sh test_titles test_faults.Faults.test_disk_full
-# Env:   FAKEFRAME_BASE   base image (default: archlinux:base, or menci/archlinuxarm:base on arm64)
+# Env:   FAKEFRAME_BASE   base image (default: archlinux:base, or Valve's Holo Core aarch64 on arm64)
 #        FAKEFRAME_KEEP=1 leave the containers running afterwards
 set -uo pipefail
 
@@ -14,7 +14,7 @@ root=${0:A:h:h}
 cd "$root" || exit 2
 case $(uname -m) in
   x86_64|amd64) base=archlinux:base ;;
-  aarch64|arm64) base=menci/archlinuxarm:base ;;
+  aarch64|arm64) base=registry.gitlab.steamos.cloud/holo/holo-core-aarch64-preview/base-devel:latest ;;
   *) print -u2 "No Arch Linux base image known for $(uname -m); set FAKEFRAME_BASE"; exit 2 ;;
 esac
 base=${FAKEFRAME_BASE:-$base}
@@ -22,8 +22,10 @@ compose=(docker compose -p fakeframe-e2e -f tests/fakeframe/compose.yaml)
 started=$SECONDS
 
 print "==> Building fakeframe-frame (from $base) and fakeframe-host"
-docker build -q --build-arg BASE="$base" -t fakeframe-frame -f tests/fakeframe/Containerfile tests/fakeframe || exit 2
-docker build -q -t fakeframe-host -f tests/fakeframe/host.Containerfile tests/fakeframe || exit 2
+# Quiet when it works; if a build fails, build again with the full log so CI shows why.
+build() { docker build -q "$@" >/dev/null || { docker build --progress=plain "$@"; exit 2 } }
+build --build-arg BASE="$base" -t fakeframe-frame -f tests/fakeframe/Containerfile tests/fakeframe
+build -t fakeframe-host -f tests/fakeframe/host.Containerfile tests/fakeframe
 
 logs() {
   print "\n==> Fake Frame logs"

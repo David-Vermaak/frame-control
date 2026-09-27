@@ -48,7 +48,7 @@ its guards want.
 
 | On the fake Frame | |
 |---|---|
-| Arch Linux (`archlinux:base`, or `menci/archlinuxarm:base` on arm64), user `steamos`, `/etc/os-release` with BUILD_ID 20260922.6101926 | Real OS, Frame's identity |
+| Arch Linux (`archlinux:base`, or Valve's Holo Core aarch64 preview on arm64), user `steamos`, `/etc/os-release` with BUILD_ID 20260922.6101926 | Real OS, Frame's identity |
 | `sshd` with key and password logins, `rsync`, `python3` | Real |
 | Valve's steamos-devkit-service on port 32000 and its hooks, vendored unmodified in `tests/fakeframe/steamos-devkit-service` | Real; only its `dbus` import (for mDNS through systemd-resolved) is a stand-in that logs the registration |
 | Valve's devkit-utils, copied over by Frame Control itself | Real |
