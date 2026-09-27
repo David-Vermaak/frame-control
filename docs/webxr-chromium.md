@@ -128,7 +128,16 @@ this build):
   `LD_PRELOAD`. With the headset outside its playspace, SteamVR shows
   passthrough wherever the page leaves transparent pixels.
 
-**Not verified yet:**
+- **Frame rate and input, measured 2026-09-27** (standby workaround, red
+  test session): 72 fps with every frame at 13.9–14 ms over 16 s, and SteamVR
+  dropped frames only at startup. The right controller showed up as an
+  `oculus-touch` `tracked-pointer` with an `xr-standard` gamepad and a
+  25-joint hand, with poses on every frame. A real squeeze reached the page
+  as `squeezestart`/`squeeze`. Haptics aren't exposed (no actuators).
+  Details are in the public repo's technical notes.
+
+**Not verified yet:** trigger, thumbstick and face buttons, the left
+controller, bare-hand tracking, and third-party VR180 players.
 
 - Frame rate and dropped frames during playback (nothing was measured; it
   looked fine).
