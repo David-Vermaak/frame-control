@@ -50,6 +50,7 @@ targets:
       - name: Pack the Frame bundle
         # The server, headset helpers and catalogue, as the app copies them to the Frame.
         script: |
+          mkdir -p "${DERIVED_FILE_DIR}"
           python3 "${SRCROOT}/scripts/make_frame_bundle.py" "${DERIVED_FILE_DIR}/frame-bundle.tar.gz" > "${DERIVED_FILE_DIR}/frame-bundle.version"
           mkdir -p "${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}"
           cp "${DERIVED_FILE_DIR}/frame-bundle.tar.gz" "${DERIVED_FILE_DIR}/frame-bundle.version" "${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/"
