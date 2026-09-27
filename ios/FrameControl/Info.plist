@@ -43,8 +43,12 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_steamos-devkit._tcp</string>
+	</array>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Frame Control connects to your Steam Frame over your local network with SSH.</string>
+	<string>Frame Control finds your Steam Frame on your network and connects to it.</string>
 	<key>UILaunchScreen</key>
 	<dict>
 		<key>UIColorName</key>

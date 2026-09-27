@@ -92,7 +92,7 @@ final class AppModel: ObservableObject {
     }
 
     /// "host", "host:port" or "[v6]:port", plus a user name.
-    static func parse(host: String, user: String) -> FrameSettings? {
+    nonisolated static func parse(host: String, user: String) -> FrameSettings? {
         var target = FrameSettings(host: host.trimmingCharacters(in: .whitespaces), user: user.trimmingCharacters(in: .whitespaces))
         if target.host.hasPrefix("["), let close = target.host.firstIndex(of: "]") {
             let rest = target.host[target.host.index(after: close)...]

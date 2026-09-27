@@ -19,6 +19,7 @@
 		9657F7BC23E3352E5AB30777 /* SetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB544223FC60A59CC3E8EF5F /* SetupView.swift */; };
 		A8C7AED25A6280682FCE45DC /* Citadel in Frameworks */ = {isa = PBXBuildFile; productRef = 6BA549B6CC0A0CB847126456 /* Citadel */; };
 		DC043FB74BE2D23F3A5826BF /* FrameControlTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1740B691F9C25E5FB6F9EFC3 /* FrameControlTests.swift */; };
+		E6898C714A92D3979F73B6E1 /* FrameFinder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F288DF6636A417F0CA3A6CD /* FrameFinder.swift */; };
 		F94D0252F8CC5854314B84B2 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A11F3431826A26B247C0695 /* AppModel.swift */; };
 /* End PBXBuildFile section */
 
@@ -36,6 +37,7 @@
 		16644E7FDA7ADD5B232EB700 /* FrameLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrameLink.swift; sourceTree = "<group>"; };
 		1740B691F9C25E5FB6F9EFC3 /* FrameControlTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrameControlTests.swift; sourceTree = "<group>"; };
 		237D9AF04EEA257AB382F60E /* Keys.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Keys.swift; sourceTree = "<group>"; };
+		2F288DF6636A417F0CA3A6CD /* FrameFinder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrameFinder.swift; sourceTree = "<group>"; };
 		6B5B6718C5EA77FA67F6B14C /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		6FBC8D0B5ED7BF1C06F99892 /* FrameControlTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = FrameControlTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		8A11F3431826A26B247C0695 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
@@ -74,6 +76,7 @@
 		5064A5B6FE5B17B18E5FA4B8 /* SSH */ = {
 			isa = PBXGroup;
 			children = (
+				2F288DF6636A417F0CA3A6CD /* FrameFinder.swift */,
 				16644E7FDA7ADD5B232EB700 /* FrameLink.swift */,
 				EDC7BA8014DBC302D08FD397 /* HeadsetServer.swift */,
 				237D9AF04EEA257AB382F60E /* Keys.swift */,
@@ -255,6 +258,7 @@
 			files = (
 				F94D0252F8CC5854314B84B2 /* AppModel.swift in Sources */,
 				78427FC66780623F31E7501E /* FrameControlApp.swift in Sources */,
+				E6898C714A92D3979F73B6E1 /* FrameFinder.swift in Sources */,
 				12B21D3319BAF5AE79948560 /* FrameLink.swift in Sources */,
 				0DEE50BD563B1D8C328C4C0A /* HeadsetServer.swift in Sources */,
 				4622FE0F0D6499CD642C29A2 /* InstallLink.swift in Sources */,

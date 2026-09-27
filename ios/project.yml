@@ -39,7 +39,8 @@ targets:
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
         UISupportedInterfaceOrientations~ipad: [UIInterfaceOrientationPortrait, UIInterfaceOrientationPortraitUpsideDown, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
         UIUserInterfaceStyle: Dark
-        NSLocalNetworkUsageDescription: Frame Control connects to your Steam Frame over your local network with SSH.
+        NSLocalNetworkUsageDescription: Frame Control finds your Steam Frame on your network and connects to it.
+        NSBonjourServices: [_steamos-devkit._tcp]
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
         LSApplicationQueriesSchemes: [ssh, sftp, steamlink, rdp]
