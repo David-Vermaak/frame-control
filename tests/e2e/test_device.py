@@ -3,7 +3,7 @@ through the server against the fake Frame."""
 import unittest
 
 import harness
-from harness import api, ctl, launches, ok, state, wait_for
+from harness import api, ctl, finished, launches, ok, state, wait_for
 
 harness.require()
 
@@ -46,13 +46,14 @@ class Device(harness.FrameTestCase):
         self.assertEqual(state()['clipboard'], [text])
 
     def test_flatpak_install_and_remove(self):
-        ok('POST', '/api/flatpak', {'id': 'org.videolan.VLC', 'action': 'install'})
+        # Installs run as background jobs (server.start_job); uninstall answers at once.
+        job = finished(ok('POST', '/api/flatpak', {'id': 'org.videolan.VLC', 'action': 'install'}))
+        self.assertIsNone(job['error'], job)
         self.assertEqual([f['id'] for f in ok('GET', '/api/status')['flatpaks']], ['org.videolan.VLC'])
         ok('POST', '/api/flatpak', {'id': 'org.videolan.VLC', 'action': 'uninstall'})
         self.assertEqual(state()['flatpaks'], [])
-        status, out, _ = api('POST', '/api/flatpak', {'id': 'org.example.missing', 'action': 'install'})
-        self.assertEqual(status, 502)
-        self.assertIn('Nothing matches org.example.missing', out['error'])
+        job = finished(ok('POST', '/api/flatpak', {'id': 'org.example.missing', 'action': 'install'}))
+        self.assertIn('Nothing matches org.example.missing', job['error'])
 
     def test_desktop_capture(self):
         status, png, headers = api('GET', '/api/screenshot')

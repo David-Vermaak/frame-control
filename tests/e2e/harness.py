@@ -152,6 +152,12 @@ def ok(method, path, body=None, **kw):
     return out
 
 
+def finished(started, timeout=60):
+    """Wait for a background job (server.start_job's {"job": id}); returns its final state."""
+    return wait_for(lambda: (lambda j: j['done'] and j)(ok('GET', f"/api/job?id={started['job']}")),
+                    timeout, f"job {started['job']}")
+
+
 def upload(path, mode, name=None):
     with open(path, 'rb') as f:
         data = f.read()
