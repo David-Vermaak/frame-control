@@ -10,11 +10,30 @@ final class HeadsetServer: @unchecked Sendable {
     let port: Int
     private let lock = NSLock()
     private var _exited: String?
+    private var onExit: (@Sendable (String) -> Void)?
     /// Set once the server stops, with its last output.
     var exited: String? { lock.withLock { _exited } }
-    var onExit: (@Sendable (String) -> Void)?
 
     private init(port: Int) { self.port = port }
+
+    /// Calls back once when the server stops, at once if it already has.
+    func whenExited(_ callback: @escaping @Sendable (String) -> Void) {
+        let already: String? = lock.withLock {
+            if _exited == nil { onExit = callback }
+            return _exited
+        }
+        if let already { callback(already) }
+    }
+
+    fileprivate func markExited(_ tail: String) {
+        let callback: (@Sendable (String) -> Void)? = lock.withLock {
+            guard _exited == nil else { return nil }
+            _exited = tail
+            defer { onExit = nil }
+            return onExit
+        }
+        callback?(tail)
+    }
 
     static let cacheDir = ".cache/frame-control"
 
@@ -50,8 +69,11 @@ final class HeadsetServer: @unchecked Sendable {
             try await link.check("rm -rf \(dir).tmp && mkdir \(dir).tmp && tar xzf \(archive) -C \(dir).tmp && rm -f \(archive) "
                                  + "&& rm -rf \(dir) && mv \(dir).tmp \(dir)", "Couldn't unpack Frame Control on the headset")
         }
-        // Older versions: only this one is used from now on.
-        _ = try? await link.run("cd \(cacheDir) && for d in */; do [ \"${d%/}\" = \(bundle.version) ] || rm -rf -- \"$d\"; done")
+        // Another phone or iPad may be running a different version right now, so only
+        // versions (and interrupted unpacks) untouched for two weeks go. This one is
+        // marked as used.
+        _ = try? await link.run("touch \(dir) && find \(cacheDir) -mindepth 1 -maxdepth 1 -type d ! -name \(bundle.version) "
+                                + "-mtime +14 -exec rm -rf {} +")
         return dir
     }
 
@@ -83,17 +105,16 @@ final class HeadsetServer: @unchecked Sendable {
             reader.cancel()
             throw error
         }
-        box.onEnd = { [weak server] tail in
-            guard let server else { return }
-            server.lock.withLock { server._exited = tail }
-            server.onExit?(tail)
-        }
+        box.whenEnded { [weak server] tail in server?.markExited(tail) }
         return server
     }
 
+    /// The port from the server's first line. Output arrives in chunks, so the digits
+    /// only count once something follows them (the line goes on after the port).
     static func port(in text: String) -> Int? {
-        guard let r = text.range(of: #"Frame Control on http://127\.0\.0\.1:(\d+)"#, options: .regularExpression) else { return nil }
-        return Int(text[r].split(separator: ":").last ?? "")
+        guard let r = text.range(of: #"Frame Control on http://127\.0\.0\.1:[0-9]+\s"#, options: .regularExpression),
+              let port = Int(text[r].dropLast().split(separator: ":").last ?? ""), (1...65535).contains(port) else { return nil }
+        return port
     }
 }
 
@@ -103,17 +124,28 @@ private final class PortWaiter: @unchecked Sendable {
     private var continuation: CheckedContinuation<Int, Error>?
     private var result: Result<Int, Error>?
     private var endedTail: String?
-    var onEnd: (@Sendable (String) -> Void)? {
-        didSet { if let tail = lock.withLock({ endedTail }) { onEnd?(tail) } }
+    private var onEnd: (@Sendable (String) -> Void)?
+
+    /// Calls back when the output ends, at once if it already has.
+    func whenEnded(_ callback: @escaping @Sendable (String) -> Void) {
+        let already: String? = lock.withLock {
+            if endedTail == nil { onEnd = callback }
+            return endedTail
+        }
+        if let already { callback(already) }
     }
 
     func found(_ port: Int) { finish(.success(port)) }
 
     func ended(_ text: String) {
         let tail = String(text.suffix(600)).trimmingCharacters(in: .whitespacesAndNewlines)
-        lock.withLock { endedTail = tail }
+        let callback: (@Sendable (String) -> Void)? = lock.withLock {
+            endedTail = tail
+            defer { onEnd = nil }
+            return onEnd
+        }
         finish(.failure(FrameFailure("Frame Control's server on the headset stopped: \(tail.isEmpty ? "no output" : tail)")))
-        onEnd?(tail)
+        callback?(tail)
     }
 
     private func finish(_ r: Result<Int, Error>) {

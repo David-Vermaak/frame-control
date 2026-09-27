@@ -80,6 +80,18 @@ final class FrameLink: @unchecked Sendable {
 
     var isConnected: Bool { client.isConnected }
 
+    /// Whether the Frame answers a trivial command within a few seconds.
+    func answers(within seconds: Double = 6) async -> Bool {
+        guard client.isConnected else { return false }
+        return await withTaskGroup(of: Bool.self) { group in
+            group.addTask { (try? await self.run("true").status) == 0 }
+            group.addTask { try? await Task.sleep(nanoseconds: UInt64(seconds * 1e9)); return false }
+            let first = await group.next() ?? false
+            group.cancelAll()
+            return first
+        }
+    }
+
     func close() async {
         try? await client.close()
     }

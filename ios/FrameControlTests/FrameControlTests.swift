@@ -29,6 +29,8 @@ final class HeadsetServerTests: XCTestCase {
     func testReadsThePortTheServerPrints() {
         XCTAssertEqual(HeadsetServer.port(in: "Frame Control on http://127.0.0.1:41234  (alias: frame; Ctrl-C to stop)\n"), 41234)
         XCTAssertNil(HeadsetServer.port(in: "Traceback (most recent call last):"))
+        XCTAssertNil(HeadsetServer.port(in: "Frame Control on http://127.0.0.1:4"))  // more digits may follow
+        XCTAssertNil(HeadsetServer.port(in: "Frame Control on http://127.0.0.1:99999 "))
     }
 
     func testBundleIsInTheApp() throws {

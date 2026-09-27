@@ -68,8 +68,6 @@
   .mobile-only { display: none; }
   body.mobile .mobile-only { display: revert; }
   body.mobile .desk-only { display: none; }
-  /* Touch screens can't hover: keep the library's name and Play button showing. */
-  @media (hover: none) { .capsule .over { opacity: 1; } .capsule:hover { transform: none; } }
 
 
   /* ---- pages: one per tab; the header nav switches between them ---- */
@@ -322,6 +320,8 @@
   .disp .seg button { padding: 0 10px; }
   .disp input[type=number] { width: 72px; background: rgba(0,0,0,.28); color: var(--text); border: 1px solid transparent;
                              border-radius: 3px; height: 32px; padding: 0 8px; font: inherit; font-size: 13px; }
+  /* Touch screens can't hover: keep the library's name and Play button showing. */
+  @media (hover: none) { .capsule .over { opacity: 1; } .capsule:hover { transform: none; } }
   /* ---- phones: tabs move to a bottom bar, as in iOS apps; the page clears the notch and home indicator ---- */
   @media (max-width: 640px) {
     /* No blur here: it would make the header the containing block of the fixed tab bar. */
@@ -798,7 +798,10 @@ async function api(path, body) {
     method: "POST", headers: {"Content-Type": "application/json", "X-Frame-UI": UI_KEY}, body: JSON.stringify(body) };
   let r;
   try { r = await fetch(path, opts); }
-  catch { throw new Error("Frame Control's local server isn't running. Restart the app (Frame → Restart Server)."); }
+  catch {
+    throw new Error(window.frameApp?.platform === "ios" ? "Lost the connection to the Frame. The app reconnects on its own."
+                                                         : "Frame Control's local server isn't running. Restart the app (Frame → Restart Server).");
+  }
   const data = await r.json().catch(() => ({ error: `HTTP ${r.status}` }));
   if (!r.ok) {
     const err = new Error(data.error || `HTTP ${r.status}`);

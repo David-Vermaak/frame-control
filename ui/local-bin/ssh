@@ -13,4 +13,17 @@ done
 [ $# -gt 0 ] && shift  # the host alias
 cd "$HOME" || exit 255
 [ $# -eq 0 ] && exit 0  # -N: nothing to run
-exec "${SHELL:-/bin/sh}" -c "$*"
+# Stopping ssh ends everything the command started (sshd hangs up the session).
+# To do the same, run COMMAND as its own process group and pass on a TERM, HUP
+# or INT to all of it, so e.g. a live-video ffmpeg can't outlive its stream.
+set -m  # job control: the background job gets its own process group, and keeps stdin
+"${SHELL:-/bin/sh}" -c "$*" &
+child=$!
+trap 'kill -TERM -- "-$child" 2>/dev/null' TERM HUP INT
+wait "$child"
+status=$?
+while kill -0 "$child" 2>/dev/null; do  # a trapped signal ends `wait` early
+  wait "$child"
+  status=$?
+done
+exit "$status"

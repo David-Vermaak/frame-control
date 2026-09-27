@@ -41,12 +41,12 @@ final class AppModel: ObservableObject {
     /// ~/.ssh/authorized_keys, record the Frame's host key, then connect with the key.
     func pair(host: String, user: String, password: String) async {
         guard let target = Self.parse(host: host, user: user) else {
-            phase = .failed("Enter the headset's address and user name.")
+            fail("Enter the headset's address and user name.", retry: false)
             return
         }
-        await teardown()
-        attempt += 1
+        invalidate()
         let mine = attempt
+        await teardown()
         phase = .connecting("Signing in to \(target.host)")
         let pin = PinnedHostKey(expected: nil)
         do {
@@ -55,8 +55,12 @@ final class AppModel: ObservableObject {
             guard mine == attempt else { return }
             phase = .connecting("Adding this \(deviceName)'s key")
             let line = authorizedKeysLine
-            try await link.check("umask 077; mkdir -p ~/.ssh && touch ~/.ssh/authorized_keys && "
-                                 + "(grep -qxF \(shellQuote(line)) ~/.ssh/authorized_keys || echo \(shellQuote(line)) >> ~/.ssh/authorized_keys)",
+            // A file whose last line has no newline would otherwise swallow the key.
+            let file = "~/.ssh/authorized_keys"
+            try await link.check("umask 077; mkdir -p ~/.ssh && touch \(file) && "
+                                 + "{ grep -qxF \(shellQuote(line)) \(file) || { "
+                                 + "[ -s \(file) ] && [ -n \"$(tail -c 1 \(file))\" ] && printf '\\n' >> \(file); "
+                                 + "printf '%s\\n' \(shellQuote(line)) >> \(file); }; }",
                                  "Couldn't add the key on the Frame")
             guard let seen = pin.seen else { throw FrameFailure("The Frame didn't show a host key") }
             UserDefaults.standard.set(seen, forKey: Self.hostKeyKey)
@@ -64,7 +68,7 @@ final class AppModel: ObservableObject {
             settings = target
         } catch {
             guard mine == attempt else { return }
-            phase = .failed((error as? FrameFailure)?.message ?? FrameLink.describe(error, host: target.host))
+            fail((error as? FrameFailure)?.message ?? FrameLink.describe(error, host: target.host), retry: false)
             return
         }
         await connect()
@@ -74,7 +78,7 @@ final class AppModel: ObservableObject {
     /// The Frame's host key is recorded on this first connection.
     func useKey(host: String, user: String) async {
         guard let target = Self.parse(host: host, user: user) else {
-            phase = .failed("Enter the headset's address and user name.")
+            fail("Enter the headset's address and user name.", retry: false)
             return
         }
         UserDefaults.standard.removeObject(forKey: Self.hostKeyKey)
@@ -107,6 +111,7 @@ final class AppModel: ObservableObject {
     /// Forget the headset: back to the pairing screen. The Frame keeps the key line;
     /// remove it from ~/.ssh/authorized_keys there to revoke this phone.
     func forget() async {
+        invalidate()
         await teardown()
         UserDefaults.standard.removeObject(forKey: Self.settingsKey)
         UserDefaults.standard.removeObject(forKey: Self.hostKeyKey)
@@ -115,11 +120,22 @@ final class AppModel: ObservableObject {
     }
 
     func showSetup() {
+        invalidate()
         Task { await teardown() }
         phase = .setup
     }
 
+    /// Whether the failure screen is retrying on its own.
+    @Published private(set) var retrying = false
+
     // MARK: connecting
+
+    /// Every connection attempt has a number; anything that finishes after a newer
+    /// attempt started (or the user went back to setup) closes what it made and stops.
+    private func invalidate() {
+        attempt += 1
+        retrying = false
+    }
 
     /// quiet: a background retry, which leaves the failure screen up until it works.
     func connect(quiet: Bool = false) async {
@@ -127,53 +143,93 @@ final class AppModel: ObservableObject {
             phase = .setup
             return
         }
-        await teardown()
-        attempt += 1
+        invalidate()
         let mine = attempt
-        func step(_ s: String) { if mine == attempt && !quiet { phase = .connecting(s) } }
+        await teardown()
+        func current() -> Bool { mine == attempt }
+        func step(_ s: String) { if current() && !quiet { phase = .connecting(s) } }
         step("Connecting to \(settings.host)")
+        var link: FrameLink?
+        var forwarder: PortForwarder?
         do {
             let bundle = try HeadsetServer.Bundle.fromApp()
             let auth = SSHAuthenticationMethod.ed25519(username: settings.user, privateKey: DeviceKey.loadOrCreate())
             let pin = PinnedHostKey(expected: hostKey)
-            let link = try await FrameLink.connect(settings, auth: auth, hostKey: pin)
-            guard mine == attempt else { await link.close(); return }
-            self.link = link
+            let l = try await FrameLink.connect(settings, auth: auth, hostKey: pin)
+            link = l
+            guard current() else { throw CancellationError() }
             if hostKey == nil, let seen = pin.seen { UserDefaults.standard.set(seen, forKey: Self.hostKeyKey) }
-            let dir = try await HeadsetServer.deploy(bundle, over: link) { s in Task { @MainActor in step(s) } }
+            let dir = try await HeadsetServer.deploy(bundle, over: l) { s in Task { @MainActor in step(s) } }
+            guard current() else { throw CancellationError() }
             step("Starting Frame Control on the headset")
             let key = Self.randomKey()
-            let server = try await HeadsetServer.start(in: dir, over: link, key: key, device: deviceName)
+            let server = try await HeadsetServer.start(in: dir, over: l, key: key, device: deviceName)
+            guard current() else { throw CancellationError() }
+            let f = try await PortForwarder.start(over: l, to: server.port)
+            forwarder = f
+            guard current() else { throw CancellationError() }
+            // Only now does this attempt's connection become the app's.
+            self.link = l
             self.server = server
-            let forwarder = try await PortForwarder.start(over: link, to: server.port)
-            self.forwarder = forwarder
-            guard mine == attempt else { return }
-            server.onExit = { [weak self] tail in
+            self.forwarder = f
+            readySince = Date()
+            // Runs at once if the server already stopped while the tunnel was opening.
+            server.whenExited { [weak self] tail in
                 Task { @MainActor in self?.lost(mine, "Frame Control on the headset stopped. \(tail.suffix(200))") }
             }
-            readySince = Date()
-            phase = .ready(URL(string: "http://127.0.0.1:\(forwarder.localPort)/?key=\(key)")!)
+            guard server.exited == nil else { return }
+            phase = .ready(URL(string: "http://127.0.0.1:\(f.localPort)/?key=\(key)")!)
+            watchHealth(mine)
         } catch {
-            guard mine == attempt else { return }
-            await teardown()
-            phase = .failed((error as? FrameFailure)?.message ?? FrameLink.describe(error, host: settings.host))
-            // Keep trying quietly while the app is open: the Frame may just be asleep.
-            // A new task each time, so retrying for hours doesn't nest awaits.
-            Task { [weak self] in
-                try? await Task.sleep(nanoseconds: 10_000_000_000)
-                guard let self, mine == self.attempt, case .failed = self.phase,
-                      UIApplication.shared.applicationState == .active else { return }
-                await self.connect(quiet: true)
+            forwarder?.stop()
+            if let link { await link.close() }  // ends its server too
+            guard current(), !(error is CancellationError) else { return }
+            fail((error as? FrameFailure)?.message ?? FrameLink.describe(error, host: settings.host), retry: true)
+        }
+    }
+
+    private func fail(_ message: String, retry: Bool) {
+        phase = .failed(message)
+        retrying = retry && settings != nil
+        guard retrying else { return }
+        // Keep trying quietly while the app is open: the Frame may just be asleep.
+        // A new task each time, so retrying for hours doesn't nest awaits.
+        let mine = attempt
+        Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 10_000_000_000)
+            guard let self, mine == self.attempt, case .failed = self.phase,
+                  UIApplication.shared.applicationState == .active else { return }
+            await self.connect(quiet: true)
+        }
+    }
+
+    /// While connected, check every 20 s that the SSH session still answers: a
+    /// network change can leave it looking open while nothing gets through.
+    private func watchHealth(_ mine: Int) {
+        Task { [weak self] in
+            while true {
+                try? await Task.sleep(nanoseconds: 20_000_000_000)
+                guard let self, mine == self.attempt, case .ready = self.phase else { return }
+                if UIApplication.shared.applicationState != .active { continue }
+                if await !(self.link?.answers() ?? false) {
+                    guard mine == self.attempt else { return }
+                    await self.connect(quiet: true)
+                    return
+                }
             }
         }
     }
 
     /// Called when the app comes back to the foreground: iOS may have dropped the
-    /// connection while it was in the background.
+    /// connection, or left it looking open, while it was in the background.
     func resume() {
         switch phase {
         case .ready:
-            if link?.isConnected != true || server?.exited != nil { Task { await connect() } }
+            let mine = attempt
+            Task {
+                let ok = await link?.answers() ?? false
+                if (!ok || server?.exited != nil), mine == attempt { await connect() }
+            }
         case .failed:
             if settings != nil { Task { await connect() } }
         default:
@@ -187,8 +243,9 @@ final class AppModel: ObservableObject {
         guard which == attempt, case .ready = phase else { return }
         // Restart it once; if it dies again straight away, say so instead of looping.
         if Date().timeIntervalSince(readySince) < 20 {
+            invalidate()
             Task { await teardown() }
-            phase = .failed(why)
+            fail(why, retry: false)
         } else {
             Task { await connect() }
         }

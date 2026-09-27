@@ -12,7 +12,7 @@ struct RootView: View {
             case .connecting(let step):
                 ConnectingView(step: step, host: model.settings?.host) { model.showSetup() }
             case .failed(let message):
-                FailedView(message: message, canRetry: model.settings != nil,
+                FailedView(message: message, canRetry: model.settings != nil, retrying: model.retrying,
                            retry: { Task { await model.connect() } }, change: { model.showSetup() })
             case .ready(let url):
                 WebShell(url: url, model: model).ignoresSafeArea()
@@ -50,6 +50,7 @@ struct ConnectingView: View {
 struct FailedView: View {
     let message: String
     let canRetry: Bool
+    let retrying: Bool
     let retry: () -> Void
     let change: () -> Void
 
@@ -58,7 +59,7 @@ struct FailedView: View {
             Image(systemName: "wifi.exclamationmark").font(.system(size: 44)).foregroundStyle(.orange)
             Text("Can't reach the Frame").font(.title3.bold())
             Text(message).multilineTextAlignment(.center).foregroundStyle(Color.frameMuted)
-            if canRetry { Text("Trying again every few seconds.").font(.footnote).foregroundStyle(Color.frameMuted) }
+            if retrying { Text("Trying again every few seconds.").font(.footnote).foregroundStyle(Color.frameMuted) }
             if canRetry {
                 Button("Try again", action: retry).buttonStyle(.borderedProminent).controlSize(.large)
             }
