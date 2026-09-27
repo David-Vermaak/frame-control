@@ -144,6 +144,14 @@ struct WebShell: UIViewRepresentable {
             (root.presentedViewController ?? root).present(sheet, animated: true)
         }
 
+        #if DEBUG
+        /// Simulator test hook: FRAME_TEST_JS runs in the page once it has loaded.
+        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            guard let js = ProcessInfo.processInfo.environment["FRAME_TEST_JS"] else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 4) { webView.evaluateJavaScript(js) }
+        }
+        #endif
+
         // MARK: navigation: the app's page stays here; other sites open in Safari
 
         func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction,

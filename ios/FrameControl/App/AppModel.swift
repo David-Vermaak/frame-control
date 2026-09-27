@@ -178,7 +178,16 @@ final class AppModel: ObservableObject {
             self.server = server
             self.forwarder = f
             readySince = Date()
-            phase = .ready(URL(string: "http://127.0.0.1:\(f.localPort)/?key=\(key)")!)
+            var page = "http://127.0.0.1:\(f.localPort)/?key=\(key)"
+            #if DEBUG
+            // Test hooks for the Simulator: open on a given tab, and leave the URL where
+            // a test can drive the same tunnel (`simctl get_app_container … data`).
+            if let tab = ProcessInfo.processInfo.environment["FRAME_TEST_PAGE"] { page += "#\(tab)" }
+            if let dir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first {
+                try? page.write(to: dir.appendingPathComponent("frame-test-url.txt"), atomically: true, encoding: .utf8)
+            }
+            #endif
+            phase = .ready(URL(string: page)!)
             // Runs at once if it stopped in the moment since the check above.
             server.whenExited { [weak self] tail in
                 Task { @MainActor in self?.lost(mine, "Frame Control on the headset stopped. \(tail.suffix(200))") }

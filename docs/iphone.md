@@ -67,7 +67,21 @@ signing team in Xcode (Signing & Capabilities).
 
 ## Verified
 
-In the iOS Simulator (iOS 26.5) and against a Frame (2026-09-27): the page and
-all its reads, headset capture, live video, and file upload through the
-on-Frame server. Not yet exercised: pairing with the password, Android display
-changes through podman, and power actions.
+<img src="img/iphone-tabs.jpg" alt="The four tabs in the iPhone app, connected to a Frame" width="900">
+
+In the iOS Simulator (iOS 26.5) against a real Frame, 2026-09-27: the app connected
+with its key, copied the bundle over SFTP, started the server on the Frame and
+showed all four tabs with live data. In the app's web view, Capture returned a
+headset still and Live played H.264 video at 31 fps (WebCodecs works in
+WKWebView). Through the app's tunnel: status, games, Steam library, Android apps,
+screenshots, a file upload (checked on the Frame), a background install job, and
+the power password check (a wrong password is refused). The server on the Frame
+exits within seconds of the app closing.
+
+Not yet exercised: pairing with the password (only the add-the-key route),
+Android display changes through podman (no Android app was running), a real
+sleep/restart/shut down, and a physical iPhone.
+
+Debug builds have Simulator test hooks (`FRAME_TEST_HOST`, `FRAME_TEST_PAGE`,
+`FRAME_TEST_JS`, and the tunnel URL in the app's Caches folder); release builds
+don't.
