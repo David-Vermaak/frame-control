@@ -116,6 +116,18 @@ this build):
   [`webxr_vr_video`](https://threejs.org/examples/webxr_vr_video.html) demo,
   a stereo 360 video, played in 3D after pressing Enter VR.
 
+- **Launched from the Steam library, verified remotely 2026-09-27** with
+  nobody wearing the headset (standby workaround in
+  [how-the-frame-works.md](how-the-frame-works.md)). The installer's Steam
+  shortcut starts Chromium, and SteamVR takes it as scene app
+  `steam.app.<shortcut id>`. A minimal WebXR session that clears every frame
+  to red ran at about 75 frames per second, and the stereo headset capture
+  showed both eyes solid red. Steam preloads its overlay
+  (`gameoverlayrenderer.so`), which crashed Chromium's zygote about 30 s after
+  a Steam launch. The public repo's launcher now removes it from
+  `LD_PRELOAD`. With the headset outside its playspace, SteamVR shows
+  passthrough wherever the page leaves transparent pixels.
+
 **Not verified yet:**
 
 - Frame rate and dropped frames during playback (nothing was measured; it
