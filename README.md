@@ -12,11 +12,16 @@ See what the headset sees, install games and Android apps, move files and text a
 [![Checks](https://img.shields.io/github/actions/workflow/status/saphid/steam-frame/checks.yml?branch=main&label=checks)](https://github.com/saphid/steam-frame/actions/workflows/checks.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-66c0f4)](LICENSE)
 
-[**Download**](#install) · [Features](#features) · [Set up the headset](#set-up-the-headset) · [Feedback](#feedback) · [Docs](#going-further)
+[**Download**](#install) · [Trailer](#trailer) · [Features](#features) · [Set up the headset](#set-up-the-headset) · [Feedback](#feedback) · [Docs](#going-further)
 
 <br>
 
 <img src="docs/img/frame-control.png" alt="Frame Control showing the headset view, battery and status, and the Steam library" width="900">
+
+<a id="trailer"></a>
+<a href="https://github.com/saphid/steam-frame/releases/download/trailer/frame-control-trailer.mp4"><img src="docs/img/trailer.jpg" alt="Watch the Frame Control trailer" width="900"></a>
+
+<sub>The trailer: 66 seconds, with sound. Downloads the MP4 from the trailer release.</sub>
 
 <sub>Unofficial hobby project, not affiliated with Valve. Free and open source.</sub>
 
