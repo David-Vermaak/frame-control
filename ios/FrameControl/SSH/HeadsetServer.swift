@@ -69,18 +69,20 @@ final class HeadsetServer: @unchecked Sendable {
             try await link.check("rm -rf \(dir).tmp && mkdir \(dir).tmp && tar xzf \(archive) -C \(dir).tmp && rm -f \(archive) "
                                  + "&& rm -rf \(dir) && mv \(dir).tmp \(dir)", "Couldn't unpack Frame Control on the headset")
         }
-        // Another phone or iPad may be running a different version right now, so only
-        // versions (and interrupted unpacks) untouched for two weeks go. This one is
-        // marked as used.
-        _ = try? await link.run("touch \(dir) && find \(cacheDir) -mindepth 1 -maxdepth 1 -type d ! -name \(bundle.version) "
-                                + "-mtime +14 -exec rm -rf {} +")
+        // Another phone or iPad may be running a different version right now: a version
+        // goes only when no server runs from it and it hasn't been used for two weeks
+        // (this one is marked as used). Servers run by absolute path, so pgrep sees it.
+        _ = try? await link.run("touch \(dir) && cd \(cacheDir) && for d in */; do d=${d%/}; "
+                                + "[ \"$d\" = \(bundle.version) ] && continue; "
+                                + "[ -n \"$(find \"$d\" -maxdepth 0 -mtime +14)\" ] || continue; "
+                                + "pgrep -f \"$PWD/$d/\" >/dev/null && continue; rm -rf -- \"$d\"; done")
         return dir
     }
 
     /// Starts the server in dir and waits for it to say which port it took.
     static func start(in dir: String, over link: FrameLink, key: String, device: String) async throws -> HeadsetServer {
         let command = "cd \(dir) && FRAME_LOCAL=1 FRAME_UI_KEY=\(key) FRAME_DEVICE=\(shellQuote(device)) "
-            + "exec python3 -I -u -B ui/server.py --port 0 --exit-on-eof 2>&1"
+            + "exec python3 -I -u -B \"$PWD/ui/server.py\" --port 0 --exit-on-eof 2>&1"
         let stream = try await link.client.executeCommandStream(command)
         let box = PortWaiter()
         let reader = Task { () -> Void in

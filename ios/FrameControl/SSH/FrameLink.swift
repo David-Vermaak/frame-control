@@ -80,15 +80,15 @@ final class FrameLink: @unchecked Sendable {
 
     var isConnected: Bool { client.isConnected }
 
-    /// Whether the Frame answers a trivial command within a few seconds.
+    /// Whether the Frame answers a trivial command within a few seconds. The probe
+    /// runs unstructured: a dead link can keep it waiting well past the deadline,
+    /// and the answer mustn't wait for it.
     func answers(within seconds: Double = 6) async -> Bool {
         guard client.isConnected else { return false }
-        return await withTaskGroup(of: Bool.self) { group in
-            group.addTask { (try? await self.run("true").status) == 0 }
-            group.addTask { try? await Task.sleep(nanoseconds: UInt64(seconds * 1e9)); return false }
-            let first = await group.next() ?? false
-            group.cancelAll()
-            return first
+        let once = Once()
+        return await withCheckedContinuation { (c: CheckedContinuation<Bool, Never>) in
+            Task { let ok = (try? await self.run("true").status) == 0; if once.claim() { c.resume(returning: ok) } }
+            Task { try? await Task.sleep(nanoseconds: UInt64(seconds * 1e9)); if once.claim() { c.resume(returning: false) } }
         }
     }
 
@@ -131,6 +131,13 @@ final class FrameLink: @unchecked Sendable {
             throw error
         }
     }
+}
+
+/// True for the first caller only.
+final class Once: @unchecked Sendable {
+    private let lock = NSLock()
+    private var done = false
+    func claim() -> Bool { lock.withLock { defer { done = true }; return !done } }
 }
 
 func shellQuote(_ s: String) -> String {

@@ -47,6 +47,7 @@ final class AppModel: ObservableObject {
         invalidate()
         let mine = attempt
         await teardown()
+        guard mine == attempt else { return }
         phase = .connecting("Signing in to \(target.host)")
         let pin = PinnedHostKey(expected: nil)
         do {
@@ -62,6 +63,7 @@ final class AppModel: ObservableObject {
                                  + "[ -s \(file) ] && [ -n \"$(tail -c 1 \(file))\" ] && printf '\\n' >> \(file); "
                                  + "printf '%s\\n' \(shellQuote(line)) >> \(file); }; }",
                                  "Couldn't add the key on the Frame")
+            guard mine == attempt else { return }  // cancelled meanwhile: save nothing
             guard let seen = pin.seen else { throw FrameFailure("The Frame didn't show a host key") }
             UserDefaults.standard.set(seen, forKey: Self.hostKeyKey)
             UserDefaults.standard.set(try JSONEncoder().encode(target), forKey: Self.settingsKey)
@@ -168,17 +170,19 @@ final class AppModel: ObservableObject {
             let f = try await PortForwarder.start(over: l, to: server.port)
             forwarder = f
             guard current() else { throw CancellationError() }
+            if let tail = server.exited {  // stopped while the tunnel was opening
+                throw FrameFailure("Frame Control on the headset stopped. \(tail.suffix(200))")
+            }
             // Only now does this attempt's connection become the app's.
             self.link = l
             self.server = server
             self.forwarder = f
             readySince = Date()
-            // Runs at once if the server already stopped while the tunnel was opening.
+            phase = .ready(URL(string: "http://127.0.0.1:\(f.localPort)/?key=\(key)")!)
+            // Runs at once if it stopped in the moment since the check above.
             server.whenExited { [weak self] tail in
                 Task { @MainActor in self?.lost(mine, "Frame Control on the headset stopped. \(tail.suffix(200))") }
             }
-            guard server.exited == nil else { return }
-            phase = .ready(URL(string: "http://127.0.0.1:\(f.localPort)/?key=\(key)")!)
             watchHealth(mine)
         } catch {
             forwarder?.stop()

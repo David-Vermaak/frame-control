@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 # Stand-in for ssh when Frame Control's server runs on the Frame itself
 # (FRAME_LOCAL=1, started by the iPhone app). The server and its helpers call
 # `ssh [options] frame COMMAND`, and rsync calls it as its transport; here that
@@ -16,7 +16,7 @@ cd "$HOME" || exit 255
 # Stopping ssh ends everything the command started (sshd hangs up the session).
 # To do the same, run COMMAND as its own process group and pass on a TERM, HUP
 # or INT to all of it, so e.g. a live-video ffmpeg can't outlive its stream.
-set -m  # job control: the background job gets its own process group, and keeps stdin
+set -m  # job control (bash allows it without a terminal): own process group, and stdin kept
 "${SHELL:-/bin/sh}" -c "$*" &
 child=$!
 trap 'kill -TERM -- "-$child" 2>/dev/null' TERM HUP INT
