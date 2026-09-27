@@ -78,9 +78,10 @@ screenshots, a file upload (checked on the Frame), a background install job, and
 the power password check (a wrong password is refused). The server on the Frame
 exits within seconds of the app closing.
 
-Against a stand-in built on Valve's Holo Core aarch64 base
-([tests/frame-container](../tests/frame-container)), since Valve publishes no
-Frame OS image: pairing with the password (key added with the right
+Against Valve's own Steam Frame OS (SteamOS 0.3.0 build 20260922.5152327, the
+`rootfs-A` partition of the Frame recovery image, run with its own sshd; see
+[tests/frame-container](../tests/frame-container)), and a Holo Core stand-in:
+pairing with the password (key added with the right
 permissions, host key pinned, password stored nowhere), the power password
 check (a wrong or missing password refused; the right one reaches `systemctl`),
 a changed host key refused with "Pair with the Frame again", and a wrong
