@@ -98,6 +98,9 @@ already ships (sideloading a game copies Valve's own devkit scripts to
 | **Linux** (x64) | [AppImage](https://github.com/saphid/steam-frame/releases/latest/download/Frame-Control-linux-x86_64.AppImage) · [.deb](https://github.com/saphid/steam-frame/releases/latest/download/Frame-Control-linux-amd64.deb) | `ssh` (most desktops have it) |
 | **Linux** (arm64) | [AppImage](https://github.com/saphid/steam-frame/releases/latest/download/Frame-Control-linux-arm64.AppImage) · [.deb](https://github.com/saphid/steam-frame/releases/latest/download/Frame-Control-linux-arm64.deb) | `ssh`, and `adb` for Android apps (`sudo apt install adb`) |
 
+**iPhone and iPad:** the same features from your phone, with nothing to install on
+a computer. Build it from [`ios/`](ios) in Xcode; see [docs/iphone.md](docs/iphone.md).
+
 The app brings its own Python and `adb`; SSH is built into macOS and Windows.
 Google doesn't publish `adb` for arm64 Linux, so that build uses your
 distribution's. If you already have `adb`, the app uses yours.

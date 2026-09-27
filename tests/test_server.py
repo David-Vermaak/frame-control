@@ -217,6 +217,60 @@ class ServerGuards(unittest.TestCase):
         self.assertEqual(self.post("/api/nope", {})[0], 404)
 
 
+@unittest.skipIf(os.name == "nt", "runs on the Frame (Linux); local-bin/ssh is a POSIX shell script")
+class LocalMode(unittest.TestCase):
+    """FRAME_LOCAL=1, as the iPhone app starts the server on the Frame: its own key
+    guards /api/, and ssh goes to ui/local-bin/ssh, which runs commands here."""
+
+    KEY = "0123456789abcdef0123456789abcdef"
+
+    @classmethod
+    def setUpClass(cls):
+        env = {**os.environ, "FRAME_LOCAL": "1", "FRAME_UI_KEY": cls.KEY, "FRAME_DEVICE": "iPhone",
+               "PYTHONDONTWRITEBYTECODE": "1"}
+        cls.log = tempfile.TemporaryFile()
+        cls.proc = subprocess.Popen([sys.executable, str(ROOT / "ui" / "server.py"), "--port", "0", "--exit-on-eof"],
+                                    env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=cls.log, text=True)
+        line = cls.proc.stdout.readline()
+        cls.port = int(line.split("127.0.0.1:")[1].split()[0])  # --port 0: the server prints the port it took
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.proc.stdin.close()  # --exit-on-eof: the phone disconnecting
+        cls.proc.wait(timeout=15)
+        cls.proc.stdout.close()
+        cls.log.close()
+
+    def request(self, method, path, body=None, key=KEY):
+        conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=20)
+        conn.request(method, path, body=json.dumps(body).encode() if body is not None else None,
+                     headers={"X-Frame-UI": key, "Content-Type": "application/json"})
+        r = conn.getresponse()
+        data = json.loads(r.read() or b"{}")
+        conn.close()
+        return r.status, data
+
+    def test_needs_the_session_key(self):
+        self.assertEqual(self.request("GET", "/api/host", key="1")[0], 403)
+        self.assertEqual(self.request("GET", "/api/host", key="")[0], 403)
+        status, host = self.request("GET", "/api/host")
+        self.assertEqual(status, 200)
+        self.assertEqual(host, {"os": "SteamOS", "fileManager": None, "computer": "iPhone", "mobile": True})
+
+    def test_commands_run_locally(self):
+        # frame_titles lists ~/devkit-game here; with nothing there, the list is empty rather than an ssh error.
+        status, body = self.request("GET", "/api/titles")
+        self.assertEqual(status, 200, body)
+        self.assertIsInstance(body["titles"], list)
+
+    def test_open_is_for_the_app_and_power_needs_a_password(self):
+        self.assertEqual(self.request("POST", "/api/open", {"what": "terminal"})[0], 400)
+        status, body = self.request("POST", "/api/open", {"what": "reboot"})
+        self.assertEqual(status, 400)
+        self.assertIn("password", body["error"])
+        self.assertEqual(self.request("POST", "/api/open", {"what": "reboot", "password": "a\nb"})[0], 400)
+
+
 class UnreachableMessages(unittest.TestCase):
     """Only ssh's own connection failures are reworded; other errors keep their text."""
 
