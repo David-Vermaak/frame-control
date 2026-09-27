@@ -87,6 +87,20 @@ check (a wrong or missing password refused; the right one reaches `systemctl`),
 a changed host key refused with "Pair with the Frame again", and a wrong
 pairing password reported the same way.
 
+Also verified in the Simulator against the Frame (2026-09-27): the setup screen
+found the Frame by itself over Bonjour (`frame · 192.168.1.237`); a paired app
+waiting for a sleeping Frame connected 4 s after it answered; an upload from the
+app's web view landed in `~/Downloads`; the share sheet offers Save Image
+(needs `NSPhotoLibraryAddUsageDescription`, now declared); an install link opens
+the confirm dialog and downloads nothing until Install; Steam Link without the
+app installed opens its App Store page.
+
+Things iOS asks the first time: **Local Network** (tap Allow, or the app can't
+see the Frame), and **Paste** when you send the iPhone's clipboard (tap Allow
+Paste, or set Settings → Apps → Frame Control → Paste from Other Apps → Allow).
+Sending text to the Frame's clipboard needs the desktop panel open in the
+headset, as on the desktop app.
+
 Not yet exercised: Android display changes through podman (no Android app was
 running), a real sleep/restart/shut down on the Frame, and a physical iPhone.
 

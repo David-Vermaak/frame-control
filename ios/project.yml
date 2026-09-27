@@ -41,6 +41,7 @@ targets:
         UIUserInterfaceStyle: Dark
         NSLocalNetworkUsageDescription: Frame Control finds your Steam Frame on your network and connects to it.
         NSBonjourServices: [_steamos-devkit._tcp]
+        NSPhotoLibraryAddUsageDescription: Frame Control saves headset captures and screenshots to your photo library when you ask it to.
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
         LSApplicationQueriesSchemes: [ssh, sftp, steamlink, rdp]
