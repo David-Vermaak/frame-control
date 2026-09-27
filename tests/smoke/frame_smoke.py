@@ -115,9 +115,13 @@ def status(build):
 
 
 def steam_log_lines(*patterns):
-    """Steam log lines holding any of the fixed strings (which files: not verified, so all)."""
+    """Steam log lines holding any of the fixed strings (which files: not verified, so all).
+
+    -a: compat_log.txt has binary bytes in it, and without it grep only says
+    "binary file matches" (seen on the Frame, 2026-09-27).
+    """
     pats = ' '.join(f'-e {shlex.quote(p)}' for p in patterns)
-    out = ssh(f"grep -rshF {pats} ~/.local/share/Steam/logs/ 2>/dev/null || true")
+    out = ssh(f"grep -arshF {pats} ~/.local/share/Steam/logs/ 2>/dev/null || true")
     return out.strip().splitlines()
 
 

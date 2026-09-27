@@ -40,6 +40,10 @@ HOME = fs.HOME
 STEAM_DIR = HOME + '/.steam'
 PID_FILE, TOKEN_FILE, PIPE = (f'{STEAM_DIR}/steam.{n}' for n in ('pid', 'token', 'pipe'))
 CONSOLE_LOG = fs.STEAM_ROOT + '/logs/console_log.txt'  # guess: which file Steam logs devkit launches to
+# Steam logs compat tool lookups here, and on the Frame the file has binary bytes
+# in it, so plain grep only says "binary file matches" (headset smoke test,
+# 2026-09-27, BUILD_ID 20260922.6101926). The fake starts it with a NUL to match.
+COMPAT_LOG = fs.STEAM_ROOT + '/logs/compat_log.txt'
 DEVTOOLS_PORT = 8080
 TARGET_ID = 'F0CA11ED5EA4ED0000000000000000AB'
 GAME_LOGS = '/var/log/fakeframe'
@@ -65,6 +69,14 @@ def console(line):
     os.makedirs(os.path.dirname(CONSOLE_LOG), exist_ok=True)
     with open(CONSOLE_LOG, 'a') as f:
         f.write(time.strftime('[%Y-%m-%d %H:%M:%S] ') + line + '\n')
+
+
+def compat(line):
+    os.makedirs(os.path.dirname(COMPAT_LOG), exist_ok=True)
+    with open(COMPAT_LOG, 'ab') as f:
+        if f.tell() == 0:
+            f.write(b'\0\n')
+        f.write((time.strftime('[%Y-%m-%d %H:%M:%S] ') + line + '\n').encode())
 
 
 def respond(path, text=None, error=None):
@@ -210,6 +222,7 @@ def cmd_run_game(q):
         name = fs.RUNTIME_NAMES.get(tool, tool)
         record.update(started=False, message=f'Tool {fs.RUNTIME_APPIDS.get(tool, 0)} "{name}" is found for '
                                               f'appID {game["appid"]}, but is not installed')
+        compat(record['message'])
     elif tool and tool.startswith('proton'):
         # How Steam ran a sideloaded .exe on the Frame (docs/sideloading.md).
         prefix = f"{fs.STEAM_ROOT}/steamapps/compatdata/{game['appid']}/pfx"

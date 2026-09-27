@@ -123,6 +123,9 @@ class Titles(harness.FrameTestCase):
         self.assertFalse(run['started'])
         self.assertEqual(run['message'], f'Tool 4183110 "Steam Linux Runtime 4.0" is found for appID {appid}, '
                                          'but is not installed')
+        # The headset smoke test finds this in Steam's logs, where compat_log.txt has
+        # binary bytes in it: only grep -a returns the line (Frame, 2026-09-27).
+        self.assertIn(run['message'], ssh('grep -arshF "but is not installed" ~/.local/share/Steam/logs/'))
         # With the runtime installed, it starts.
         ctl('runtime', 'SteamLinuxRuntime_4', 'installed')
         ok('POST', '/api/titles', {'action': 'launch', 'id': 'Tiny_PC_Game'})
