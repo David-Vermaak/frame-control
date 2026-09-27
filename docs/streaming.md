@@ -1,9 +1,11 @@
 # Screen and desktop streaming
 
-This covers two directions:
+This covers three directions, plus input:
 
 - **A. Frame → Mac**: see and control the headset from the Mac.
 - **B. Mac → Frame**: use the Mac's desktop inside the headset.
+- **C. iPhone → Frame**: mirror the phone inside the headset.
+- **Input**: type and point in the Frame from the Mac or iPhone.
 
 The confidence labels are the same as in [ssh.md](ssh.md).
 
@@ -51,14 +53,37 @@ choose to save it. Remmina stores passwords encrypted with a per-install key,
 so the script doesn't try to write the password. (The Remmina file format is
 standard; the Flatpak data path is inferred.)
 
-## Input and text entry without the virtual keyboard
+## C. Show the iPhone's screen inside the Frame
 
-- **A Bluetooth keyboard and mouse** paired to the Frame is the obvious way to
-  avoid the virtual keyboard. Road to VR says there are "only a few things
-  you'd actually want to do" on the Linux desktop unless you connect a
-  keyboard and mouse.
-  (Pairing a BT keyboard on the Frame is inferred from SteamOS; not verified.)
-- **Clipboard from the Mac**: `scripts/paste-to-frame.sh` (see
-  [file-transfer.md](file-transfer.md#clipboard)).
+iOS only shares its screen two ways: **AirPlay** (Screen Mirroring in Control
+Centre) or a **ReplayKit broadcast extension** in an app. Nothing else can
+capture it.
+
+| Option | What it takes | Confidence | Verdict |
+|---|---|---|---|
+| **UxPlay** (an open-source AirPlay receiver) on the Frame | Build it for aarch64 (no Flathub package; there's a Snap and distro packages), run it in `~` or a podman container, and advertise it over mDNS. The iPhone *and* the Mac then see "Frame" in Screen Mirroring, with nothing to install on either | **Inferred.** It runs on ARM64 Linux such as the Raspberry Pi ([UxPlay](https://github.com/FDH2/UxPlay)). Not tried on the Frame: needs mDNS registration and its ports (7000, 7001, 7100 and a UDP range) reachable | **Recommended to try first.** It's the only receiver-side option, and it covers the Mac too. The window shows in the Frame's Linux desktop panel |
+| A broadcast extension in Frame Control | ReplayKit sends the screen to a small extension (50 MB memory limit), which encodes H.264 and sends it through the app's SSH tunnel to the page, shown the same way as the Frame's live view in reverse | **Inferred** from Apple's ReplayKit docs | Full control and no network setup, but several days' work, and the picture only shows where Frame Control's page is open in the headset |
+
+## Input: type and point in the Frame from the Mac or iPhone
+
+**Verified 2026-09-27** on the headset: `steamos` is in the `input` group and
+`/dev/uinput` is `crw-rw-r-- root input`, so **our own code can create a
+virtual keyboard and mouse without sudo**. The Frame has no `python-evdev`,
+`ydotool`, `wtype` or KDE Connect; `kwin_wayland` and `plasmashell` run only
+while the desktop panel is open in the headset.
+
+| Option | Mac | iPhone | Notes |
+|---|---|---|---|
+| **A uinput keyboard and mouse in Frame Control's server** | ✓ | ✓ | **Recommended.** The server opens `/dev/uinput` with `ctypes` (standard library only) and the page sends key and pointer events through the tunnel it already has. On the phone: a trackpad area (drag to move, tap to click, two fingers to scroll) and the iOS keyboard for typing. On the Mac: a "control the Frame" mode that captures the keyboard and pointer (Esc to release). Uinput devices look like real hardware to the kernel, so libinput, KWin and gamescope should take them; [frame-voice](https://github.com/DeeJanuz/frame-voice) already types into a Frame through a uinput keyboard. **Untested**: which surfaces in VR (desktop panel, SteamVR dashboard, games, Android apps in Lepton) accept the pointer. About a day or two of work |
+| **Bluetooth keyboard and mouse** | – | – | Real hardware paired in SteamOS settings. The iPhone can't pretend to be a Bluetooth keyboard: iOS won't advertise the HID service ([Apple forums](https://developer.apple.com/forums/thread/733916)) |
+| **Deskflow** (formerly Input Leap / Barrier) | ✓ | – | Moves the Mac's own mouse and keyboard onto the Frame's screen edge. Flathub has an aarch64 build ([Flathub](https://flathub.org/apps/org.deskflow.deskflow)); on Wayland it needs the InputCapture/libei portal, and only works while Plasma is running. No iPhone client |
+| **KDE Connect** | ~ | ✓ | Its iOS app has a remote touchpad and keyboard, but the Frame would need KDE Connect installed (not on Flathub; `pacman` on a read-only root). More moving parts than the uinput route |
+| **Remmina / Steam Link / RDP** | ✓ | – | Input only reaches the streamed session, not the headset's own apps |
+
+Other ways to get text in:
+
+- **Clipboard from the Mac**: `scripts/paste-to-frame.sh`, or Frame Control's
+  clipboard box (see [file-transfer.md](file-transfer.md#clipboard)). Needs
+  the desktop panel open.
 - **RDP session**: Windows App syncs the clipboard with xrdp, but only inside
   that RDP session.

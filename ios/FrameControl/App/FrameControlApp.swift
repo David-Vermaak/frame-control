@@ -14,6 +14,11 @@ struct FrameControlApp: App {
                     // and connect to FRAME_TEST_HOST with it (`simctl launch` passes
                     // SIMCTL_CHILD_FRAME_TEST_HOST through as FRAME_TEST_HOST).
                     print("FRAME_CONTROL_KEY: \(model.authorizedKeysLine)")
+                    // FRAME_TEST_LANDSCAPE=1 turns the app on its side, to check the safe areas there.
+                    if ProcessInfo.processInfo.environment["FRAME_TEST_LANDSCAPE"] != nil,
+                       let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
+                        scene.requestGeometryUpdate(.iOS(interfaceOrientations: .landscapeRight))
+                    }
                     // FRAME_TEST_PAIR="host|user|password" runs the real password pairing.
                     if model.settings == nil, let pair = ProcessInfo.processInfo.environment["FRAME_TEST_PAIR"] {
                         let f = pair.components(separatedBy: "|")
