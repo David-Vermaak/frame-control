@@ -13,10 +13,14 @@ BUILD_ID in tests/smoke/results/<time>-<BUILD_ID>.json (git-ignored):
   (someone has to open Settings > Developer > Pair new host and approve it in
   the headset), checked, and taken out of authorized_keys again.
 
-Everything it installs is removed again, also when a step fails. Titles are
-named fc_smoke_*; leftovers from an interrupted run are removed first.
+Everything it installs is removed again, also when a step fails: the titles
+(named fc_smoke_*, and leftovers of an interrupted run first), their Steam
+shortcuts, the paired key, and ~/devkit-utils if it wasn't there before (if it
+was, it stays, synced to this checkout as Frame Control always does). A
+cleanup that fails is a failed step.
 
 Usage: python3 tests/smoke/frame_smoke.py [--pair]     (or scripts/frame-smoke.sh)
+Env:   FRAME_ALIAS (default frame), FRAME_SMOKE_RESULTS (default tests/smoke/results)
 Exit status: 0 all passed, 1 a step failed, 2 the headset isn't reachable.
 """
 import argparse
@@ -42,7 +46,7 @@ import frame_connect  # noqa: E402
 import frame_titles  # noqa: E402
 import tiny_programs  # noqa: E402
 
-RESULTS = HERE / 'results'
+RESULTS = Path(os.environ.get('FRAME_SMOKE_RESULTS') or HERE / 'results')
 PREFIX = 'fc_smoke_'
 # Earlier runs named titles fc-smoke*, which Steam refused to register but left on disk.
 OLD_PREFIX = 'fc-smoke'
@@ -110,10 +114,17 @@ def status(build):
     return {k: s.get(k) for k in ('os', 'battery', 'power', 'temp', 'services', 'volume')}
 
 
-def steam_log_lines(gid):
-    """What Steam logged about a title (log folder layout not verified; best effort)."""
-    out = ssh(f"grep -rsh -- {shlex.quote(gid)} ~/.local/share/Steam/logs/ 2>/dev/null | tail -n 12 || true")
+def steam_log_lines(*patterns):
+    """Steam log lines holding any of the fixed strings (which files: not verified, so all)."""
+    pats = ' '.join(f'-e {shlex.quote(p)}' for p in patterns)
+    out = ssh(f"grep -rshF {pats} ~/.local/share/Steam/logs/ 2>/dev/null || true")
     return out.strip().splitlines()
+
+
+# What a launch must show, per kind. The x86-64 runtime isn't installed on the
+# Frame, so Steam acknowledges that launch and logs "... is not installed"
+# instead (docs/sideloading.md, 2026-09-26): recorded, not a failure.
+EXPECTED = {'arm64': ('running',), 'x86_64': ('running', 'runtime missing'), 'exe': ('running', 'started')}
 
 
 def title_cycle(smoke, kind, folder):
@@ -129,10 +140,32 @@ def title_cycle(smoke, kind, folder):
         return {'id': gid, 'runtime': meta['runtime'], 'steam': meta.get('steam')}
 
     def launch():
+        mine = (f'devkit-game/{gid}', f'"{gid}"')
+        # The missing-runtime line names Steam's app id, which we don't know, so
+        # any new one counts; nothing else is launching during the test.
+        seen, seen_missing = len(steam_log_lines(*mine)), len(steam_log_lines('but is not installed'))
         frame_titles.launch(gid)       # raises unless Steam confirmed it
-        time.sleep(4)
-        procs = ssh(f"pgrep -af -- {shlex.quote('devkit-game/' + gid)} || true").strip()
-        return {'processes': procs.splitlines(), 'steam_log': steam_log_lines(gid)}
+        outcome, procs, new = 'no evidence', [], []
+        deadline = time.monotonic() + 12
+        while time.monotonic() < deadline:
+            # [d]: the pattern mustn't match the shell running pgrep, whose command line holds it.
+            procs = ssh(f"pgrep -af -- '[d]evkit-game/{gid}/' || true").strip().splitlines()
+            new = steam_log_lines(*mine)[seen:]
+            missing = steam_log_lines('but is not installed')[seen_missing:]
+            if procs:
+                outcome = 'running'
+            elif missing:
+                outcome, new = 'runtime missing', new + missing
+            elif any('started devkit game' in line or 'chdir' in line for line in new):
+                outcome = 'started'
+            if outcome != 'no evidence':
+                break
+            time.sleep(0.5)
+        detail = {'outcome': outcome, 'processes': procs, 'steam_log': new[-12:]}
+        if outcome not in EXPECTED[kind]:
+            raise AssertionError(f"Steam acknowledged the launch, but {outcome} (expected "
+                                 f"{' or '.join(EXPECTED[kind])}): {json.dumps(detail)[:400]}")
+        return detail
 
     def remove():
         frame_titles.remove(gid)
@@ -150,17 +183,60 @@ def title_cycle(smoke, kind, folder):
 
 
 def cleanup(smoke):
-    """Remove fc-smoke-* titles: this run's, and any an interrupted run left."""
+    """Remove this run's titles and any fc_smoke_* an interrupted run left: the folder,
+    its json files, and (through steamos-delete) Steam's shortcut. Raises if anything stays."""
+    problems = []
     try:
         ids = {t['id'] for t in frame_titles.list_titles() if t['id'].startswith((PREFIX, OLD_PREFIX))}
-    except frame_android.FrameError:
-        ids = set(smoke.installed)      # can't list: try what this run installed
+    except frame_android.FrameError as e:
+        ids = set()
+        problems.append(f'could not list titles: {e}')
+    ids |= smoke.installed
     for gid in sorted(ids):
         try:
-            frame_titles.remove(gid)
+            if ssh(f'test -d ~/devkit-game/{gid} && echo yes || true').strip() == 'yes':
+                frame_titles.remove(gid)
+            # Also when remove() stopped part-way, or only the json files are left.
+            ssh(f"rm -f {' '.join(f'~/devkit-game/{gid}-{k}.json' for k in ('argv', 'env', 'settings', 'framecontrol'))}")
+            if ssh(f'ls -d ~/devkit-game/{gid} ~/devkit-game/{gid}-*.json 2>/dev/null || true').strip():
+                problems.append(f'{gid} is still on the Frame')
+            else:
+                smoke.installed.discard(gid)
         except frame_android.FrameError as e:
-            print(f'  could not remove {gid}: {e}')
-    return sorted(ids)
+            problems.append(f'{gid}: {e}')
+    if ids:
+        # steamos-delete with no title only syncs Steam's shortcuts with ~/devkit-game.
+        try:
+            ssh('python3 ~/devkit-utils/steamos-delete 2>&1 || true', timeout=120)
+        except frame_android.FrameError as e:
+            problems.append(f'syncing Steam shortcuts: {e}')
+    if problems:
+        raise AssertionError('; '.join(problems))
+    return {'removed': sorted(ids)}
+
+
+# Runs on the Frame: drop the lines holding one key from authorized_keys, writing a
+# copy with the same mode and swapping it in, so a failure can't truncate the file.
+DROP_KEY = r"""
+import os, sys, tempfile
+path = os.path.expanduser('~/.ssh/authorized_keys')
+with open(path) as f:
+    lines = f.readlines()
+keep = [line for line in lines if sys.argv[1] not in line]
+if len(keep) < len(lines):
+    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path), prefix='.authorized_keys.')
+    try:
+        with os.fdopen(fd, 'w') as f:
+            f.writelines(keep)
+            f.flush()
+            os.fsync(f.fileno())
+        os.chmod(tmp, os.stat(path).st_mode & 0o777)
+        os.replace(tmp, path)
+    except BaseException:
+        os.unlink(tmp)
+        raise
+print(len(lines) - len(keep))
+"""
 
 
 def pair(folder):
@@ -169,8 +245,8 @@ def pair(folder):
     subprocess.run(['ssh-keygen', '-q', '-t', 'rsa', '-b', '3072', '-N', '', '-C', 'frame-control-smoke',
                     '-f', key], check=True)
     pub = Path(key + '.pub').read_text()
-    host = ssh_config('hostname') or ALIAS
-    user = ssh_config('user')
+    host, user, port = ssh_config('hostname') or ALIAS, ssh_config('user'), ssh_config('port') or '22'
+    known = ssh_config('userknownhostsfile') or '~/.ssh/known_hosts'
     comment = frame_connect.key_comment(platform.node()).replace('frame-control@', 'frame-control-smoke@')
     print('    In the headset: Steam Settings > Developer > Pair new host, then approve '
           f'"{comment}" (waits up to {frame_connect.PAIRING_MODE_WAIT} s)', flush=True)
@@ -179,16 +255,21 @@ def pair(folder):
         reason = frame_connect.devkit_pair(host, pub, comment)
         if reason:
             raise AssertionError(reason)
-        r = subprocess.run(['ssh', '-o', 'BatchMode=yes', '-o', 'IdentitiesOnly=yes', '-o', 'ConnectTimeout=8',
-                            '-o', 'ControlPath=none', '-i', key, f'{user}@{host}', 'true'], capture_output=True, text=True)
+        # Only this key: no ssh_config (whose IdentityFile lines IdentitiesOnly would
+        # still offer), no agent, no passwords.
+        r = subprocess.run(['ssh', '-F', '/dev/null', '-o', 'BatchMode=yes', '-o', 'IdentitiesOnly=yes',
+                            '-o', 'IdentityAgent=none', '-o', 'PasswordAuthentication=no',
+                            '-o', 'KbdInteractiveAuthentication=no', '-o', 'ConnectTimeout=8',
+                            '-o', 'StrictHostKeyChecking=yes', '-o', f'UserKnownHostsFile={known}',
+                            '-p', port, '-i', key, f'{user}@{host}', 'true'], capture_output=True, text=True)
         if r.returncode != 0:
             raise AssertionError(f'paired, but the key does not log in: {r.stderr.strip()}')
         return {'comment': comment}
     finally:
-        f = '~/.ssh/authorized_keys'
-        ssh(f'grep -vF {b64} {f} > {f}.smoke; cat {f}.smoke > {f}; rm -f {f}.smoke')
-        if b64 in ssh(f'cat {f}'):
+        dropped = frame_android.ssh(f'python3 - {shlex.quote(b64)}', input=DROP_KEY).strip()
+        if b64 in ssh('cat ~/.ssh/authorized_keys'):
             raise AssertionError('the smoke key is still in authorized_keys')
+        print(f'    removed the smoke key from authorized_keys ({dropped} line(s))', flush=True)
 
 
 def main():
@@ -207,9 +288,10 @@ def main():
     release = os_release()
     build = release['BUILD_ID'] or 'unknown'
     print(f'==> Frame smoke test on {ALIAS}: SteamOS {release["VERSION_ID"]} ({release["VARIANT_ID"]}), build {build}')
-    left = cleanup(smoke)
-    if left:
-        print(f'  removed leftovers from an earlier run: {", ".join(left)}')
+    # Frame Control copies Valve's devkit tools to ~/devkit-utils on the first install
+    # (as Valve's client does). If they weren't there before, they go again at the end.
+    had_utils = ssh('test -d ~/devkit-utils && echo yes || true').strip() == 'yes'
+    smoke.step('cleanup: leftovers from earlier runs', cleanup, smoke)
     folder = tempfile.mkdtemp(prefix='frame-smoke-')
     try:
         smoke.step('devkit service: properties.json', properties)
@@ -219,15 +301,18 @@ def main():
         if args.pair:
             smoke.step('devkit pairing (throwaway key)', pair, folder)
     finally:
-        removed = cleanup(smoke)
+        smoke.step('cleanup: everything this run installed', cleanup, smoke)
+        if not had_utils:
+            smoke.step('cleanup: ~/devkit-utils (not there before)', ssh,
+                       'rm -rf ~/devkit-utils ~/.devkit-utils.frame-control && echo removed')
         subprocess.run(['rm', '-rf', folder])
     passed = sum(s['ok'] for s in smoke.steps)
     RESULTS.mkdir(exist_ok=True)
     out = RESULTS / f"{started.replace(':', '')}-{build}.json"
     out.write_text(json.dumps({'started': started, 'alias': ALIAS, 'os_release': release, 'paired': args.pair,
                                'passed': passed, 'failed': len(smoke.steps) - passed,
-                               'cleanup_removed': removed, 'steps': smoke.steps}, indent=1))
-    print(f'==> {passed}/{len(smoke.steps)} steps passed on build {build}; results in {out.relative_to(ROOT)}')
+                               'devkit_utils_there_before': had_utils, 'steps': smoke.steps}, indent=1))
+    print(f'==> {passed}/{len(smoke.steps)} steps passed on build {build}; results in {out}')
     return 0 if passed == len(smoke.steps) else 1
 
 

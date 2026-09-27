@@ -18,8 +18,9 @@ from harness import HOME, ROOT, ctl, exists, install_title, launches, ok, ssh, s
 harness.require()
 
 GAMES = f'{HOME}/devkit-game'
-# The host container shares the fake Frame's kernel, so a native program of this
-# machine's architecture really runs there; the other one fails to exec.
+# The host container shares the fake Frame's kernel, so a program of this machine's
+# architecture really runs there. The other one fails to exec, unless QEMU is
+# registered with binfmt_misc, which runs it emulated.
 NATIVE = {'aarch64': 'arm64', 'arm64': 'arm64', 'x86_64': 'x86_64'}.get(platform.machine())
 
 
@@ -74,10 +75,8 @@ class Titles(harness.FrameTestCase):
         if NATIVE == 'arm64':
             self.assertIsNotNone(run['pid'], run)
             done = wait_for(lambda: launches('devkit')[-1].get('exit') is not None and launches('devkit')[-1],
-                            20, 'the arm64 test program to exit')
+                            30, 'the arm64 test program to exit')
             self.assertEqual(done['exit'], 0)
-        else:
-            self.assertIn('Exec format error', run.get('exec_error', ''), run)
 
     def test_single_exe_upload_launch_and_remove(self):
         exe = tiny_programs.write(self.tmp, 'exe')
@@ -131,7 +130,7 @@ class Titles(harness.FrameTestCase):
         self.assertTrue(run['started'])
         if NATIVE == 'x86_64':
             done = wait_for(lambda: launches('devkit')[-1].get('exit') is not None and launches('devkit')[-1],
-                            20, 'the x86-64 test program to exit')
+                            30, 'the x86-64 test program to exit')
             self.assertEqual(done['exit'], 0)
 
     def test_reinstall_with_another_runtime_keeps_one_shortcut(self):

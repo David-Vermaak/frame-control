@@ -111,9 +111,17 @@ scripts/frame-smoke.sh --pair    # also pairs a throwaway key: approve it in the
 
 It checks `properties.json` and the status, then installs, launches and
 removes three tiny titles built from bytes by `tests/smoke/tiny_programs.py`
-(an ARM64 and an x86-64 static Linux program that sleep for five seconds, and
-an x86-64 `.exe` that exits at once), keeping what Steam logged about each.
-Everything it installs is removed again, also after a failure. Results go to
+(an ARM64 and an x86-64 static Linux program that sleep for ten seconds, and
+an x86-64 `.exe` that exits at once). A launch passes only with fresh evidence:
+the ARM64 program running, the `.exe` started (its process or Steam's log),
+and the x86-64 program running or Steam logging that its runtime isn't
+installed, which is what the Frame does today. Steam's log lines about each
+title are kept.
+
+Everything it installs is removed again, also after a failure: the titles and
+their Steam shortcuts, a paired key, and `~/devkit-utils` if it wasn't there
+before (if it was, it stays, synced to this checkout as Frame Control always
+does). A cleanup that fails counts as a failed step. Results go to
 `tests/smoke/results/<time>-<BUILD_ID>.json` (not committed) with a summary on
 screen; it exits 0 when every step passed, 1 if one failed, 2 if the headset
 isn't reachable.

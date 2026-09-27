@@ -2,6 +2,7 @@
 steamos-devkit-service on the fake Frame, and its password fallback."""
 import json
 import os
+import signal
 import stat
 import subprocess
 import sys
@@ -28,9 +29,20 @@ class Pairing(harness.FrameTestCase):
                 f.write(f'#!/bin/sh\necho {askpass}\n')
             os.chmod(script, stat.S_IRWXU)
             env.update(SSH_ASKPASS=script, SSH_ASKPASS_REQUIRE='force')
-        return subprocess.Popen([sys.executable, str(ROOT / 'ui' / 'frame_connect.py'), FAKE_HOST],
+        proc = subprocess.Popen([sys.executable, str(ROOT / 'ui' / 'frame_connect.py'), FAKE_HOST],
                                 stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                 text=True, env=env, start_new_session=True)
+        self.addCleanup(self.stop, proc)    # a failed test mustn't leave it pairing into the next one
+        return proc
+
+    @staticmethod
+    def stop(proc):
+        if proc.poll() is None:
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)     # frame_connect.py and its ssh children
+            except OSError:
+                pass
+        proc.communicate()
 
     def finish(self, proc, timeout=120):
         out, _ = proc.communicate(timeout=timeout)

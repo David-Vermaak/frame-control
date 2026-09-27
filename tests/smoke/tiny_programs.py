@@ -11,7 +11,7 @@ smoke test and the fake Frame's e2e tests install. Python stdlib only.
 """
 import struct
 
-SLEEP_SECONDS = 5
+SLEEP_SECONDS = 10
 BASE = 0x400000
 
 

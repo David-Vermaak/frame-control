@@ -220,9 +220,8 @@ def cmd_run_game(q):
         # _v2-entry-point prefix, even though Steam recorded the mapping
         # (docs/sideloading.md, 2026-09-26). So does the fake, for real.
         record.update(started=True, command=full)
-        record.update(execute(full, game['directory'], {**game.get('env', {})}, f"devkit-{gameid}"))
-    with fs.update() as state:
-        state['launches'].append(record)
+        record['run'] = (full, game['directory'], {**game.get('env', {})}, f'devkit-{gameid}')
+    add_launch(record)
     console(record['message'] if not record['started'] else f'devkit run-game: started devkit game "{gameid}"')
     respond(q['response'], text='OK\n')   # guess: steam-devkit-rpc only checks that it arrives
 
@@ -232,26 +231,31 @@ DEVKIT = {'approve-ssh-key': cmd_approve_ssh_key, 'create-shortcut': cmd_create_
           'run-game': cmd_run_game}
 
 
-def execute(path, cwd, env, label):
-    """Start a program the way Steam would, and note its pid and exit status."""
-    os.makedirs(GAME_LOGS, exist_ok=True)
-    log = open(f'{GAME_LOGS}/{label}.log', 'ab')
-    try:
-        proc = subprocess.Popen([path], cwd=cwd if os.path.isdir(cwd) else HOME, env={**os.environ, **env},
-                                stdin=subprocess.DEVNULL, stdout=log, stderr=log, start_new_session=True)
-    except OSError as e:
-        return {'pid': None, 'exec_error': str(e)}
-    finally:
-        log.close()
-
-    def reap():
-        code = proc.wait()
-        with fs.update() as state:
-            for r in state['launches']:
-                if r.get('pid') == proc.pid and 'exit' not in r:
-                    r['exit'] = code
-    threading.Thread(target=reap, daemon=True).start()
-    return {'pid': proc.pid}
+def add_launch(record):
+    """Log a launch in the state. record['run'] = (path, cwd, env, log name) also starts the
+    program the way Steam would, and notes its pid and, once it ends, its exit status."""
+    run, proc = record.pop('run', None), None
+    if run:
+        path, cwd, env, label = run
+        os.makedirs(GAME_LOGS, exist_ok=True)
+        with open(f'{GAME_LOGS}/{label}.log', 'ab') as log:
+            try:
+                proc = subprocess.Popen([path], cwd=cwd if os.path.isdir(cwd) else HOME, env={**os.environ, **env},
+                                        stdin=subprocess.DEVNULL, stdout=log, stderr=log, start_new_session=True)
+                record['pid'] = proc.pid
+            except OSError as e:
+                record.update(pid=None, exec_error=str(e))
+    with fs.update() as state:              # before the reaper looks for it, however fast the program is
+        record['n'] = len(state['launches'])
+        state['launches'].append(record)
+    if proc:
+        def reap():
+            code = proc.wait()
+            with fs.update() as state:
+                mine = state['launches'][record['n']:record['n'] + 1]
+                if mine and mine[0].get('pid') == proc.pid:   # not a reset's fresh list
+                    mine[0]['exit'] = code
+        threading.Thread(target=reap, daemon=True).start()
 
 
 # ---- steam:// URLs from the `steam` wrapper ----------------------------------
@@ -271,15 +275,14 @@ def url_rungameid(gid):
             # STEAM_COMPAT_SHADER_PATH (docs/apks.md, 2026-09-25).
             env = {'SteamAppId': str(appid), 'SteamGameId': str(gid),
                    'STEAM_FOSSILIZE_DUMP_PATH': f'{fs.STEAM_ROOT}/steamapps/shadercache/{appid}/fozpipelinesv6'}
-            record.update(appid=appid, started=True, command=sc['exe'])
-            record.update(execute(sc['exe'], sc.get('start_dir') or HOME, env, f'shortcut-{appid}'))
+            record.update(appid=appid, started=True, command=sc['exe'],
+                          run=(sc['exe'], sc.get('start_dir') or HOME, env, f'shortcut-{appid}'))
     else:
         with fs.update() as state:
             app = next((a for a in state['steam']['apps'] if a['appid'] == gid), None)
         record.update(appid=gid, started=bool(app and app['installed']),
                       message=None if app and app['installed'] else 'not installed')
-    with fs.update() as state:
-        state['launches'].append(record)
+    add_launch(record)
 
 
 def url_install(appid):
