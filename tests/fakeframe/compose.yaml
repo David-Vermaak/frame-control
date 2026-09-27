@@ -1,0 +1,54 @@
+# The fake Frame and the computer Frame Control runs on, for tests/e2e.
+# scripts/e2e.sh builds the two images, brings this up, runs the tests in
+# `host` and takes it down again.
+name: fakeframe-e2e
+services:
+  fakeframe:
+    image: fakeframe-frame
+    pull_policy: never
+    hostname: frame               # the Frame's default hostname (docs/ssh.md)
+    init: true
+    tmpfs:
+      # Small, so `fakeframe-ctl disk-full on` can fill it.
+      - /home/steamos/devkit-game:size=64m,mode=0755,exec
+    volumes:
+      - keys:/keys
+      # frame_status.py reads the battery and thermal zones from /sys, which is
+      # read-only in a container (and docker's AppArmor profile refuses writes
+      # under /sys even to a mount there). So each folder is a volume mounted
+      # twice: over /sys/class/... for reading, and under /var/lib/fakeframe/sys
+      # where the supervisor writes it (fakeframe-ctl battery).
+      - power:/sys/class/power_supply
+      - power:/var/lib/fakeframe/sys/power_supply
+      - thermal:/sys/class/thermal
+      - thermal:/var/lib/fakeframe/sys/thermal
+    environment:
+      FAKEFRAME_PAIRING_MODE: ${FAKEFRAME_PAIRING_MODE:-0}
+    healthcheck:
+      test: ["CMD", "fakeframe-ctl", "ping"]
+      interval: 2s
+      timeout: 10s
+      retries: 60
+  host:
+    image: fakeframe-host
+    pull_policy: never
+    init: true
+    depends_on:
+      fakeframe:
+        condition: service_healthy
+    volumes:
+      - ../..:/repo:ro
+      - keys:/keys:ro
+    environment:
+      FAKEFRAME_CTL: http://fakeframe:9999
+      FAKEFRAME_HOST: fakeframe
+      FRAME_E2E: "1"
+    healthcheck:
+      test: ["CMD", "test", "-f", "/home/tester/.ready"]
+      interval: 1s
+      timeout: 5s
+      retries: 120
+volumes:
+  keys:
+  power:
+  thermal:

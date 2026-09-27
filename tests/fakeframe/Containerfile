@@ -1,0 +1,40 @@
+# The fake Steam Frame: Arch Linux (SteamOS's base) with sshd, rsync, python3,
+# Valve's steamos-devkit-service and hooks, a fake Steam client and stubs for
+# the Frame-only commands Frame Control runs. See docs/testing.md.
+#
+# BASE: archlinux:base on x86_64, menci/archlinuxarm:base on arm64 (a daily
+# Arch Linux ARM build); scripts/e2e.sh picks one from `uname -m`.
+ARG BASE=archlinux:base
+FROM ${BASE}
+
+RUN (pacman-key --init && pacman-key --populate) >/dev/null 2>&1; \
+    pacman -Syu --noconfirm --needed openssh rsync python nodejs curl iproute2 procps-ng util-linux \
+    && pacman -Scc --noconfirm
+
+# The Frame's user is steamos (docs/ssh.md). Its password stands in for the
+# Developer Mode password.
+RUN useradd -m -u 1000 -s /bin/bash steamos \
+    && echo 'steamos:frame' | chpasswd \
+    && ssh-keygen -A
+
+# Valve's service and hooks where the service looks for them. It runs as
+# steamos, so it lists one user and properties.json says "login": "steamos",
+# as the Frame's does (docs/ssh.md, verified 2026-09-26, BUILD_ID 20260922.6101926).
+COPY steamos-devkit-service/src/steamos-devkit-service.py /usr/lib/steamos-devkit/
+COPY steamos-devkit-service/hooks/ /usr/share/steamos-devkit/hooks/
+COPY rootfs/ /
+
+# /etc/os-release, pointed at /usr/lib/os-release, carries the Frame's
+# VERSION_ID 0.3.0, VARIANT_ID vr and BUILD_ID 20260922.6101926 (docs/apks.md).
+RUN ln -sf ../usr/lib/os-release /etc/os-release \
+    && chmod 755 /usr/share/steamos-devkit/hooks/approve-ssh-key /usr/share/steamos-devkit/hooks/install-ssh-key \
+      /usr/share/steamos-devkit/hooks/devkit-1-identify /usr/local/bin/* /usr/local/lib/fakeframe/*.py \
+      /usr/bin/steamos-polkit-helpers/steamos-enable-sshd \
+    && mkdir -p /usr/local/lib/fakeframe/bin /var/lib/fakeframe /var/log/fakeframe /home/steamos/devkit-game \
+    && cp /usr/bin/sleep /usr/local/lib/fakeframe/bin/vrserver \
+    && cp /usr/bin/sleep /usr/local/lib/fakeframe/bin/plasmashell \
+    && chmod 1777 /var/lib/fakeframe /var/log/fakeframe \
+    && chown -R steamos:steamos /home/steamos
+
+EXPOSE 22 32000 9999
+CMD ["python3", "/usr/local/lib/fakeframe/init.py"]
