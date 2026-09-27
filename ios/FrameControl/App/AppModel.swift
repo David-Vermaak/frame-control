@@ -70,7 +70,9 @@ final class AppModel: ObservableObject {
             settings = target
         } catch {
             guard mine == attempt else { return }
-            fail((error as? FrameFailure)?.message ?? FrameLink.describe(error, host: target.host), retry: false)
+            let failure = error as? FrameFailure
+            fail(failure?.message ?? FrameLink.describe(error, host: target.host), retry: false,
+                 needsPairing: failure?.needsPairing ?? false)
             return
         }
         await connect()
@@ -197,11 +199,17 @@ final class AppModel: ObservableObject {
             forwarder?.stop()
             if let link { await link.close() }  // ends its server too
             guard current(), !(error is CancellationError) else { return }
-            fail((error as? FrameFailure)?.message ?? FrameLink.describe(error, host: settings.host), retry: true)
+            let failure = error as? FrameFailure
+            fail(failure?.message ?? FrameLink.describe(error, host: settings.host), retry: !(failure?.needsPairing ?? false),
+                 needsPairing: failure?.needsPairing ?? false)
         }
     }
 
-    private func fail(_ message: String, retry: Bool) {
+    /// Whether the last failure needs the user to pair again rather than wait.
+    @Published private(set) var needsPairing = false
+
+    private func fail(_ message: String, retry: Bool, needsPairing: Bool = false) {
+        self.needsPairing = needsPairing
         phase = .failed(message)
         retrying = retry && settings != nil
         guard retrying else { return }

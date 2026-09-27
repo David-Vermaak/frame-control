@@ -14,6 +14,11 @@ struct FrameControlApp: App {
                     // and connect to FRAME_TEST_HOST with it (`simctl launch` passes
                     // SIMCTL_CHILD_FRAME_TEST_HOST through as FRAME_TEST_HOST).
                     print("FRAME_CONTROL_KEY: \(model.authorizedKeysLine)")
+                    // FRAME_TEST_PAIR="host|user|password" runs the real password pairing.
+                    if model.settings == nil, let pair = ProcessInfo.processInfo.environment["FRAME_TEST_PAIR"] {
+                        let f = pair.components(separatedBy: "|")
+                        if f.count == 3 { await model.pair(host: f[0], user: f[1], password: f[2]); return }
+                    }
                     if model.settings == nil, let host = ProcessInfo.processInfo.environment["FRAME_TEST_HOST"] {
                         await model.useKey(host: host, user: "steamos")
                         return

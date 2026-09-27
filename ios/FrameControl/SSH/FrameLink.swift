@@ -13,7 +13,12 @@ struct FrameSettings: Codable, Equatable {
 
 struct FrameFailure: LocalizedError {
     let message: String
-    init(_ message: String) { self.message = message }
+    /// Retrying can't help: the Frame's identity changed, or it refused this phone's login.
+    var needsPairing = false
+    init(_ message: String, needsPairing: Bool = false) {
+        self.message = message
+        self.needsPairing = needsPairing
+    }
     var errorDescription: String? { message }
 }
 
@@ -52,7 +57,9 @@ final class FrameLink: @unchecked Sendable {
                 hostKeyValidator: .custom(hostKey), reconnect: .never, connectTimeout: .seconds(8))
             return FrameLink(client: client)
         } catch {
-            throw FrameFailure(describe(error, host: settings.host))
+            let text = String(describing: error)
+            throw FrameFailure(describe(error, host: settings.host),
+                               needsPairing: error is PinnedHostKey.Changed || text.contains("allAuthenticationOptionsFailed"))
         }
     }
 

@@ -1283,7 +1283,7 @@ class Handler(BaseHTTPRequestHandler):
         # trigger a headset capture and display it.
         api = urlparse(self.path).path.startswith("/api/")
         if (self.command == "POST" or api) and not secrets.compare_digest(self.headers.get("X-Frame-UI") or "", UI_KEY):
-            self.send_json({"error": "missing X-Frame-UI header"}, 403)
+            self.send_json({"error": "missing or wrong X-Frame-UI header"}, 403)
             return False
         return True
 

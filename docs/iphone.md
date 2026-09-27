@@ -78,9 +78,16 @@ screenshots, a file upload (checked on the Frame), a background install job, and
 the power password check (a wrong password is refused). The server on the Frame
 exits within seconds of the app closing.
 
-Not yet exercised: pairing with the password (only the add-the-key route),
-Android display changes through podman (no Android app was running), a real
-sleep/restart/shut down, and a physical iPhone.
+Against a stand-in built on Valve's Holo Core aarch64 base
+([tests/frame-container](../tests/frame-container)), since Valve publishes no
+Frame OS image: pairing with the password (key added with the right
+permissions, host key pinned, password stored nowhere), the power password
+check (a wrong or missing password refused; the right one reaches `systemctl`),
+a changed host key refused with "Pair with the Frame again", and a wrong
+pairing password reported the same way.
+
+Not yet exercised: Android display changes through podman (no Android app was
+running), a real sleep/restart/shut down on the Frame, and a physical iPhone.
 
 Debug builds have Simulator test hooks (`FRAME_TEST_HOST`, `FRAME_TEST_PAGE`,
 `FRAME_TEST_JS`, and the tunnel URL in the app's Caches folder); release builds
