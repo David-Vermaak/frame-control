@@ -137,9 +137,5 @@ this build):
   Details are in the public repo's technical notes.
 
 **Not verified yet:** trigger, thumbstick and face buttons, the left
-controller, bare-hand tracking, and third-party VR180 players.
-
-- Frame rate and dropped frames during playback (nothing was measured; it
-  looked fine).
-- Third-party VR180 players (DeoVR and DL8 web embeds).
-- Controller and hand input inside a WebXR page.
+controller, bare-hand tracking, and third-party VR180 players (DeoVR and
+DL8 web embeds).
