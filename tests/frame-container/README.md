@@ -17,4 +17,4 @@ docker run -d --name frame-holo -p 127.0.0.1:2222:22 frame-holo-test
 docker exec frame-holo cat /tmp/power-requests.log   # what power actions asked for
 ```
 
-On a Mac without Docker: `brew install colima && colima start --arch aarch64 --vm-type vz`.
+On a Mac without Docker: `brew install colima docker && colima start --arch aarch64 --vm-type vz`.

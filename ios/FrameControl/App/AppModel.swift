@@ -252,7 +252,8 @@ final class AppModel: ObservableObject {
                 if (!ok || server?.exited != nil), mine == attempt { await connect() }
             }
         case .failed:
-            if settings != nil { Task { await connect() } }
+            // A changed identity or a refused login needs the user, not another try.
+            if settings != nil, !needsPairing { Task { await connect() } }
         default:
             break
         }
