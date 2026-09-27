@@ -16,7 +16,7 @@ See what the headset sees, install games and Android apps, move files and text a
 
 <br>
 
-<img src="docs/img/frame-control.png" alt="Frame Control showing the headset view, battery and status, and the Steam library" width="900">
+<img src="docs/img/frame-control.png" alt="Frame Control's Games tab: installed games, sideloaded titles, and your Steam library with Frame ratings" width="900">
 
 <sub>Unofficial hobby project, not affiliated with Valve. Free and open source.</sub>
 
