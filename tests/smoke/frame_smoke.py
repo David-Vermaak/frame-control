@@ -158,7 +158,7 @@ def title_cycle(smoke, kind, folder):
                 outcome, new = 'runtime missing', new + missing
             elif any('started devkit game' in line or 'chdir' in line for line in new):
                 outcome = 'started'
-            if outcome != 'no evidence':
+            if outcome in EXPECTED[kind]:   # else keep looking: the log can come before the process
                 break
             time.sleep(0.5)
         detail = {'outcome': outcome, 'processes': procs, 'steam_log': new[-12:]}
@@ -192,6 +192,7 @@ def cleanup(smoke):
         ids = set()
         problems.append(f'could not list titles: {e}')
     ids |= smoke.installed
+    gone = set()
     for gid in sorted(ids):
         try:
             if ssh(f'test -d ~/devkit-game/{gid} && echo yes || true').strip() == 'yes':
@@ -201,15 +202,26 @@ def cleanup(smoke):
             if ssh(f'ls -d ~/devkit-game/{gid} ~/devkit-game/{gid}-*.json 2>/dev/null || true').strip():
                 problems.append(f'{gid} is still on the Frame')
             else:
-                smoke.installed.discard(gid)
+                gone.add(gid)
         except frame_android.FrameError as e:
             problems.append(f'{gid}: {e}')
-    if ids:
+    if gone:
         # steamos-delete with no title only syncs Steam's shortcuts with ~/devkit-game.
+        # It logs a failed sync and exits 0, so read its log; a second run lists
+        # what Steam still has registered, which must not include ours.
         try:
-            ssh('python3 ~/devkit-utils/steamos-delete 2>&1 || true', timeout=120)
-        except frame_android.FrameError as e:
-            problems.append(f'syncing Steam shortcuts: {e}')
+            first = ssh('python3 ~/devkit-utils/steamos-delete 2>&1', timeout=120)
+            second = ssh('python3 ~/devkit-utils/steamos-delete 2>&1', timeout=120)
+            for out in (first, second):
+                if 'sync of devkit games failed' in out:
+                    raise AssertionError(out.strip().splitlines()[-1])
+            for gid in sorted(gone):
+                if f'registered with Steam Client: {gid!r}' in second:
+                    problems.append(f'{gid} is still registered with Steam')
+                else:
+                    smoke.installed.discard(gid)
+        except (frame_android.FrameError, AssertionError) as e:
+            problems.append(f"syncing Steam's shortcuts: {e}")
     if problems:
         raise AssertionError('; '.join(problems))
     return {'removed': sorted(ids)}
