@@ -868,11 +868,17 @@ def touch_event(event):
         return max(-limit, min(limit, round(float(value), 4)))
     out = {}
     if "fx" in event or "fy" in event:
+        if "window" not in event:
+            raise Failure("a position needs the panel's window and display", 400)
         out.update(fx=num("fx", 1), fy=num("fy", 1))
-        window = event.get("window")
+    # Any event can name the panel it's meant for; the Frame drops it if another has focus.
+    if "window" in event:
+        window, display = event.get("window"), event.get("display")
         if isinstance(window, bool) or not isinstance(window, int) or window <= 0:
             raise Failure("window must be the panel's window id", 400)
-        out["window"] = window
+        if not isinstance(display, str) or not PANEL_DISPLAY.match(display):
+            raise Failure("display must be an X display such as :1", 400)
+        out.update(window=window, display=display)
     for name in ("dx", "dy"):
         if name in event:
             out[name] = num(name, INPUT_MOVE_LIMIT)
@@ -895,7 +901,7 @@ def touch_event(event):
         if not isinstance(text, str) or not 0 < len(text) <= INPUT_TEXT_LIMIT:
             raise Failure(f"text must be 1 to {INPUT_TEXT_LIMIT} characters", 400)
         out["text"] = text
-    if not out:
+    if not set(out) - {"window", "display"}:
         raise Failure("touch event has nothing to do", 400)
     return out
 

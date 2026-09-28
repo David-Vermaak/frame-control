@@ -1211,10 +1211,11 @@ async function capture() {
   let url = null;
   try {
     let url_ = "/api/screenshot?view=headset";
+    var shotPanel = null;
     if (view === "flat") {
-      const p = deskPanel() || (await loadPanels(), deskPanel());
-      if (!p) throw new Error("no app panel is open in the headset");
-      url_ = `/api/screenshot?view=panel&window=${p.window}&display=${encodeURIComponent(p.display)}`;
+      shotPanel = deskPanel() || (await loadPanels(), deskPanel());
+      if (!shotPanel) throw new Error("no app panel is open in the headset");
+      url_ = `/api/screenshot?view=panel&window=${shotPanel.window}&display=${encodeURIComponent(shotPanel.display)}`;
     }
     const r = await fetch(url_, { headers: {"X-Frame-UI": UI_KEY} });
     if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `HTTP ${r.status}`);
@@ -1225,7 +1226,9 @@ async function capture() {
     if (gen !== viewGen) return true;
     lastImg = img; lastSource = source; lastShot = null;
     draw();
-    if (source === "panel") $("srcBadge").textContent = `Desktop · ${deskPanel()?.name || "panel"}`;
+    desk.shown = source === "panel" ? panelKey(shotPanel) : null;
+    if (source === "panel") $("srcBadge").textContent = `Desktop · ${shotPanel?.name || "panel"}`;
+    ctrlShow();
     $("stamp").hidden = false; $("stamp").textContent = new Date().toLocaleTimeString();
     $("saveBtn").disabled = false;
     return true;
@@ -1238,19 +1241,22 @@ async function capture() {
     $("viewer").classList.remove("busy");
   }
 }
-let liveFailures = 0;
-async function liveLoop() {
-  if (!live) return;
-  liveFailures = (await capture()) ? 0 : liveFailures + 1;
+let liveFailures = 0, liveGen = 0;
+async function liveLoop(gen = liveGen) {
+  if (!live || gen !== liveGen) return;
+  const ok = await capture();
+  if (gen !== liveGen) return;  // Live was restarted (say, as video) while this capture ran
+  liveFailures = ok ? 0 : liveFailures + 1;
   if (liveFailures >= 5) {
     toggleLive(false);
     toast(view === "flat" ? "Live stopped: couldn't capture the panel." : "Live stopped after 5 failed captures. Is the headset on?", true);
     return;
   }
-  if (live) liveTimer = setTimeout(liveLoop, view === "headset" ? 300 : 700);
+  if (live) liveTimer = setTimeout(() => liveLoop(gen), view === "headset" ? 300 : 700);
 }
 function toggleLive(on) {
   live = on;
+  liveGen++;
   liveFailures = 0;
   $("liveBtn").classList.toggle("on", live);
   $("liveBadge").hidden = !live;
@@ -1302,6 +1308,7 @@ async function startVideo() {
       if (!shown++) {
         viewGen++;  // a capture still in flight mustn't replace the video
         lastImg = null; lastSource = "video"; lastShot = null;
+        desk.shown = panelKey(panel); ctrlShow();
         $("viewer").classList.remove("busy");
         c.hidden = false; $("viewerEmpty").hidden = true; $("zoombar").hidden = false; $("asleep").hidden = true;
         $("srcBadge").hidden = false; $("srcBadge").textContent = `${video.label} · video`;
@@ -1317,6 +1324,7 @@ async function startVideo() {
     error: e => log("Video decoder: " + e.message, "e"),
   });
   const panel = view === "flat" ? deskPanel() : null;
+  desk.shown = null;  // until this stream's first picture
   video.label = panel ? `Desktop · ${panel.name || "panel"}` : "Headset view";
   const query = panel ? `src=panel&window=${panel.window}&display=${encodeURIComponent(panel.display)}&${STREAM_QUERY}` : STREAM_QUERY;
   const r = await fetch(`/api/stream?${query}`, { headers: {"X-Frame-UI": UI_KEY}, signal: ctl.signal });
@@ -1387,20 +1395,24 @@ document.querySelectorAll("[data-eye]").forEach(b => b.onclick = () => setEye(b.
 // ---- Desktop view: the app panel in use in the headset (or one picked to watch) ----
 // gamescope says which panel has focus: the one the wearer last used. That's the one
 // Control reaches, so the view follows it unless you pick another to watch.
-const desk = { panels: [], focus: null, pick: "", timer: null, loaded: false };
+// Panels are "display/window": window ids are per X display, and the Frame has two.
+// desk.shown is the panel whose picture is on screen now; Control only acts on that one.
+const desk = { panels: [], focus: null, pick: "", timer: null, loaded: false, shown: null };
+const panelKey = p => p ? `${p.display}/${p.window}` : null;
 function deskPanel() {
-  const want = desk.pick ? +desk.pick : desk.focus;
+  const want = desk.pick || desk.focus;
   // Nothing in use and nothing picked: show the first panel rather than nothing.
-  return desk.panels.find(p => p.window === want) || (!desk.pick && !desk.focus && desk.panels[0]) || null;
+  return desk.panels.find(p => panelKey(p) === want) || (!desk.pick && !desk.focus && desk.panels[0]) || null;
 }
 async function loadPanels() {
   try {
-    const before = deskPanel()?.window;
+    const before = panelKey(deskPanel());
     const r = await api("/api/panels");
-    desk.panels = r.panels || []; desk.focus = r.focus || null; desk.loaded = true;
-    if (desk.pick && !desk.panels.some(p => p.window === +desk.pick)) desk.pick = "";
+    desk.panels = r.panels || []; desk.loaded = true;
+    desk.focus = r.focus ? `${r.focus_display}/${r.focus}` : null;
+    if (desk.pick && !desk.panels.some(p => panelKey(p) === desk.pick)) desk.pick = "";
     renderPanelPick();
-    const now = deskPanel()?.window;
+    const now = panelKey(deskPanel());
     if (view === "flat" && live && now !== before) { toggleLive(false); toggleLive(true); }
     ctrlShow();
   } catch (e) {
@@ -1415,7 +1427,7 @@ function watchPanels() {
 function renderPanelPick() {
   const sel = $("panelPick");
   sel.innerHTML = `<option value="">${desk.focus ? "Panel in use" : "Panel in use (none yet)"}</option>` +
-    desk.panels.map(p => `<option value="${p.window}">${esc(p.name || "Untitled")}${p.focused ? " (in use)" : ""}</option>`).join("");
+    desk.panels.map(p => `<option value="${esc(panelKey(p))}">${esc(p.name || "Untitled")}${p.focused ? " (in use)" : ""}</option>`).join("");
   sel.value = desk.pick;
 }
 $("panelPick").onchange = () => {
@@ -1429,7 +1441,7 @@ $("panelPick").onchange = () => {
 // exactly where you tapped; on the headset view, which moves with the wearer's head,
 // the view is a trackpad for the pointer instead.
 const ctrl = { on: false, queue: [], sending: false, state: "off", message: "", move: null, rel: [0, 0], raf: 0,
-               held: new Set(), pointers: new Map(), g: null, retry: null };
+               held: new Set(), keys: new Set(), pointers: new Map(), g: null, retry: null };
 const EVDEV = { Escape: 1, Minus: 12, Equal: 13, Backspace: 14, Tab: 15, BracketLeft: 26, BracketRight: 27, Enter: 28,
   ControlLeft: 29, Semicolon: 39, Quote: 40, Backquote: 41, ShiftLeft: 42, Backslash: 43, Comma: 51, Period: 52,
   Slash: 53, ShiftRight: 54, NumpadMultiply: 55, AltLeft: 56, Space: 57, CapsLock: 58, F11: 87, F12: 88,
@@ -1452,7 +1464,9 @@ function ctrlTarget() {
   if (!desk.loaded) return { why: "Finding the headset's panels…" };
   if (!p) return { why: "No app panel is open in the headset." };
   if (!desk.focus) return { why: "Nobody's using a panel in the headset yet. Taps work once one is in use." };
-  if (p.window !== desk.focus) return { why: "Only the panel in use takes taps. Pick “Panel in use” to control it." };
+  if (panelKey(p) !== desk.focus) return { why: "Only the panel in use takes taps. Pick “Panel in use” to control it." };
+  if (desk.shown !== desk.focus) return { why: live ? "Waiting for the picture of the panel in use…"
+                                                    : "The panel in use has changed. Press Capture or Live to see it first." };
   return { ok: true, panel: p };
 }
 function ctrlShow() {
@@ -1503,10 +1517,29 @@ $("viewer").addEventListener("blur", () => { ctrlRelease(); if (window.frameApp?
 document.addEventListener("visibilitychange", () => { if (document.hidden) ctrlRelease(); });
 
 const isMoveEvent = e => ("fx" in e || "dx" in e) && !("button" in e) && !("key" in e);
+const isRelease = e => ("button" in e || "key" in e) && e.down === false;
+// While it connects, keep clicks and keys, each with the last position before it, so a
+// tap still lands where it was made; lone moves are stale by then.
+function ctrlKeepable(events) {
+  const out = [];
+  let move = null;
+  for (const e of events) {
+    if (isMoveEvent(e)) { if ("fx" in e) move = e; continue; }
+    if (move && "button" in e && e.down !== false) out.push(move);
+    move = null;
+    out.push(e);
+  }
+  if (move) out.push(move);  // the last position: a click queued after it needs it
+  return out;
+}
 function ctrlSend(events) {
-  ctrl.queue.push(...events);
-  // Keep order; if the Frame is slow to answer, drop pointer moves first, never a release.
-  if (ctrl.queue.length > 300) ctrl.queue = ctrl.queue.filter(e => !isMoveEvent(e)).slice(-200);
+  ctrl.queue.push(...events.map(e => isMoveEvent(e) ? e : ctrlAim(e)));
+  // Keep order; if the Frame is slow to answer, drop pointer moves first, then the oldest
+  // presses and scrolls, never a release.
+  if (ctrl.queue.length > 300) {
+    const q = ctrlKeepable(ctrl.queue);
+    ctrl.queue = q.filter((e, i) => isRelease(e) || i >= q.length - 200);
+  }
   ctrlFlush();
 }
 async function ctrlFlush() {
@@ -1517,20 +1550,23 @@ async function ctrlFlush() {
   try {
     const r = await api("/api/touch", { events: batch });
     ctrl.state = r.state; ctrl.message = r.message || "";
-    if (!r.sent) {
-      // Not connected yet: keep clicks and keys for when it is (moves are stale by then).
-      ctrl.queue.unshift(...batch.filter(e => !isMoveEvent(e)));
-      if (r.state !== "error") again = 300;
+    if (!r.sent && r.state === "error") {
+      // Broken: presses would be stale by the time it's back; releases still matter.
+      ctrl.queue.unshift(...batch.filter(isRelease));
+      again = 2000;
+    } else if (!r.sent) {
+      ctrl.queue.unshift(...ctrlKeepable(batch));  // connecting: send them once it's ready
+      again = 300;
     }
   } catch (e) {
     ctrl.state = "error"; ctrl.message = e.message;
-    ctrl.queue.unshift(...batch.filter(e => "button" in e && e.down === false || "key" in e && e.down === false));
+    ctrl.queue.unshift(...batch.filter(isRelease));
     again = 1000;  // try the releases again in a moment, not in a tight loop
   } finally {
     ctrl.sending = false;
     ctrlShow();
     clearTimeout(ctrl.retry);
-    if (again) ctrl.retry = setTimeout(ctrlFlush, again);
+    if (again) { if (ctrl.queue.length) ctrl.retry = setTimeout(ctrlFlush, again); }
     else if (ctrl.queue.length) ctrlFlush();
   }
 }
@@ -1538,7 +1574,7 @@ async function ctrlFlush() {
 function ctrlMoveTo(fx, fy) {
   const p = ctrlTarget().panel;
   if (!p) return;
-  ctrl.move = { fx, fy, window: p.window };
+  ctrl.move = { fx, fy, window: p.window, display: p.display };
   ctrlSchedule();
 }
 function ctrlMoveBy(dx, dy) { ctrl.rel[0] += dx; ctrl.rel[1] += dy; ctrlSchedule(); }
@@ -1550,14 +1586,26 @@ function ctrlFlushMoves() {
   if (ctrl.rel[0] || ctrl.rel[1]) { out.push({ dx: Math.round(ctrl.rel[0]), dy: Math.round(ctrl.rel[1]) }); ctrl.rel = [0, 0]; }
   if (out.length) ctrlSend(out);
 }
+// On the Desktop view, presses name the panel they're for, so the Frame drops them if
+// focus has moved on (releases always go).
+function ctrlAim(e) {
+  const p = ctrlMode() === "abs" && e.down !== false ? ctrlTarget().panel : null;
+  return p ? { ...e, window: p.window, display: p.display } : e;
+}
 function ctrlButton(name, down) {
   ctrlFlushMoves();  // the click lands where the pointer was sent
   if (down) ctrl.held.add(name); else ctrl.held.delete(name);
-  ctrlSend([{ button: name, down }]);
+  ctrlSend([ctrlAim({ button: name, down })]);
+}
+function ctrlKeyEvent(code, down) {
+  ctrlFlushMoves();
+  if (down) ctrl.keys.add(code); else ctrl.keys.delete(code);
+  ctrlSend([ctrlAim({ key: code, down })]);
 }
 function ctrlClick(name = "left") { ctrlButton(name, true); ctrlButton(name, false); }
 function ctrlRelease() {
   for (const b of [...ctrl.held]) ctrlButton(b, false);
+  for (const k of [...ctrl.keys]) ctrlKeyEvent(k, false);
   if (ctrl.g && ctrl.g.timer) clearTimeout(ctrl.g.timer);
   ctrl.pointers.clear(); ctrl.g = null;
 }
@@ -1589,7 +1637,11 @@ function ctrlTouchDown(e) {
     g.timer = setTimeout(() => {
       if (ctrl.g !== g || g.kind !== "maybe") return;
       g.kind = "held";
-      if (ctrlMode() === "abs") { const f = ctrlFraction(g.e); if (f) ctrlMoveTo(...f); }
+      if (ctrlMode() === "abs") {
+        const f = ctrlFraction(g.e);
+        if (!f) return;  // on the bars around the picture: nothing to press
+        ctrlMoveTo(...f);
+      }
       ctrlClick("right");
       navigator.vibrate?.(10);
     }, HOLD_MS);
@@ -1630,11 +1682,20 @@ function ctrlTouchUp(e) {
   const g = ctrl.g;
   ctrl.pointers.delete(e.pointerId);
   if (!g) return;
+  if (g.kind === "scroll") g.kind = "done";  // the finger left behind doesn't jump the scroll or drag
   if (g.kind === "maybe" && ctrl.pointers.size === 0) {
     clearTimeout(g.timer);
     if (ctrlMode() === "abs") { const f = ctrlFraction(g.e); if (!f) { ctrl.g = null; return; } ctrlMoveTo(...f); }
     ctrlClick("left");
   } else if (g.kind === "drag") ctrlButton("left", false);
+  if (ctrl.pointers.size === 0) ctrl.g = null;
+}
+// The system took the touch (a swipe home, a call): no tap, and let go of anything held.
+function ctrlTouchCancel(e) {
+  ctrl.pointers.delete(e.pointerId);
+  if (ctrl.g?.timer) clearTimeout(ctrl.g.timer);
+  if (ctrl.held.has("left")) ctrlButton("left", false);
+  if (ctrl.g) ctrl.g.kind = "done";
   if (ctrl.pointers.size === 0) ctrl.g = null;
 }
 const canvasEl = $("canvas");
@@ -1645,6 +1706,7 @@ canvasEl.addEventListener("pointerdown", e => {
   try { canvasEl.setPointerCapture(e.pointerId); } catch { /* a pointer that's already gone */ }
   if (!ctrlTarget().ok) return ctrlShow();
   if (e.pointerType === "touch") return ctrlTouchDown(e);
+  if (ctrlMode() === "abs" && !ctrlFraction(e)) return;  // on the bars around the picture
   ctrlMouse(e);
   ctrlButton(CTRL_BUTTONS[e.button] || "left", true);
 });
@@ -1655,7 +1717,7 @@ canvasEl.addEventListener("pointermove", e => {
 });
 for (const type of ["pointerup", "pointercancel"]) canvasEl.addEventListener(type, e => {
   if (!ctrl.on) return;
-  if (e.pointerType === "touch") return ctrlTouchUp(e);
+  if (e.pointerType === "touch") return type === "pointercancel" ? ctrlTouchCancel(e) : ctrlTouchUp(e);
   const name = CTRL_BUTTONS[e.button] || "left";
   if (ctrl.held.has(name)) ctrlButton(name, false);
 });
@@ -1668,19 +1730,21 @@ $("viewer").addEventListener("wheel", e => {
 }, { passive: false });
 // Keys while the view has focus go to the Frame (⌘ as Ctrl on a Mac); click elsewhere to stop.
 function ctrlKey(e, down) {
-  if (!ctrl.on || document.activeElement !== $("viewer") || !ctrlTarget().ok) return;
+  if (!ctrl.on || document.activeElement !== $("viewer") || (down && !ctrlTarget().ok)) return;
   let code = EVDEV[e.code];
   if (IS_MAC && (e.code === "MetaLeft" || e.code === "MetaRight")) code = 29;
   if (!code) return;
   e.preventDefault();
-  if (down && e.repeat && code >= 29 && [29, 42, 54, 56, 97, 100, 125, 126].includes(code)) return;
-  ctrlSend([{ key: code, down }]);
+  e.stopPropagation();  // it's for the Frame, not Frame Control's own shortcuts
+  if (down && e.repeat && [29, 42, 54, 56, 97, 100, 125, 126].includes(code)) return;
+  if (!down && !ctrl.keys.has(code)) return;
+  ctrlKeyEvent(code, down);
 }
 $("viewer").addEventListener("keydown", e => ctrlKey(e, true));
 $("viewer").addEventListener("keyup", e => ctrlKey(e, false));
 
 // Phone keyboard: the field types plain text; the buttons send single keys and clicks.
-function ctrlTap(code) { ctrlSend([{ key: code, down: true }, { key: code, down: false }]); }
+function ctrlTap(code) { ctrlKeyEvent(code, true); ctrlKeyEvent(code, false); }
 let ctrlWarned = false;
 function ctrlText(text) {
   const plain = text.replace(/[^\x20-\x7e\n\t]/g, "");

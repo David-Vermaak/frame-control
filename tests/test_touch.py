@@ -38,6 +38,18 @@ class Mapping(unittest.TestCase):
         self.assertAlmostEqual(x, 280, delta=0.5)
         self.assertAlmostEqual(y, 359.5, delta=0.5)
 
+    def test_same_id_on_both_displays_is_told_apart_by_pid(self):
+        t = self.t
+        saved = t.displays, t.window_info, t.window_pid
+        self.addCleanup(lambda: (setattr(t, "displays", saved[0]), setattr(t, "window_info", saved[1]),
+                                 setattr(t, "window_pid", saved[2])))
+        t.displays = lambda: [":0", ":1"]
+        t.window_info = lambda d, w: {"name": f"on {d}", "width": 1280 if w != "root" else 1920, "height": 720}
+        t.window_pid = lambda d, w: {":0": 111, ":1": 222}[d]
+        self.assertEqual(t.locate(5, 222)["display"], ":1")
+        self.assertEqual(t.locate(5, 111)["display"], ":0")
+        self.assertEqual(t.locate(5, None)["display"], ":0")
+
     def test_ascii_table_covers_printable_characters(self):
         for code in range(0x20, 0x7F):
             self.assertIn(chr(code), self.t.ASCII, chr(code))
@@ -77,16 +89,25 @@ class Apply(unittest.TestCase):
 
     def test_tap_moves_then_clicks_in_order(self):
         gs, panel = FakeGamescope(), None
-        for e in ({"fx": 0.5, "fy": 0.5, "window": 7}, {"button": "left", "down": True}, {"button": "left", "down": False}):
+        for e in ({"fx": 0.5, "fy": 0.5, "window": 7, "display": ":1"}, {"button": "left", "down": True, "window": 7, "display": ":1"},
+                  {"button": "left", "down": False}):
             panel = self.t.apply(gs, e, panel)
         self.assertEqual([c[0] for c in gs.calls], ["move_to", "button", "button"])
         self.assertEqual(gs.calls[1][1:], ("left", True))
 
     def test_a_tap_meant_for_another_panel_goes_nowhere(self):
+        # Focus moved on: the position and the press are dropped; the release still goes.
+        gs, panel = FakeGamescope(), None
+        for e in ({"fx": 0.5, "fy": 0.5, "window": 99, "display": ":1"}, {"button": "left", "down": True, "window": 99, "display": ":1"},
+                  {"key": 30, "down": True, "window": 7, "display": ":0"}, {"button": "left", "down": False, "window": 99, "display": ":1"}):
+            panel = self.t.apply(gs, e, panel)
+        self.assertEqual(gs.calls, [("button", "left", False)])
+        self.assertEqual(self.said[0], ("ready", {"focus": 7, "display": ":1", "stale": True}))
+
+    def test_same_window_id_on_the_other_display_is_another_panel(self):
         gs = FakeGamescope()
-        self.t.apply(gs, {"fx": 0.5, "fy": 0.5, "window": 99}, None)
+        self.t.apply(gs, {"fx": 0.5, "fy": 0.5, "window": 7, "display": ":0"}, None)
         self.assertEqual(gs.calls, [])
-        self.assertEqual(self.said, [("ready", {"focus": 7, "stale": True})])
 
     def test_relative_scroll_keys_text(self):
         gs = FakeGamescope()
@@ -115,16 +136,19 @@ class ServerChecks(unittest.TestCase):
 
     def test_touch_event_keeps_known_fields(self):
         ev = self.s.touch_event
-        self.assertEqual(ev({"fx": 0.5, "fy": 2, "window": 5}), {"fx": 0.5, "fy": 1.0, "window": 5})
+        self.assertEqual(ev({"fx": 0.5, "fy": 2, "window": 5, "display": ":1"}), {"fx": 0.5, "fy": 1.0, "window": 5, "display": ":1"})
+        self.assertEqual(ev({"button": "left", "window": 5, "display": ":0"}), {"button": "left", "down": True, "window": 5, "display": ":0"})
         self.assertEqual(ev({"button": "right"}), {"button": "right", "down": True})
         self.assertEqual(ev({"key": 30, "down": False}), {"key": 30, "down": False})
         self.assertEqual(ev({"scroll": [0, 1e9]}), {"scroll": [0.0, 5000.0]})
         self.assertEqual(ev({"dx": 3, "other": 1}), {"dx": 3.0})
 
     def test_touch_event_rejects_bad_ones(self):
-        for bad in (None, {}, {"fx": 0.5, "fy": 0.5}, {"fx": "1", "fy": 0, "window": 1}, {"button": "side"},
+        for bad in (None, {}, {"fx": 0.5, "fy": 0.5}, {"fx": "1", "fy": 0, "window": 1, "display": ":1"}, {"button": "side"},
+                    {"fx": 0.5, "fy": 0.5, "window": 1}, {"fx": 0.5, "fy": 0.5, "window": 1, "display": ":1;x"},
+                    {"window": 1, "display": ":1"},
                     {"key": 0}, {"key": 999}, {"key": True}, {"scroll": [1]}, {"text": ""}, {"text": "x" * 501},
-                    {"fx": 0.1, "fy": 0.1, "window": True}):
+                    {"fx": 0.1, "fy": 0.1, "window": True, "display": ":1"}):
             with self.assertRaises(self.s.Failure, msg=repr(bad)):
                 self.s.touch_event(bad)
 

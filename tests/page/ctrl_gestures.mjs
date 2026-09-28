@@ -9,7 +9,7 @@ const grab = name => {
   if (!m) throw new Error("not found: " + name);
   return m[0];
 };
-const NAMES = ["isMoveEvent", "TAP_MOVE", "ctrlSend", "ctrlFlush", "ctrlMoveTo", "ctrlMoveBy", "ctrlSchedule",
+const NAMES = ["isMoveEvent", "isRelease", "ctrlKeepable", "TAP_MOVE", "ctrlAim", "ctrlKeyEvent", "ctrlTouchCancel", "ctrlSend", "ctrlFlush", "ctrlMoveTo", "ctrlMoveBy", "ctrlSchedule",
   "ctrlFlushMoves", "ctrlButton", "ctrlClick", "ctrlRelease", "ctrlFraction", "ctrlTouchDown", "centroid",
   "ctrlTouchMove", "ctrlTouchUp", "ctrlTap", "ctrlText"];
 const code = NAMES.map(grab).join("");
@@ -18,18 +18,18 @@ const tick = (ms = 0) => new Promise(r => setTimeout(r, ms));
 
 function page({ mode = "abs", rect = { left: 0, top: 0, width: 640, height: 360 }, api } = {}) {
   const ctrl = { on: true, queue: [], sending: false, state: "ready", message: "", move: null, rel: [0, 0], raf: 0,
-                 held: new Set(), pointers: new Map(), g: null, retry: null };
+                 held: new Set(), keys: new Set(), pointers: new Map(), g: null, retry: null };
   const sent = [];
   const canvas = { width: 1280, height: 720, getBoundingClientRect: () => rect };
   const env = {
     ctrl, $: () => canvas, ctrlMode: () => mode, ctrlShow: () => {}, toast: () => {},
-    ctrlTarget: () => (mode === "abs" ? { ok: true, panel: { window: 42 } } : { ok: true }),
+    ctrlTarget: () => (mode === "abs" ? { ok: true, panel: { window: 42, display: ":1" } } : { ok: true }),
     api: api || (async (path, body) => { sent.push(...body.events); return { state: "ready", sent: true }; }),
     requestAnimationFrame: cb => { setTimeout(cb, 0); return 1; },
     navigator: {},
   };
   const fns = new Function(...Object.keys(env), `let ctrlWarned = false;\n${code}
-    return { ctrlTouchDown, ctrlTouchMove, ctrlTouchUp, ctrlSend, ctrlText, ctrlButton, ctrlRelease, ctrlFlushMoves };`)(...Object.values(env));
+    return { ctrlTouchDown, ctrlTouchMove, ctrlTouchUp, ctrlTouchCancel, ctrlSend, ctrlText, ctrlButton, ctrlKeyEvent, ctrlRelease, ctrlFlushMoves };`)(...Object.values(env));
   const at = (id, x, y) => ({ pointerId: id, clientX: x, clientY: y });
   return { ctrl, sent, ...fns, at };
 }
@@ -40,7 +40,8 @@ function page({ mode = "abs", rect = { left: 0, top: 0, width: 640, height: 360 
   p.ctrlTouchDown(p.at(1, 320, 90)); p.ctrlTouchUp(p.at(1, 320, 90));
   await tick(10);
   const [move, down, up] = p.sent;
-  if (!(move.fx === 0.5 && Math.abs(move.fy - 0.25) < 1e-9 && move.window === 42)) fail("tap position " + JSON.stringify(move));
+  if (!(move.fx === 0.5 && Math.abs(move.fy - 0.25) < 1e-9 && move.window === 42 && move.display === ":1")) fail("tap position " + JSON.stringify(move));
+  if (!(down.window === 42 && down.display === ":1")) fail("a press names its panel " + JSON.stringify(down));
   if (!(down.button === "left" && down.down && up.button === "left" && up.down === false && p.sent.length === 3))
     fail("tap click " + JSON.stringify(p.sent));
 }
@@ -105,14 +106,14 @@ function page({ mode = "abs", rect = { left: 0, top: 0, width: 640, height: 360 
   const text = p.sent.map(e => e.text).join("");
   if (!(text === "hllo " + "x".repeat(600) && p.sent.every(e => e.text.length <= 500))) fail("text " + text.length);
 }
-// Not connected yet, or the request fails: clicks and keys wait, stale moves don't; a release is never lost.
+// Not connected yet: clicks and keys wait with their position. The request fails: only releases wait.
 {
   let calls = 0;
   const p = page({ api: async () => { calls++; if (calls === 1) return { state: "starting", sent: false }; throw new Error("offline"); } });
   p.ctrlSend([{ fx: 0.1, fy: 0.1, window: 42 }, { button: "left", down: true }, { key: 30, down: true }]);
   await tick(5);
   const q = p.ctrl.queue;
-  if (!(q.length === 2 && q[0].button === "left" && q[1].key === 30)) fail("kept while starting " + JSON.stringify(q));
+  if (!(q.length === 3 && "fx" in q[0] && q[1].button === "left" && q[2].key === 30)) fail("kept while starting " + JSON.stringify(q));
   clearTimeout(p.ctrl.retry);
   p.ctrl.queue = [];
   p.ctrlSend([{ button: "left", down: false }, { key: 31, down: true }, { dx: 3, dy: 1 }]);
@@ -128,5 +129,73 @@ function page({ mode = "abs", rect = { left: 0, top: 0, width: 640, height: 360 
   p.ctrlButton("left", true);
   p.ctrlRelease(); await tick(10);
   if (!(p.sent.at(-1).button === "left" && p.sent.at(-1).down === false && !p.ctrl.held.size)) fail("release " + JSON.stringify(p.sent));
+}
+// Keys held on the Frame are let go too.
+{
+  const p = page();
+  p.ctrlKeyEvent(42, true);
+  p.ctrlRelease(); await tick(10);
+  if (!(p.sent.at(-1).key === 42 && p.sent.at(-1).down === false && !p.ctrl.keys.size)) fail("key release " + JSON.stringify(p.sent));
+}
+// A long queue sheds moves and old scrolls, never a release.
+{
+  const p = page({ api: () => new Promise(() => {}) });  // stuck request
+  p.ctrlSend([{ dx: 1, dy: 1 }]);
+  p.ctrlSend([{ button: "left", down: false }]);
+  for (let i = 0; i < 320; i++) p.ctrlSend([{ scroll: [0, 1] }]);
+  if (!p.ctrl.queue.some(e => e.button === "left" && e.down === false)) fail("trim dropped a release");
+  if (p.ctrl.queue.length > 300) fail("trim kept " + p.ctrl.queue.length);
+}
+// Broken on the Frame side: no hammering, and only releases wait.
+{
+  let calls = 0;
+  const p = page({ api: async () => { calls++; return { state: "error", sent: false }; } });
+  p.ctrlSend([{ button: "left", down: true }, { button: "left", down: false }]);
+  await tick(50);
+  if (calls !== 1) fail("error response reposted " + calls + " times");
+  if (!(p.ctrl.queue.length === 1 && p.ctrl.queue[0].down === false)) fail("error kept " + JSON.stringify(p.ctrl.queue));
+  clearTimeout(p.ctrl.retry);
+}
+// Connecting: a tap keeps its position, so it lands where it was made.
+{
+  const p = page({ api: async () => ({ state: "starting", sent: false }) });
+  p.ctrlTouchDown(p.at(1, 320, 90)); p.ctrlTouchUp(p.at(1, 320, 90));
+  await tick(10);
+  const q = p.ctrl.queue;
+  if (!("fx" in q[0] && q[1].button === "left")) fail("connecting tap " + JSON.stringify(q));
+  clearTimeout(p.ctrl.retry);
+}
+// Lifting one of two scrolling fingers doesn't jump the scroll or start a drag.
+{
+  const p = page();
+  p.ctrlTouchDown(p.at(1, 100, 200)); p.ctrlTouchDown(p.at(2, 300, 200));
+  p.ctrlTouchUp(p.at(1, 100, 200));
+  p.ctrlTouchMove(p.at(2, 300, 199));
+  p.ctrlTouchUp(p.at(2, 300, 199)); await tick(10);
+  if (p.sent.length) fail("one finger left after scrolling " + JSON.stringify(p.sent));
+}
+// A cancelled touch isn't a tap.
+{
+  const p = page();
+  p.ctrlTouchDown(p.at(1, 100, 100)); p.ctrlTouchCancel(p.at(1, 100, 100)); await tick(10);
+  if (p.sent.length) fail("cancel clicked " + JSON.stringify(p.sent));
+}
+// Press and hold on the bars around the picture does nothing.
+{
+  const p = page({ rect: { left: 0, top: 0, width: 640, height: 480 } });
+  p.ctrlTouchDown(p.at(1, 320, 10)); await tick(620); p.ctrlTouchUp(p.at(1, 320, 10)); await tick(10);
+  if (p.sent.length) fail("hold on the bars " + JSON.stringify(p.sent));
+}
+// Taps only reach the panel in use, and only once its picture is the one on screen.
+{
+  const fns = ["panelKey", "deskPanel", "ctrlTarget"].map(grab).join("");
+  const check = (desk, live = true) => new Function("desk", "live", "ctrlMode", fns + "; return ctrlTarget();")(desk, live, () => "abs");
+  const a = { display: ":1", window: 5 }, b = { display: ":0", window: 5 };
+  const base = { panels: [a, b], loaded: true, pick: "", focus: ":1/5", shown: ":1/5" };
+  if (!check(base).ok) fail("target: shown and in use");
+  if (check({ ...base, shown: ":0/5" }).ok) fail("target: the picture is another panel with the same id");
+  if (!/Capture or Live/.test(check({ ...base, shown: null }, false).why)) fail("target: stale picture message");
+  if (check({ ...base, pick: ":0/5", shown: ":0/5" }).ok) fail("target: a watched panel that isn't in use");
+  if (check({ ...base, focus: null }).ok) fail("target: nothing in use");
 }
 console.log("control gestures ok");

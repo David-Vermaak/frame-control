@@ -10,8 +10,9 @@ of gamescope's X displays (see docs/streaming.md).
   python3 frame_touch.py focus   print the focused panel as JSON
   python3 frame_touch.py panels  print every app panel as JSON, and which has focus
   python3 frame_touch.py         read events on stdin, one JSON object (or list) per line:
-    {"fx": 0.5, "fy": 0.2, "window": 123}  pointer to that fraction of the focused panel
-                                           (ignored if another panel has focus since)
+    {"fx": 0.5, "fy": 0.2, "window": 123, "display": ":1"}
+                                           pointer to that fraction of that panel; any event can
+                                           name its panel, and goes nowhere if another has focus
     {"dx": 4, "dy": -2}                    pointer by that much
     {"button": "left", "down": true}       left, right or middle; "down" false releases
     {"scroll": [0, 120]}                   by pixels; positive y scrolls down
@@ -88,44 +89,66 @@ def displays():
     return sorted(f":{n[1:]}" for n in os.listdir("/tmp/.X11-unix") if n[1:].isdigit())
 
 
-def focus():
-    """The panel that has focus in the headset: its window, display, name and sizes.
+def window_pid(display, window):
+    try:
+        out = subprocess.run(["xprop", "-id", str(window), "_NET_WM_PID"], env=dict(os.environ, DISPLAY=display),
+                             capture_output=True, text=True, timeout=5).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+    value = out.rsplit("=", 1)[-1].strip() if "=" in out else ""
+    return int(value) if value.isdigit() else None
 
-    gamescope publishes it on :0's root (GAMESCOPE_FOCUSED_WINDOW). The window can be
-    on any of its Xwayland displays; the pid in GAMESCOPE_FOCUSABLE_WINDOWS (window,
-    app id, pid triples) tells which one when ids repeat across displays.
+
+def locate(window, pid):
+    """The display a focusable window is on, with its name and geometry.
+
+    Window ids are per X server, so :0 and :1 can both have one; the pid gamescope
+    lists with it (GAMESCOPE_FOCUSABLE_WINDOWS) tells them apart.
     """
-    window = (xprop_root(":0", "GAMESCOPE_FOCUSED_WINDOW") or [0])[0]
-    if not window:
-        return {"window": None}
-    triples = xprop_root(":0", "GAMESCOPE_FOCUSABLE_WINDOWS")
-    app = next((triples[i + 1] for i in range(0, len(triples) - 2, 3) if triples[i] == window), None)
+    found = []
     for display in displays():
         info = window_info(display, window)
         if info:
-            root = window_info(display, "root") or {}
-            return {"window": window, "display": display, "app": app, **info,
-                    "root": [root.get("width", info["width"]), root.get("height", info["height"])]}
-    return {"window": None}
+            found.append((display, info))
+    if len(found) > 1 and pid:
+        found = [f for f in found if window_pid(f[0], window) == pid] or found
+    if not found:
+        return None
+    display, info = found[0]
+    root = window_info(display, "root") or {}
+    return {"window": window, "display": display, **info,
+            "root": [root.get("width", info["width"]), root.get("height", info["height"])]}
+
+
+def focusable():
+    """gamescope's focusable windows as (window, app id, pid)."""
+    t = xprop_root(":0", "GAMESCOPE_FOCUSABLE_WINDOWS")
+    return [tuple(t[i:i + 3]) for i in range(0, len(t) - 2, 3)]
+
+
+def focus():
+    """The panel that has focus in the headset: window, display, name and sizes (gamescope
+    publishes the window on :0's root as GAMESCOPE_FOCUSED_WINDOW)."""
+    window = (xprop_root(":0", "GAMESCOPE_FOCUSED_WINDOW") or [0])[0]
+    if not window:
+        return {"window": None}
+    app, pid = next(((a, p) for w, a, p in focusable() if w == window), (None, None))
+    panel = locate(window, pid)
+    return {**panel, "app": app} if panel else {"window": None}
 
 
 def panels():
     """Every app panel (gamescope's focusable windows), for watching one that hasn't focus."""
-    focused = (xprop_root(":0", "GAMESCOPE_FOCUSED_WINDOW") or [0])[0]
-    triples = xprop_root(":0", "GAMESCOPE_FOCUSABLE_WINDOWS")
-    found, seen = [], set()
-    for i in range(0, len(triples) - 2, 3):
-        window, app = triples[i], triples[i + 1]
-        if window in seen:
-            continue
-        seen.add(window)
-        for display in displays():
-            info = window_info(display, window)
-            if info and info["width"] > 1 and info["height"] > 1:
-                found.append({"window": window, "display": display, "app": app, **info,
-                              "focused": window == focused})
-                break
-    return {"focus": focused or None, "panels": found}
+    now = focus()
+    found = []
+    for window, app, pid in focusable():
+        panel = locate(window, pid)
+        if panel and panel["width"] > 1 and panel["height"] > 1 and \
+                not any(f["window"] == window and f["display"] == panel["display"] for f in found):
+            panel.pop("root", None)
+            found.append({**panel, "app": app, "focused": (window, panel["display"]) ==
+                          (now.get("window"), now.get("display"))})
+    return {"focus": now.get("window"), "focus_display": now.get("display"), "panels": found}
 
 
 def to_root(panel, fx, fy):
@@ -280,15 +303,27 @@ def number(value, limit=100000.0):
     return max(-limit, min(limit, float(value)))
 
 
+def aimed_elsewhere(event, panel):
+    """Whether an event names a panel that isn't the one with focus now."""
+    if "window" not in event:
+        return False
+    return (panel.get("window"), panel.get("display")) != (event.get("window"), event.get("display"))
+
+
 def apply(gs, event, panel):
-    """Send one event; returns the panel it was aimed at (refreshed if focus moved)."""
-    if "fx" in event:
-        window = event.get("window")
-        if not panel or panel.get("window") != window or time.time() - panel.get("_at", 0) > 1:
-            panel = {**focus(), "_at": time.time()}
-        if panel.get("window") is None or panel["window"] != window:
-            say("ready", focus=panel.get("window"), stale=True)  # the page re-syncs its view
-            return panel
+    """Send one event; returns the focused panel it checked against (looked up at most once a second).
+
+    Positions and presses name the panel they were meant for. If focus has moved to
+    another panel since, they go nowhere, so a tap can't land on the wrong one;
+    releases always go, so nothing stays held.
+    """
+    if "window" in event and (not panel or time.time() - panel.get("_at", 0) > 1 or aimed_elsewhere(event, panel)):
+        panel = {**focus(), "_at": time.time()}
+    stale = aimed_elsewhere(event, panel) if "window" in event else False
+    if stale and not (event.get("down") is False and ("button" in event or "key" in event)):
+        say("ready", focus=panel.get("window"), display=panel.get("display"), stale=True)  # the page re-syncs
+        return panel
+    if "fx" in event and panel and panel.get("window"):
         gs.move_to(*to_root(panel, number(event["fx"], 1), number(event["fy"], 1)))
     if "dx" in event or "dy" in event:
         gs.move_by(number(event.get("dx", 0), 2000), number(event.get("dy", 0), 2000))
