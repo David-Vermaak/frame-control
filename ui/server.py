@@ -37,6 +37,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import frame_android  # noqa: E402
+from apk_sources import search as apk_search, SourceError  # noqa: E402
 import frame_apk_versions  # noqa: E402
 import frame_catalog  # noqa: E402
 import frame_host  # noqa: E402
@@ -146,7 +147,7 @@ _jobs_lock = threading.Lock()
 _jobs = {}  # id -> {"label", "done", "error", "message", "result", "time"}
 
 
-def start_job(label, work):
+def start_job(label, work, progress=False):
     """Run work() in the background. It returns a dict with a "message"."""
     now = time.time()
     with _jobs_lock:
@@ -155,10 +156,14 @@ def start_job(label, work):
         job = secrets.token_hex(8)
         _jobs[job] = {"label": label, "done": False, "error": None, "message": None, "result": None, "time": now}
 
+    def report(stage, percent=None):
+        with _jobs_lock:
+            _jobs[job].update(stage=stage, percent=percent)
+
     def run():
         fields = {}
         try:
-            result = work()
+            result = work(report) if progress else work()
             fields = {"message": result.get("message") or f"{label}: done", "result": result}
         except (Failure, frame_android.FrameError) as e:
             fields = {"error": unreachable(str(e)) or str(e)}
@@ -1227,7 +1232,66 @@ def _sweep_one(prefix, d):
         pass
 
 
-POST = {"/api/android/display": android_display, "/api/android": android, "/api/titles": titles, "/api/launch": launch, "/api/steam": steam, "/api/volume": set_volume, "/api/clipboard": clipboard,
+def source_text(body, key, optional=False):
+    value = body.get(key)
+    if optional and value in (None, ''):
+        return None
+    if not isinstance(value, str) or not value.strip() or len(value) > 2000:
+        raise Failure('Provide a valid ' + key, 400)
+    return value.strip()
+
+
+def source_search(query):
+    args = parse_qs(query)
+    q = args.get('q', [''])[0]
+    vr = args.get('vr', [''])[0]
+    installable = args.get('installable', [''])[0]
+    if len(q) > 500 or vr not in ('', 'true', 'false', '1', '0') or installable not in ('', 'true', 'false', '1', '0'):
+        raise Failure('Invalid search filters', 400)
+    try:
+        return apk_search.search(q, vr=None if not vr else vr in ('true', '1'),
+                                 source=args.get('source', [None])[0], installable=installable in ('true', '1'))
+    except SourceError as e:
+        raise Failure(str(e), 400)
+
+
+def source_install(body):
+    source, entry = source_text(body, 'source'), source_text(body, 'id')
+    version = body.get('version_code')
+    if version is not None and (type(version) is not int or version < 0):
+        raise Failure('version_code must be a non-negative integer', 400)
+    try:
+        _, selected = apk_search.resolve(source)
+        if not selected['enabled']:
+            raise SourceError('This source is disabled')
+    except SourceError as e:
+        raise Failure(str(e), 400)
+    return start_job('Install ' + entry, lambda report: apk_search.install(source, entry, version, report), progress=True)
+
+
+def source_manage(body):
+    action = body.get('action')
+    try:
+        if action == 'enable':
+            if type(body.get('enabled')) is not bool:
+                raise Failure('enabled must be true or false', 400)
+            return apk_search.set_enabled(source_text(body, 'source'), body['enabled'])
+        if action == 'add':
+            url = source_text(body, 'url')
+            if urlparse(url).scheme != 'https' or not urlparse(url).hostname or urlparse(url).username:
+                raise Failure('Use an HTTPS repository URL without credentials', 400)
+            apk_search.manage_repo('add_repo', url=url, fingerprint=source_text(body, 'fingerprint', True),
+                                   name=source_text(body, 'name', True))
+            return {'message': 'Repository added'}
+        if action == 'remove':
+            apk_search.manage_repo('remove_repo', source_id=source_text(body, 'source'))
+            return {'message': 'Repository removed'}
+        raise Failure('Unknown source action', 400)
+    except SourceError as e:
+        raise Failure(str(e), 400)
+
+
+POST = {"/api/sources": source_manage, "/api/sources/install": source_install, "/api/android/display": android_display, "/api/android": android, "/api/titles": titles, "/api/launch": launch, "/api/steam": steam, "/api/volume": set_volume, "/api/clipboard": clipboard,
         "/api/flatpak": flatpak, "/api/open": open_thing, "/api/shots/save": save_shots,
         "/api/webinstall/check": webinstall_check, "/api/webinstall/start": webinstall_start,
         "/api/webinstall/cancel": webinstall_cancel}
@@ -1335,6 +1399,23 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json({"os": "SteamOS", "fileManager": None, "computer": DEVICE, "mobile": True} if LOCAL else
                                {"os": frame_host.NAME, "fileManager": frame_host.FILE_MANAGER,
                                 "computer": "Mac" if frame_host.MAC else "PC"})
+            elif path.startswith("/source-image/"):
+                from apk_sources import _images
+                try:
+                    self.send_bytes(*_images.image(path.rsplit("/", 1)[-1]))
+                except Exception:
+                    self.send_json({"error": "Artwork unavailable"}, 404)
+            elif path == "/api/sources/details":
+                args = parse_qs(url.query)
+                try:
+                    self.send_json(apk_search.details(source_text({k: v[0] for k, v in args.items()}, "source"),
+                                                     source_text({k: v[0] for k, v in args.items()}, "id")))
+                except SourceError as e:
+                    raise Failure(str(e), 400)
+            elif path == "/api/sources":
+                self.send_json({"sources": apk_search.sources()})
+            elif path == "/api/search":
+                self.send_json(source_search(url.query))
             elif path == "/api/apk-versions":
                 self.send_json(apk_versions(url.query))
             elif path == "/api/android":
