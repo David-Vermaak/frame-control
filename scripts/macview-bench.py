@@ -808,6 +808,8 @@ def main():
     args = p.parse_args()
     # The agent keeps the last 4096 frames (Stats.swift) and results are read
     # at the end: at 60 fps that's 68 s, less warm-up and the reporting wait.
+    if args.cmd != "compare" and args.host and args.usb:
+        p.error("--host and --usb pick the path two ways; use one")
     if args.cmd != "compare" and args.warmup + args.duration > 60:
         p.error("--warmup plus --duration can be at most 60 s (the agent keeps 4096 frames)")
 

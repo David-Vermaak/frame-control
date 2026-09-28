@@ -229,36 +229,48 @@ class MacView:
             ports = [self.remote_port] if self.remote_port else list(REMOTE_PORTS)
             if self.remote_port and allow_new_port:
                 ports += [p for p in REMOTE_PORTS if p != self.remote_port]
-            via = self._usb_route()
-            self.route = "usb" if via else "network"
-            for port in ports:
-                proc = subprocess.Popen([*self.tunnel_ssh, *via, "-o", "ExitOnForwardFailure=yes",
-                                         "-o", "ServerAliveInterval=5", "-o", "ServerAliveCountMax=3", "-N",
-                                         "-R", f"127.0.0.1:{port}:127.0.0.1:{self.port}", self.frame],
-                                        stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                                        stderr=subprocess.PIPE, text=True)
-                # A taken port makes ssh exit once it's connected; a working
-                # tunnel answers the agent's status from the Frame's side.
-                ok = False
-                for _ in range(15):
-                    time.sleep(0.4)
-                    if proc.poll() is not None:
-                        break
-                    if self._probe(port):
-                        ok = True
-                        break
-                if ok:
-                    self.tunnel, self.remote_port = proc, port
-                    self.track(proc)
-                    self._supervise()
+            usb = self._usb_route()
+            # USB-C first when it's there; if that fails (unplugged just now,
+            # something else at that address), the normal path.
+            for via in ([usb, []] if usb else [[]]):
+                self.route = "usb" if via else "network"
+                if self._open_tunnel(via, ports):
                     return
-                if proc.poll() is None:
-                    proc.terminate()
-                    proc.wait()
-                last = (proc.stderr.read() or "").strip()
-                if "forward" not in last.lower():
-                    break  # not a port clash: the Frame is unreachable
+                last = self._last_tunnel_error
             raise MacViewError(f"Couldn't open a tunnel from {self.frame} to this Mac: {last or 'no answer through it'}")
+
+    def _open_tunnel(self, via, ports):
+        """Tries the ports on one route; True once the tunnel answers. With self.lock held."""
+        last = ""
+        for port in ports:
+            proc = subprocess.Popen([*self.tunnel_ssh, *via, "-o", "ExitOnForwardFailure=yes",
+                                     "-o", "ServerAliveInterval=5", "-o", "ServerAliveCountMax=3", "-N",
+                                     "-R", f"127.0.0.1:{port}:127.0.0.1:{self.port}", self.frame],
+                                    stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                                    stderr=subprocess.PIPE, text=True)
+            # A taken port makes ssh exit once it's connected; a working
+            # tunnel answers the agent's status from the Frame's side.
+            ok = False
+            for _ in range(15):
+                time.sleep(0.4)
+                if proc.poll() is not None:
+                    break
+                if self._probe(port):
+                    ok = True
+                    break
+            if ok:
+                self.tunnel, self.remote_port = proc, port
+                self.track(proc)
+                self._supervise()
+                return True
+            if proc.poll() is None:
+                proc.terminate()
+                proc.wait()
+            last = (proc.stderr.read() or "").strip()
+            if "forward" not in last.lower():
+                break  # not a port clash: the Frame is unreachable this way
+        self._last_tunnel_error = last
+        return False
 
     def _usb_route(self):
         """ssh options to reach the Frame over its USB-C network, or [].
@@ -285,7 +297,8 @@ class MacView:
         alias = self.frame
         try:
             cfg = subprocess.run(["ssh", "-G", self.frame], capture_output=True, text=True, timeout=5).stdout
-            alias = next((line.split()[1] for line in cfg.splitlines() if line.startswith("hostname ")), alias)
+            opts = dict(line.split(None, 1) for line in cfg.splitlines() if " " in line)
+            alias = opts.get("hostkeyalias") or opts.get("hostname") or alias  # a configured alias wins
         except (OSError, subprocess.SubprocessError):
             pass
         return ["-o", f"HostName={ip}", "-o", f"HostKeyAlias={alias}"]

@@ -18,7 +18,7 @@ Checked 2026-09-28.
 | Goal | First-party option | Chosen? | Why |
 |---|---|---|---|
 | One Mac screen in the headset | **Apple Screen Sharing** (VNC) → Remmina (Remmina 1.4.43 is already installed on this Frame) | Kept as the fallback (`panel-on-frame.sh mac-screen`) | It's the closest to first-party and needs nothing new. But VNC sends compressed tiles rather than video, so moving content is slow: noticeable lag even on a good 5 GHz link (**verified** 2026-09-27, see [streaming.md](streaming.md)), and the Mac's pointer isn't in the picture without a helper. It shows only whole screens |
-| One Mac screen | **Steam Remote Play**, Mac as host (Valve) | For Mac games only; see [Steam's own streaming](#steams-own-streaming) | The Mac's and the Frame's Steam clients already find each other (**verified**), but Remote Play streams a game, not the desktop or a window, and a Mac can't host the Frame's VR streaming |
+| One Mac screen | **Steam Remote Play**, Mac as host (Valve) | For Mac games only; see [Steam's own streaming](#steams-own-streaming) | The Mac's and the Frame's Steam clients already find each other (**verified**). But Remote Play streams a game (the whole desktop only while the game is out of focus, untested from a Mac), never single windows, and a Mac can't host the Frame's VR streaming |
 | One Mac screen | **AirPlay** (Apple) | No | Apple licenses AirPlay receivers only to TV and speaker makers, and nothing official runs on Linux. UxPlay is an unofficial receiver, and it mirrors a whole screen, not single windows |
 | One Mac screen | **Sidecar / Mac Virtual Display** (Apple) | No | These work only with an iPad or Apple Vision Pro |
 | **Each Mac window as its own panel** | None | – | No first-party way does this: Apple's per-app streaming is only for Vision Pro, and Valve's desktop streaming needs a Windows SteamVR host. So Frame Control does it itself |
@@ -68,11 +68,14 @@ The Frame is built around Steam streaming, so this was checked first
     closing as the game loads
     ([Steam forum](https://steamcommunity.com/groups/homestream/discussions/1/574921459914429988/),
     **reported**).
-- **The Mac desktop or single windows through Steam: no known way.** Remote
-  Play streams a running game. The desktop trick people use on Windows (a
-  non-Steam shortcut to `explorer.exe`) has no known Mac equivalent
-  (**reported**; nothing found for macOS). So Frame Control's own stream
-  stays the way to see Mac windows.
+- **The Mac desktop through Steam: untested; single windows: no.** Valve
+  says Remote Play shows the host's desktop when the game loses focus
+  ([Steam Remote Play FAQ](https://help.steampowered.com/en/faqs/view/0689-74B8-92AC-10F2),
+  **documented**), so a whole Mac screen may be reachable by starting a
+  game, then switching away from it. Nobody has tried that from a Mac
+  host. It would still be one screen in one panel: Remote Play has
+  nothing like one panel per Mac window, so Frame Control's own stream
+  stays the way to see separate windows.
 - **What Steam's work did give us: the USB-C link.** Plugged into the Mac,
   the Frame appears as a network port called "Steam Frame". Steam's Remote
   Play discovery uses it, and so does Frame Control's stream now (see
@@ -84,7 +87,10 @@ Next steps, once Steam on the Frame is healthy:
    library, over Wi-Fi and over USB-C.
 2. Record whether it starts, how it's shown, and its latency. Steam's
    streaming overlay shows this; our benchmark can't measure it.
-3. If it works, Frame Control's Games page could offer "Stream from the
+3. While streaming, switch away from the game on the Mac, and see whether
+   the Mac's desktop appears in the headset, and whether its keyboard and
+   pointer work.
+4. If it works, Frame Control's Games page could offer "Stream from the
    Mac" for Mac-installed games.
 
 ## How it works

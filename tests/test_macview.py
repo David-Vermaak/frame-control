@@ -104,21 +104,24 @@ class Helpers(unittest.TestCase):
             self.assertEqual(len(calls), 1)
         # A Show waits while the cleanup checks and runs pkill.
         mv.launching = 0
-        mv._show = lambda *a: "shown"
-        started = threading.Event()
+        in_pkill, release, entered = threading.Event(), threading.Event(), threading.Event()
 
-        def slow_pkill(remote, **kw):
-            started.set()
-            time.sleep(0.3)
-            calls.append("after " + remote)
-        mv.run = slow_pkill
+        def blocking_pkill(remote, **kw):
+            in_pkill.set()
+            release.wait(5)
+        mv.run = blocking_pkill
+        mv._show = lambda *a: entered.set() or "shown"
         with mock.patch.object(frame_macview.time, "sleep"):
-            t = threading.Thread(target=mv._end_viewer_browser, args=(mv.shows,))
-            t.start()
-            started.wait(2)
-            self.assertEqual(mv.show("window:5"), "shown")  # blocked until the pkill finished
-            self.assertTrue(calls[-1].startswith("after "))
-            t.join()
+            cleanup = threading.Thread(target=mv._end_viewer_browser, args=(mv.shows,))
+            cleanup.start()
+            self.assertTrue(in_pkill.wait(2))
+            shower = threading.Thread(target=mv.show, args=("window:5",))
+            shower.start()
+            self.assertFalse(entered.wait(0.3), "Show started while the cleanup held the lock")
+            release.set()
+            self.assertTrue(entered.wait(2))
+            cleanup.join()
+            shower.join()
 
     def test_tunnel_prefers_the_usb_c_network_when_plugged_in(self):
         mv = frame_macview.MacView(["ssh"], lambda remote, **kw: "13: usb0 inet 10.86.200.233/29 scope global", "frame")
@@ -127,6 +130,9 @@ class Helpers(unittest.TestCase):
                 mock.patch.object(frame_macview.subprocess, "run", return_value=ssh_g):
             self.assertEqual(mv._usb_route(), ["-o", "HostName=10.86.200.233", "-o", "HostKeyAlias=frame.example.ts.net"])
             conn.assert_called_once_with(("10.86.200.233", 22), timeout=1)
+            ssh_g.stdout = "hostname frame.example.ts.net\nhostkeyalias paired-frame\n"  # a configured alias wins
+            conn.side_effect = None
+            self.assertIn("HostKeyAlias=paired-frame", mv._usb_route())
             conn.side_effect = OSError("unplugged")
             self.assertEqual(mv._usb_route(), [])
         mv.run = lambda remote, **kw: ""  # no usb0
@@ -134,6 +140,21 @@ class Helpers(unittest.TestCase):
         mv.prefer_usb = False
         mv.run = lambda remote, **kw: self.fail("no ssh when USB is off")
         self.assertEqual(mv._usb_route(), [])
+
+    def test_a_failed_usb_tunnel_falls_back_to_the_network(self):
+        mv = frame_macview.MacView(["ssh"], lambda *a, **k: "", "frame")
+        mv._usb_route = lambda: ["-o", "HostName=10.86.200.233"]
+        tried = []
+
+        def attempt(via, ports):
+            tried.append(list(via))
+            mv._last_tunnel_error = "Connection refused"
+            return not via  # USB fails, the normal path works
+        mv._open_tunnel = attempt
+        mv.tunnel_up = lambda: False
+        mv.ensure_tunnel()
+        self.assertEqual(tried, [["-o", "HostName=10.86.200.233"], []])
+        self.assertEqual(mv.route, "network")
 
 
 class WS:
