@@ -890,16 +890,20 @@ def remove(gid):
     try:
         gid = _check_id(gid)
         ensure_utils()
-        # Tidying Steam's side is best effort; steamos-delete removes the title regardless.
         try:
             shortcut = _library_shortcut(gid, f'{_home()}/{GAMES}/{gid}')
-            if shortcut:
-                frame_android.shortcut_tool('remove', str(shortcut))
         except (FrameError, ValueError):
-            pass
-        # steamos-delete removes the folder and syncs Steam's shortcuts; its json files stay, so clear them too.
+            shortcut = None
+        # steamos-delete removes the folder, the shortcut and its Proton prefix (found through the
+        # shortcut), so it runs first; its json files stay, so clear them too.
         ssh(f'{PY}steamos-delete --delete-title {gid}', timeout=120)
         ssh(f'rm -f {_json_files(gid)}', timeout=30)
+        # Then tidy what it leaves (artwork, collections); best effort.
+        if shortcut:
+            try:
+                frame_android.shortcut_tool('remove', str(shortcut))
+            except (FrameError, ValueError):
+                pass
         return {'id': gid}
     finally:
         _install_lock.release()

@@ -216,6 +216,19 @@ class EntryPoints(unittest.TestCase):
             titles.remove('Game')
         self.assertTrue(any('steamos-delete --delete-title Game' in c for c in cmds))
 
+    def test_native_remove_deletes_before_tidying_the_shortcut(self):
+        # steamos-delete finds the Proton prefix through the shortcut, so the shortcut must still exist.
+        order = []
+        def ssh(cmd, **kwargs):
+            if 'steamos-delete' in cmd:
+                order.append('delete')
+            return 'yes' if 'test -d' in cmd else '/home/steamos' if 'HOME' in cmd else ''
+        with patch.object(titles, 'ssh', side_effect=ssh), patch.object(titles, 'ensure_utils'), \
+             patch.object(titles, '_library_shortcut', return_value=42), \
+             patch.object(titles.frame_android, 'shortcut_tool', side_effect=lambda *a: order.append(a)):
+            titles.remove('Game')
+        self.assertEqual(order, ['delete', ('remove', '42')])
+
     def test_native_refresh_art_backfills_registered_title(self):
         meta = {'id':'Game','name':'My Game','source':'game.zip'}
         writes = []

@@ -277,10 +277,10 @@ class ArtworkSettings(unittest.TestCase):
                 proc.wait(timeout=10)
 
     def test_panel_script_uses_the_keyed_api_helper(self):
-        script = (ROOT / "ui" / "artwork-settings.js").read_text()
+        script = (ROOT / "ui" / "artwork-settings.js").read_text(encoding="utf-8")
         self.assertNotIn("fetch(", script)
         self.assertIn("api('/api/settings/artwork'", script)
-        page = (ROOT / "ui" / "index.html").read_text()
+        page = (ROOT / "ui" / "index.html").read_text(encoding="utf-8")
         self.assertLess(page.index("async function api("), page.index('<script src="/artwork-settings.js">'))
 
 

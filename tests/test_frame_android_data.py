@@ -68,7 +68,8 @@ class ObbTests(unittest.TestCase):
                     data._stream('command')
 
 
-    @unittest.skipUnless(shutil.which("sh") and shutil.which("shasum"), "shell checksum tools unavailable")
+    @unittest.skipUnless(os.name == 'posix' and shutil.which("sh") and shutil.which("shasum"),
+                         "the OBB script runs on the Frame (Linux shell)")
     def test_android_shell_publish_and_hash_failure(self):
         with tempfile.TemporaryDirectory() as tmp:
             source = Path(tmp) / ('main.7.' + PKG + '.obb')
@@ -100,6 +101,7 @@ class ObbTests(unittest.TestCase):
                 self.assertEqual(list(output.parent.glob('*.part')), [])
 
 
+@unittest.skipUnless(os.name == 'posix', 'app-data backups run on the Frame (Linux ownership and modes)')
 class BackupTests(unittest.TestCase):
     def test_roundtrip_and_retains_previous_data(self):
         with tempfile.TemporaryDirectory() as tmp:
