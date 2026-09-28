@@ -925,11 +925,11 @@ const savesToDevice = () => !!(window.frameApp && window.frameApp.saveImages);
 let devGen = 0;
 // Answers that don't depend on the headset (this computer's data, the catalogue, jobs).
 const HEADSET_FREE = /^\/api\/(devices|connection|host|job|titles\/job|webinstall\/job|apk-versions|android\/(catalog|reports)|steam\/search)\b/;
-async function api(path, body) {
+async function api(path, body, device = window.connDevice) {
   const gen = devGen;
   // Changes name the headset the page was showing, so the server refuses one meant
   // for a headset it has since switched away from.
-  const dev = window.connDevice ? { "X-Frame-Device": window.connDevice } : {};
+  const dev = device ? { "X-Frame-Device": device } : {};
   const opts = body === undefined ? { headers: {"X-Frame-UI": UI_KEY} } : {
     method: "POST", headers: {"Content-Type": "application/json", "X-Frame-UI": UI_KEY, ...dev}, body: JSON.stringify(body) };
   let r;
@@ -1485,8 +1485,9 @@ function setVolume(pct, muted) {
 $("vol").oninput = () => {
   setVolume(+$("vol").value);
   clearTimeout(volTimer);
+  const dev = window.connDevice;  // the headset whose slider this was, even 250 ms later
   volTimer = setTimeout(async () => {
-    try { await api("/api/volume", { level: $("vol").value / 100 }); } catch (e) { toast(e.message, true); }
+    try { await api("/api/volume", { level: $("vol").value / 100 }, dev); } catch (e) { toast(e.message, true); }
     volTimer = null;
   }, 250);
 };
@@ -2551,6 +2552,7 @@ function onConnection(s) {
     devGen++;               // answers still on their way are about the other headset
     refreshing = null;      // and the next status check must be a new one
     if (live) toggleLive(false);  // the other headset's video or captures
+    clearTimeout(volTimer); volTimer = null;  // a volume change still waiting to be sent
     viewGen++;              // a capture still on its way is the other headset's too
     lastImg = null; lastShot = null;
     $("canvas").hidden = true; $("viewerEmpty").hidden = false; $("zoombar").hidden = true;

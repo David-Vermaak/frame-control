@@ -922,8 +922,10 @@ def devices_action(link, body, open_setup, busy=lambda: 0):
     did = body.get("id")
     active = link.active_device()
     is_active = did == active["id"]
-    moves = action == "use" or (is_active and (action == "remove" or (
-        action == "update" and (body.get("user") is not None or body.get("port") is not None))))
+    moves = action == "use" or (is_active and (
+        action in ("remove", "address-remove")
+        or (action == "update" and (body.get("user") is not None or body.get("port") is not None))
+        or (action == "address-update" and body.get("newHost") not in (None, body.get("host")))))
     if moves and busy():
         raise frame_devices.DeviceError(
             f"Wait for what's running on {active['name']} to finish (see the activity bar), then try again")

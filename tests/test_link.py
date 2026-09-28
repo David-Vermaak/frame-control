@@ -349,7 +349,9 @@ class Connecting(unittest.TestCase):
         d = self.device("localhost")
         other = self.reg.add_device("frame-other")
         for body in ({"action": "use", "id": other["id"]}, {"action": "remove", "id": d["id"]},
-                     {"action": "update", "id": d["id"], "port": 2222}):
+                     {"action": "update", "id": d["id"], "port": 2222},
+                     {"action": "address-remove", "id": d["id"], "host": "localhost"},
+                     {"action": "address-update", "id": d["id"], "host": "localhost", "newHost": "127.0.0.1"}):
             with self.assertRaises(fd.DeviceError, msg=body):
                 fl.devices_action(self.link, body, open_setup=None, busy=lambda: 1)
         # Renaming, or changing another headset, is fine.
