@@ -155,6 +155,7 @@ class Connecting(unittest.TestCase):
         self.assertIn(f"Port={self.port}", opts)
         master = [c for c in self.calls() if "ControlMaster=yes" in c][-1]
         self.assertIn("StrictHostKeyChecking=accept-new", master)  # first connection: nothing pinned yet
+        self.assertTrue(fd.known_hosts(d["id"]).parent.is_dir())  # where ssh saves the key it accepts
         # It learned: localhost works on this network.
         learned = {a["host"]: a for a in self.reg.get(d["id"])["addresses"]}
         self.assertEqual(learned["localhost"]["networks"], ["n-test"])

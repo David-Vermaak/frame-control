@@ -666,8 +666,11 @@ class Link:
                 extra = ["-o", "StrictHostKeyChecking=yes"]
             else:
                 # First connection since this headset was added: trust what it shows
-                # (as Set Up Connection does), and pin it from now on.
+                # (as Set Up Connection does), and pin it from now on. ssh won't create
+                # the folder its known_hosts file goes in.
                 extra = ["-o", "StrictHostKeyChecking=accept-new"]
+                pins = frame_devices.known_hosts(device["id"]).parent
+                pins.mkdir(**({} if frame_host.WINDOWS else {"mode": 0o700}), parents=True, exist_ok=True)
         if self.control:
             # No ConnectTimeout: with it, OpenSSH's master takes ~5s to open its socket.
             argv = [*self.mux_base, *opts, *extra, "-v", "-o", "ControlMaster=yes", "-o", "ServerAliveInterval=5",
