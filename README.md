@@ -12,7 +12,7 @@ See what the headset sees, install games and Android apps, move files and text a
 [![Checks](https://img.shields.io/github/actions/workflow/status/saphid/steam-frame/checks.yml?branch=main&label=checks)](https://github.com/saphid/steam-frame/actions/workflows/checks.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-66c0f4)](LICENSE)
 
-[**Download**](#install) · [Trailer](#trailer) · [Features](#features) · [Set up the headset](#set-up-the-headset) · [Feedback](#feedback) · [Docs](#going-further)
+[**Website**](https://frame-control.pages.dev) · [**Download**](#install) · [Trailer](#trailer) · [Features](#features) · [Set up the headset](#set-up-the-headset) · [Feedback](#feedback) · [Docs](#going-further)
 
 <br>
 
@@ -172,12 +172,16 @@ entry to `~/.ssh/config` and keys at `~/.ssh/id_ed25519_frame` and
 ## Feedback
 
 This is a first public test, so reports are really useful, especially from
-Windows and Linux. Please [open an issue](https://github.com/saphid/steam-frame/issues/new)
-with:
+Windows and Linux. The quickest way is the
+[feedback form](https://frame-control.pages.dev/feedback/): no GitHub account
+needed, and it opens an issue here. Please include:
 
 - what you tried and what happened
 - your computer's OS and your SteamOS build (Steam Settings → System)
 - the server log: **Frame → Show Server Log** in the app
+
+Issues and PRs opened directly on GitHub by new contributors are auto-closed
+until a maintainer approves them; see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Going further
 
