@@ -835,7 +835,7 @@ class Link:
                 proc.kill()
                 self.fail(step, self.explain(f"Timed out talking to {alias}") or "The headset took too long to answer.",
                           f"Timed out talking to {alias}")
-                return "next" if step in ("ssh", "identity") else "stop"
+                return "next"  # silence is about this address (or a jump host's forward to it)
             try:
                 line = lines.get(timeout=min(left, 0.25))
             except queue.Empty:

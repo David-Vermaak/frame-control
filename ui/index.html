@@ -1549,10 +1549,16 @@ function upload(file, mode, dev = window.connDevice) {
     const bar = $("prog").firstElementChild;
     $("prog").style.display = "block"; bar.style.width = "0";
     xhr.upload.onprogress = e => { if (e.lengthComputable) bar.style.width = (100 * e.loaded / e.total) + "%"; };
+    const gen = devGen;
     xhr.onload = () => {
       $("prog").style.display = "none";
       let data; try { data = JSON.parse(xhr.responseText); } catch { data = { error: `HTTP ${xhr.status}` }; }
-      if (data.apk?.blocker && xhr.status >= 300) checkApkAlternatives(data.apk);
+      if (gen !== devGen) {  // the app switched headsets meanwhile: nothing to offer about this one here
+        const err = new Error(data.error || "Switched headsets");
+        err.stale = true;
+        return xhr.status < 300 ? resolve(data) : reject(err);
+      }
+      if (data.apk?.blocker && xhr.status >= 300) checkApkAlternatives(data.apk, dev);
       xhr.status < 300 ? resolve(data) : reject(new Error(data.error));
     };
     xhr.onerror = () => { $("prog").style.display = "none"; reject(new Error("network error")); };
@@ -1560,7 +1566,7 @@ function upload(file, mode, dev = window.connDevice) {
   });
 }
 let apkLookup = 0;
-async function checkApkAlternatives(apk) {
+async function checkApkAlternatives(apk, dev = window.connDevice) {
   const lookup = ++apkLookup;
   $("apkAltReason").textContent = apk.blocker;
   $("apkAltVersions").textContent = "Checking F-Droid for older versions…";
@@ -1571,12 +1577,12 @@ async function checkApkAlternatives(apk) {
   if (apk.version_code != null) query.set("code", apk.version_code);
   try {
     const result = await api(`/api/apk-versions?${query}`);
-    if (lookup === apkLookup && $("apkAltDlg").open) showApkAlternatives(apk.blocker, result);
+    if (lookup === apkLookup && $("apkAltDlg").open) showApkAlternatives(apk.blocker, result, dev);
   } catch (e) {
     if (lookup === apkLookup) $("apkAltVersions").textContent = e.message;
   }
 }
-function showApkAlternatives(reason, result) {
+function showApkAlternatives(reason, result, dev = window.connDevice) {
   $("apkAltReason").textContent = reason;
   $("apkAltNote").textContent = `${result.versions.length} of ${result.total} compatible versions. ${result.note}`;
   $("apkAltErrors").textContent = result.errors.join(" · ");
@@ -1591,9 +1597,10 @@ function showApkAlternatives(reason, result) {
     const v = result.versions[+b.dataset.version];
     if (installing.has(result.package)) return;
     b.disabled = true; b.textContent = "Installing…";
+    // For the headset the APK was checked against: refused (409) if the app has switched since.
     const res = await runJob(`Install ${result.package} ${v.version}`, result.package, () => api("/api/android", {
       action: "install", package: result.package, url: v.url
-    }));
+    }, dev));
     if (res) $("apkAltDlg").close(); else { b.disabled = false; b.textContent = "Install"; }
     await loadAndroid();
     if (cat.apps) { const y = window.scrollY; filterCatalog(); window.scrollTo(0, y); }
