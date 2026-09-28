@@ -20,6 +20,10 @@ class PublisherSources(unittest.TestCase):
         self.addCleanup(self.network.stop)
         _web._limited.clear()
         self.addCleanup(_web._limited.clear)
+        self.root = Path(self.tmp.name) / 'caches' / 'apk-sources'
+        roots = patch.object(_web.frame_host, 'cache_dir', lambda *p: self.root.parent.joinpath(*p))
+        roots.start()
+        self.addCleanup(roots.stop)
 
     def test_curated_search_is_offline(self):
         self.assertEqual(github.search(github.sources()[0], 'hello')[0]['id'], 'KhronosGroup/OpenXR-SDK-Source')
@@ -147,6 +151,27 @@ class PublisherSources(unittest.TestCase):
             self.assertEqual(_web.read('https://itch.io/test', ('itch.io',)), b'index')  # throttled: stale copy
         with patch.object(_web, 'read', return_value=b'<html>'), self.assertRaises(SourceError):
             github._api('/x')
+
+    def test_prune_caps_apks_by_age_and_removes_orphans(self):
+        now = 1e9
+        self.root.mkdir(parents=True)
+        def make(folder, name, size, age):
+            path = Path(folder) / name
+            path.mkdir() if size is None else path.write_bytes(b'x' * size)
+            os.utime(str(path), (now - age, now - age))
+            return path
+        pub = self.tmp.name
+        oldest = make(self.root, 'a.apk', 40, 9000)
+        old = make(pub, 'b.apk', 40, 8000)
+        kept = make(self.root, 'c.apk', 40, 7200)
+        recent = make(pub, 'd.apk', 40, 60)  # just downloaded: never pruned
+        orphan, busy = make(self.root, 'x.part', 5, 90000), make(pub, 'y.part', 5, 60)
+        listing, fresh = make(pub, 'l.data', 5, 8 * 86400), make(pub, 'm.data', 5, 3600)
+        tmpdir = make(self.root, 'tmpabc', None, 90000)
+        with patch.object(_web, 'APK_CAP', 100), patch.object(_web.time, 'time', return_value=now):
+            _web.prune()
+        self.assertEqual([p.exists() for p in (oldest, old, kept, recent)], [False, False, True, True])
+        self.assertEqual([p.exists() for p in (orphan, busy, listing, fresh, tmpdir)], [False, True, False, True, False])
 
     def test_backoff_honours_retry_after_per_host(self):
         from apk_sources import SourceLimited

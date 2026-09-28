@@ -614,7 +614,9 @@ def download(source, entry_id, version_code=None):
     sha = version['sha256']
     path = frame_host.cache_dir('apk-sources', sha + '.apk')
     try:
-        if not path.exists() or _sha256(path) != sha:
+        if path.exists() and _sha256(path) == sha:
+            os.utime(str(path))  # most recently used, for cache pruning
+        else:
             path.parent.mkdir(parents=True, exist_ok=True)
             fd, tmp = tempfile.mkstemp(dir=str(path.parent), suffix='.part')
             os.close(fd)
@@ -626,6 +628,7 @@ def download(source, entry_id, version_code=None):
             finally:
                 if os.path.exists(tmp):
                     os.unlink(tmp)
+            _web.prune()
         return {'apk': str(path), 'obb': [], 'sha256': sha, 'verified': True}
     except SourceLimited as e:
         raise _limited(source, e) from e

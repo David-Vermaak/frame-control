@@ -279,6 +279,8 @@ def search(query='', vr=None, source=None, installable=False, timeout=TIMEOUT, l
 
 def warm():
     """Start every enabled source's index download in the background (server start, new repo)."""
+    from apk_sources import _web
+    _web.prune()
     items, _ = registry()
     for m, s in items:
         if s['enabled'] and not s.get('page_only'):

@@ -1,6 +1,7 @@
 """Offline authenticated repository fixtures; no tests contact a server."""
 import io
 import json
+import os
 from pathlib import Path
 import sys
 import tempfile
@@ -104,8 +105,10 @@ class Repositories(unittest.TestCase):
         self.assertTrue(downloaded['verified'])
         self.assertEqual(Path(downloaded['apk']).read_bytes(), (FIXTURES / 'example.apk').read_bytes())
         count = self.fetch_mock.call_count
+        os.utime(downloaded['apk'], (1, 1))
         fdroid.download(source, 'org.example.app', 1)
         self.assertEqual(self.fetch_mock.call_count, count)
+        self.assertGreater(Path(downloaded['apk']).stat().st_mtime, 1)  # reuse counts as recent use
 
     def test_wrong_pin_is_not_saved(self):
         with self.assertRaisesRegex(SourceError, 'fingerprint mismatch'):

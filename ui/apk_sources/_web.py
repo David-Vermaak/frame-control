@@ -1,11 +1,12 @@
 """Small HTTPS cache and APK downloader for public publisher sources."""
-import hashlib, os, tempfile, threading, time, urllib.error, urllib.parse, urllib.request, zipfile
+import hashlib, os, shutil, tempfile, threading, time, urllib.error, urllib.parse, urllib.request, zipfile
 from email.utils import parsedate_to_datetime
 
 import frame_host
 from . import SourceError, SourceLimited
 
 UA = 'FrameControl/0.1'
+APK_CAP = 2 * 1024 ** 3  # cached APKs across all sources, least recently used go first
 BACKOFF = 600  # seconds to leave a host alone after 403/429 without Retry-After
 _limited = {}  # host -> time.time() before which we don't contact it
 _limited_lock = threading.Lock()
@@ -51,6 +52,41 @@ def cache():
     path = frame_host.cache_dir('apk-sources', 'publisher')
     os.makedirs(path, exist_ok=True)
     return str(path)
+
+
+def prune():
+    """Trim the download caches: APKs to APK_CAP by mtime, orphaned .part/temp files, old listings."""
+    now, apks = time.time(), []
+    for folder in (str(frame_host.cache_dir('apk-sources')), cache()):
+        try:
+            names = os.listdir(folder)
+        except OSError:
+            continue
+        for name in names:
+            path = os.path.join(folder, name)
+            try:
+                st = os.lstat(path)
+                age = now - st.st_mtime
+                if os.path.isdir(path) and not os.path.islink(path):
+                    if name.startswith('tmp') and age > 86400:  # an interrupted F-Droid index download
+                        shutil.rmtree(path, ignore_errors=True)
+                elif (name.endswith('.part') and age > 86400) or (name.endswith('.data') and age > 7 * 86400):
+                    os.remove(path)
+                elif name.endswith('.apk'):
+                    apks.append((st.st_mtime, st.st_size, path))
+            except OSError:
+                pass
+    total = sum(size for _, size, _ in apks)
+    for mtime, size, path in sorted(apks):
+        if total <= APK_CAP:
+            break
+        if now - mtime < 3600:  # may be about to be installed
+            continue
+        try:
+            os.remove(path)
+            total -= size
+        except OSError:
+            pass
 
 
 def checked_url(url, hosts):
@@ -153,6 +189,7 @@ def apk(url, hosts, digest=None, name=None):
                 raise SourceError('Download is not an APK')
         path = os.path.join(cache(), actual + '.apk')
         os.replace(tmp, path)
+        prune()
         return {'apk': path, 'obb': [], 'sha256': actual, 'verified': bool(digest)}
     except urllib.error.HTTPError as e:
         if e.code in (403, 429):
