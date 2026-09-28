@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Send feedback · Frame Control</title>
+<meta name="description" content="Report a bug, suggest an idea or ask a question about Frame Control. No GitHub account needed.">
+<meta name="theme-color" content="#0e141b">
+<link rel="icon" href="/favicon.png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="stylesheet" href="/css/site.css">
+<script src="/js/site.js" defer></script>
+<script src="/js/feedback.js" defer></script>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="/"><img src="/img/icon.png" alt="">Frame Control</a>
+    <nav aria-label="Sections">
+      <a href="/#features">Features</a>
+      <a href="/#setup">Setup</a>
+      <a href="/#download">Download</a>
+      <a href="/#faq">FAQ</a>
+      <a href="/feedback/" aria-current="page">Feedback</a>
+    </nav>
+    <div class="end">
+      <a class="btn small ghost" href="https://github.com/saphid/frame-control">
+        <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+        GitHub
+      </a>
+      <a class="btn small coffee" data-kofi href="#" target="_blank" rel="noopener">Support</a>
+    </div>
+  </div>
+</header>
+
+<main class="page">
+  <div class="wrap">
+    <div class="head">
+      <span class="kicker">Feedback</span>
+      <h1>Tell us what happened</h1>
+      <p>Bugs, ideas and questions all help. What you send becomes a public issue on GitHub, where you can follow it.</p>
+    </div>
+
+    <div class="form-wrap">
+      <div>
+        <form class="panel" id="feedback" novalidate>
+          <div class="alert err" id="error" role="alert" hidden></div>
+
+          <fieldset class="field">
+            <legend>What kind of feedback?</legend>
+            <div class="kinds">
+              <label><input type="radio" name="kind" value="bug" checked><span>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2l1.9 1.9M16 2l-1.9 1.9M9 7.1V6a3 3 0 1 1 6 0v1.1"/><path d="M12 20c-3.3 0-6-2.7-6-6v-3a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v3c0 3.3-2.7 6-6 6zM12 20v-9M6.5 13H3M21 13h-3.5M6 9 3.5 7M18 9l2.5-2M6 17l-2.5 2M18 17l2.5 2"/></svg>Bug</span></label>
+              <label><input type="radio" name="kind" value="idea"><span>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7V16h8v-1.3A7 7 0 0 0 12 2z"/></svg>Idea</span></label>
+              <label><input type="radio" name="kind" value="question"><span>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3M12 17h.01"/></svg>Question</span></label>
+              <label><input type="radio" name="kind" value="other"><span>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/></svg>Other</span></label>
+            </div>
+          </fieldset>
+
+          <div class="field">
+            <label for="title">Title</label>
+            <input type="text" id="title" name="title" maxlength="120" required placeholder="e.g. Live view stops after a minute on Windows">
+          </div>
+
+          <div class="field">
+            <label for="message">Details <small id="message-hint">What you tried, what happened, and what you expected.</small></label>
+            <textarea id="message" name="message" maxlength="5000" required></textarea>
+          </div>
+
+          <div class="row3">
+            <div class="field">
+              <label for="os">Your computer</label>
+              <input type="text" id="os" name="os" maxlength="120" placeholder="e.g. Windows 11">
+            </div>
+            <div class="field">
+              <label for="version">App version</label>
+              <input type="text" id="version" name="version" maxlength="120" placeholder="e.g. v0.3.1">
+            </div>
+            <div class="field">
+              <label for="steamos">SteamOS build</label>
+              <input type="text" id="steamos" name="steamos" maxlength="120" placeholder="Steam Settings → System">
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="github">GitHub username <small>Optional. Add it to get notified when someone replies.</small></label>
+            <input type="text" id="github" name="github" maxlength="40" autocomplete="username" placeholder="@yourname">
+          </div>
+
+          <div class="trap" aria-hidden="true">
+            <label for="website">Leave this empty</label>
+            <input type="text" id="website" name="website" tabindex="-1" autocomplete="off">
+          </div>
+
+          <div class="actions">
+            <button class="btn primary" type="submit" id="send">Send feedback</button>
+            <span class="note">Everything you send is public. Don't include passwords, IP addresses or personal details.</span>
+          </div>
+        </form>
+
+        <div class="panel done" id="done" hidden>
+          <div class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5L20 7"/></svg></div>
+          <h2>Thanks, that's sent</h2>
+          <p id="done-text">Your feedback is now an issue on GitHub.</p>
+          <div class="cta">
+            <a class="btn primary" id="issue-link" href="https://github.com/saphid/frame-control/issues" hidden>View your issue</a>
+            <a class="btn ghost" href="/feedback/">Send more</a>
+          </div>
+        </div>
+      </div>
+
+      <aside class="panel">
+        <h3>Reporting a bug?</h3>
+        <p>The server log helps most: in the app, choose <b>Frame → Show Server Log</b> and paste the last few lines into Details.</p>
+        <h3>Prefer GitHub?</h3>
+        <p>You can <a href="https://github.com/saphid/frame-control/issues/new/choose">open an issue there directly</a>. First-time issues are closed until a maintainer reviews them; see <a href="https://github.com/saphid/frame-control/blob/main/CONTRIBUTING.md">CONTRIBUTING.md</a>. This form skips that queue.</p>
+        <h3 data-needs-kofi>Enjoying it?</h3>
+        <p data-needs-kofi>Frame Control is free. <a data-kofi href="#" target="_blank" rel="noopener">Buy me a coffee</a> if it saved you some time.</p>
+      </aside>
+    </div>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap">
+    <a class="brand" href="/"><img src="/img/icon.png" alt="">Frame Control</a>
+    <div class="cols">
+      <a href="https://github.com/saphid/frame-control">GitHub</a>
+      <a href="https://github.com/saphid/frame-control/releases">Releases</a>
+      <a href="https://github.com/saphid/frame-control/blob/main/docs/frame-control.md">Docs</a>
+      <a href="/feedback/">Feedback</a>
+      <a href="https://github.com/saphid/frame-control/blob/main/CONTRIBUTING.md">Contributing</a>
+      <a href="/privacy/">Privacy</a>
+    </div>
+    <p class="legal">© <span data-year>2026</span> saphid · MIT licence. Unofficial and not affiliated with or endorsed by Valve. Steam, Steam Frame and SteamVR are trademarks of Valve Corporation.</p>
+  </div>
+</footer>
+</body>
+</html>

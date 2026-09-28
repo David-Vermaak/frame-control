@@ -1,0 +1,14 @@
+#!/usr/bin/env python3
+"""Stub for SteamOS's polkit helper, which approve-ssh-key runs once a pairing
+is approved: asks the fake Frame's supervisor to (re)start sshd."""
+import json
+import sys
+import urllib.request
+
+sys.path.insert(0, '/usr/local/lib/fakeframe')
+import fakeframe_state as fs  # noqa: E402
+
+fs.log('steamos-enable-sshd')
+req = urllib.request.Request('http://127.0.0.1:9999/ctl', data=json.dumps({'args': ['sshd', 'on']}).encode(),
+                             headers={'Content-Type': 'application/json'})
+urllib.request.urlopen(req, timeout=10).read()

@@ -102,6 +102,18 @@ started. `curl http://<frame-ip>:32000/properties.json` shows whether the servic
 `~/.ssh/authorized_keys` lives under `/home`, which SteamOS keeps across OS
 updates (inferred from Deck; the Frame uses the same A/B image scheme).
 
+## From an iPhone or iPad
+
+The iPhone app ([iphone.md](iphone.md)) makes its own ed25519 key and adds it
+with the Developer Mode password, once, over a password login; the Frame's sshd
+offers `publickey,password` (OpenSSH 9.7p1, keyboard-interactive off). It can't
+use the devkit pairing above: that installs an RSA key, and the Swift SSH
+library signs RSA only with SHA-1, which OpenSSH 8.8 and later refuse by default.
+The app pins the Frame's host key on first use and asks you to pair again if it
+changes. **Verified 2026-09-27** against the Frame's recovery image
+([recovery-and-images.md](recovery-and-images.md)); on the headset, the add-the-key-yourself
+route was used.
+
 ## Keeping `sshd` enabled across updates
 
 - **Frame**: SSH is tied to the Developer Mode toggle, so it should survive

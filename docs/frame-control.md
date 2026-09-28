@@ -17,6 +17,15 @@ python3 ui/server.py         # anywhere: then open http://127.0.0.1:47810
 
 ## Features
 
+The window has four tabs: **Home** (headset view, status, screenshots),
+**Games** (installed games, sideloaded titles, getting games), **Android** (apps,
+the catalogue, display settings, reports) and **Tools** (sending files and text,
+Flatpaks, remote and power). Keys 1–4 switch between them. Files can be dropped
+anywhere in the window. When the Frame can't be reached, one banner says why in
+plain words and the app retries every few seconds, filling everything in once it
+answers. Flatpak and Android installs run in the background; the bottom bar
+counts them while they run.
+
 - **Headset view**: what the lenses show, as SteamVR composites it (the room,
   floating panels, dashboard and controllers). Shows the left eye, like pointing
   a camera into one lens, or both eyes, as a single shot; saves as PNG. **Live**

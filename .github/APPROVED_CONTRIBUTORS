@@ -1,0 +1,9 @@
+# GitHub handles approved to bypass contribution auto-close
+# Format: <username> <capability>
+# capability:
+#   issue  future issues stay open
+#   pr     future issues and PRs stay open
+# Maintainers add people by replying `lgtmi` or `lgtm` on an issue
+# (.github/workflows/approve-contributor.yml); editing this file by hand works too.
+
+fbl100 pr

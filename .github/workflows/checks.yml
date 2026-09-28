@@ -20,6 +20,7 @@ jobs:
         run: sudo apt-get update -qq && sudo apt-get install -y -qq zsh
       - name: Script syntax
         run: |
+          sh -n ui/local-bin/ssh
           for f in scripts/*.sh frame/*/*.sh; do
             case "$(head -n 1 "$f")" in
               *zsh*) zsh -n "$f" ;;
@@ -28,13 +29,15 @@ jobs:
           done
       - name: Python compiles
         run: |
-          python -m py_compile ui/*.py apk-catalog/*.py frame/android/*.py
+          python -m py_compile ui/*.py apk-catalog/*.py frame/android/*.py ios/scripts/*.py
           # Valve's devkit-utils (vendored; run by the Frame's python3). Most have no .py suffix.
           python -m py_compile $(find frame/devkit-utils -type f ! -name '*.*' ! -name LICENSE) frame/devkit-utils/devkit_utils/*.py
       - name: Server tests
         run: python -m unittest discover -s tests -v
       - name: App syntax
         run: node --check app/main.js && node --check app/build/make-icon.js && node --check app/build/fetch-deps.js && node --check app/preload.js && node --check app/install-link.js
+      - name: Website
+        run: node --test site/test/*.test.mjs && node --check site/public/js/site.js && node --check site/public/js/feedback.js
 
   # The server runs on each desktop OS the app ships for, on the Python version
   # the app bundles (app/build/fetch-deps.js) and, on Ubuntu, a newer one.
@@ -57,3 +60,28 @@ jobs:
           python-version: ${{ matrix.python }}
       - name: Server tests
         run: python -m unittest discover -s tests -v
+
+  # The iPhone app: builds for the Simulator and runs its unit tests.
+  ios:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Generate the project
+        run: brew install xcodegen && cd ios && xcodegen generate
+      - name: Build and test
+        run: |
+          cd ios
+          udid=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; print(next(x["udid"] for r in d for x in d[r] if x["name"].startswith("iPhone")))')
+          xcodebuild -project FrameControl.xcodeproj -scheme FrameControl -destination "platform=iOS Simulator,id=$udid" CODE_SIGNING_ALLOWED=NO test
+
+  # End-to-end tests against the fake Frame (tests/fakeframe): Arch Linux ARM
+  # in Docker, on a native arm64 runner like the headset. See docs/testing.md.
+  e2e:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install zsh
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq zsh
+      - name: End-to-end tests
+        run: scripts/e2e.sh
