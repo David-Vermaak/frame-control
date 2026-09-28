@@ -10,6 +10,7 @@ import time
 
 MAX_BYTES = 20 * 1024 ** 3
 MAX_FILES = 100000
+MAX_MANIFEST = 1024 * 1024
 
 
 def inspect_archive(path, package, instance):
@@ -31,7 +32,7 @@ def inspect_archive(path, package, instance):
             total += member.size
             if total > MAX_BYTES:
                 raise ValueError('archive exceeds 20 GiB')
-            if name == 'manifest.json' and member.isfile() and member.size <= 4096:
+            if name == 'manifest.json' and member.isfile() and member.size <= MAX_MANIFEST:
                 manifest = json.load(archive.extractfile(member))
             elif parts[0] != 'data':
                 raise ValueError('unexpected archive member')
@@ -39,7 +40,8 @@ def inspect_archive(path, package, instance):
                 manifest.get('package') != package or manifest.get('instance') != instance or
                 'data' not in names):
             raise ValueError('backup does not match this package and instance')
-    return {'files': len(names) - 1, 'bytes': total, 'package': package, 'instance': instance}
+    return {'files': len(names) - 1, 'bytes': total, 'package': package, 'instance': instance,
+            'skipped_links': manifest.get('skipped_link_count', 0)}
 
 
 def backup(root, package, instance, output):
@@ -47,22 +49,32 @@ def backup(root, package, instance, output):
     source = root / package
     if source.is_symlink() or not source.is_dir():
         raise ValueError('private app data does not exist or is a symlink')
-    count, total = 0, 0
+    count, total, links, skipped = 0, 0, [], 0
 
     def checked(member):
-        nonlocal count, total
+        nonlocal count, total, skipped
+        if member.issym():  # never followed or restored; listed in the manifest instead
+            skipped += 1
+            if len(links) < 1000:
+                links.append({'path': member.name[:512], 'target': member.linkname[:256]})
+            return None
+        if member.islnk():  # a second name for a file already archived: store its content again
+            member.type, member.linkname = tarfile.REGTYPE, ''
+            member.size = os.lstat(str(source / member.name[len('data/'):])).st_size
         count += 1
         total += member.size
         if not (member.isdir() or member.isfile()) or count > MAX_FILES or total > MAX_BYTES:
-            raise ValueError('private data contains links/special files or exceeds backup limits')
+            raise ValueError('private data contains special files or exceeds backup limits')
         return member
 
-    manifest = json.dumps({'format': 1, 'package': package, 'instance': instance}).encode()
     with tarfile.open(fileobj=output, mode='w|gz', dereference=False) as archive:
+        archive.add(str(source), arcname='data', filter=checked)
+        # Written last so that it can list what was skipped.
+        manifest = json.dumps({'format': 1, 'package': package, 'instance': instance,
+                               'skipped_links': links, 'skipped_link_count': skipped}).encode()
         member = tarfile.TarInfo('manifest.json')
         member.size, member.mode = len(manifest), 0o600
         archive.addfile(member, io.BytesIO(manifest))
-        archive.add(str(source), arcname='data', filter=checked)
 
 
 def restore(root, package, instance, input_stream):
@@ -108,6 +120,10 @@ def restore(root, package, instance, input_stream):
         except BaseException:
             previous.rename(source)
             raise
+        # Keep only the newest pre-restore copy of this package's data.
+        for old in root.glob('.' + package + '.before-restore-*'):
+            if old != previous and not old.is_symlink():
+                shutil.rmtree(str(old), ignore_errors=True)
         result['previous'] = str(previous)
         return result
 

@@ -116,6 +116,46 @@ class BackupTests(unittest.TestCase):
             self.assertEqual((source / 'files/save').read_bytes(), b'original save')
             self.assertEqual((Path(result['previous']) / 'files/save').read_bytes(), b'new save')
 
+    def test_symlinks_skipped_and_recorded_hardlinks_copied(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / PKG
+            (source / 'files').mkdir(parents=True)
+            (source / 'files/save').write_bytes(b'save')
+            os.link(str(source / 'files/save'), str(source / 'files/save-link'))
+            os.symlink('/data/app/lib', str(source / 'lib'))
+            os.symlink('save', str(source / 'files/alias'))
+            archive = root / 'backup.tar.gz'
+            with archive.open('wb') as output:
+                REMOTE['backup'](root, PKG, META['instance'], output)
+            result = REMOTE['inspect_archive'](archive, PKG, META['instance'])
+            self.assertEqual(result['skipped_links'], 2)
+            with tarfile.open(archive) as tar:
+                manifest = json.load(tar.extractfile('manifest.json'))
+                self.assertEqual(tar.extractfile('data/files/save-link').read(), b'save')
+            self.assertEqual(sorted((l['path'], l['target']) for l in manifest['skipped_links']),
+                             [('data/files/alias', 'save'), ('data/lib', '/data/app/lib')])
+            with archive.open('rb') as src:
+                REMOTE['restore'](root, PKG, META['instance'], src)
+            self.assertFalse((source / 'lib').exists() or (source / 'lib').is_symlink())
+            self.assertEqual((source / 'files/save-link').read_bytes(), b'save')
+
+    def test_restore_keeps_only_latest_previous_copy(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / PKG).mkdir()
+            (root / PKG / 'save').write_bytes(b'one')
+            other = root / '.org.example.gameplus.before-restore-1'  # another package's copy is left alone
+            other.mkdir()
+            archive = io.BytesIO()
+            REMOTE['backup'](root, PKG, META['instance'], archive)
+            previous = []
+            for _ in range(3):
+                archive.seek(0)
+                previous.append(REMOTE['restore'](root, PKG, META['instance'], archive)['previous'])
+            self.assertEqual(sorted(root.glob('.' + PKG + '.before-restore-*')), [Path(previous[-1])])
+            self.assertTrue(other.exists())
+
     def make_archive(self, path, members, package=PKG):
         with tarfile.open(path, 'w:gz') as archive:
             payload = json.dumps({'format': 1, 'package': package, 'instance': META['instance']}).encode()
