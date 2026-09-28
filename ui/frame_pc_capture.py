@@ -27,6 +27,11 @@ class Native:
     def __init__(self, path=LIBRARY):
         self.dll_dirs = []
         if sys.platform == 'win32':
+            # Set process coordinates before loading GStreamer: a plugin may
+            # create a helper HWND during discovery, after which it is too late.
+            user = C.WinDLL('user32')
+            user.SetProcessDpiAwarenessContext.argtypes = [C.c_void_p]
+            user.SetProcessDpiAwarenessContext(C.c_void_p(-4))
             for folder in (path.parent, path.parent / 'bin'):
                 self.dll_dirs.append(os.add_dll_directory(str(folder)))
         self.lib = C.CDLL(str(path))
@@ -208,8 +213,6 @@ class Windows:
         self.W = W
         self.user = C.WinDLL('user32', use_last_error=True)
         self.dwm = C.WinDLL('dwmapi')
-        self.user.SetProcessDpiAwarenessContext.argtypes = [C.c_void_p]
-        self.user.SetProcessDpiAwarenessContext(C.c_void_p(-4))  # per-monitor v2
         self.user.IsWindow.argtypes = [W.HWND]
         self.user.IsWindowVisible.argtypes = [W.HWND]
         self.user.IsIconic.argtypes = [W.HWND]
