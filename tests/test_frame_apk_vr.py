@@ -202,6 +202,20 @@ class VRTests(unittest.TestCase):
                 z.writestr('classes.dex', b'')
             self.assertEqual(frame_android.xr_compat_files(str(flat)), {})
 
+    def test_xr_compat_layer_missing(self):
+        with tempfile.TemporaryDirectory() as d:
+            apk = Path(d) / 'a.apk'
+            with zipfile.ZipFile(apk, 'w') as z:
+                z.writestr('lib/arm64-v8a/libopenxr_loader.so', b'')
+            with patch.object(frame_android, 'XR_COMPAT', d):
+                with self.assertRaisesRegex(frame_android.FrameError, 'build.sh'):
+                    frame_android.xr_compat_files(str(apk))
+
+    def test_patch_rejects_corrupt_manifest_cleanly(self):
+        with patch.object(frame_android, 'apk_info', side_effect=struct.error('bad')):
+            with self.assertRaises(frame_android.FrameError):
+                frame_android.patch('x.apk', 'y.apk')
+
     def test_install_adds_layer_to_vr_apps(self):
         base = {'package': 'org.test.vr', 'label': 'VR', 'abis': [], 'min_sdk': None,
                 'vr': True, 'vr_activity': True, 'launchable': True}

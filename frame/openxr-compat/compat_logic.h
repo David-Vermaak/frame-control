@@ -35,6 +35,7 @@ inline ExtensionPlan extensions(const Names& requested, const Names& available, 
     }
     return p;
 }
+// 1.1's grip_surface is XR_EXT_palm_pose's palm_ext renamed (same pose), not the grip pose.
 inline std::string rewritePath(std::string p, bool palm) {
     const std::string suffix = "/input/grip_surface/pose";
     if (palm && (p == "/user/hand/left" + suffix || p == "/user/hand/right" + suffix))

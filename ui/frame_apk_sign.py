@@ -126,15 +126,20 @@ def signing_key(path=None):
                 f.flush()
                 os.fsync(f.fileno())
             try:
-                os.link(tmp, path)
+                os.link(tmp, path)  # never replaces a key another process wrote first
             except FileExistsError:
                 pass
+            except OSError:  # no hard links (FAT/exFAT): plain rename
+                if not path.exists():
+                    os.replace(tmp, path)
         finally:
-            os.unlink(tmp)
-    os.chmod(path, 0o600)
+            if os.path.exists(tmp):
+                os.unlink(tmp)
+    os.chmod(path, 0o600)  # Windows ignores this; the per-user app-data folder is the protection there
     key = json.loads(path.read_text())
     if key['n'].bit_length() != 2048 or key['e'] != 65537:
-        raise ValueError('invalid cached APK signing key')
+        raise ValueError(f'invalid cached APK signing key; delete {path} to make a new one '
+                         '(re-signed apps then need reinstalling)')
     rsa_verify(b'key check', rsa_sign(b'key check', key), key['n'], key['e'])
     return key
 

@@ -10,7 +10,7 @@ Python stdlib only. CLI: python3 ui/frame_android.py
   install APK [--vr|--flat] [--no-xr-compat] | info APK | patch SRC DST [--add NAME=PATH ...]
   list | launch PKG | stop PKG | remove PKG | probe PKG
 """
-import json, os, re, shlex, shutil, subprocess, sys, threading, time, zlib
+import json, os, re, shlex, shutil, struct, subprocess, sys, threading, time, zlib
 
 import frame_apk
 import frame_host
@@ -86,8 +86,11 @@ def xr_compat_files(apk_path):
         return {}
     add = {}
     for entry, rel in XR_COMPAT_FILES.items():
-        with open(os.path.join(XR_COMPAT, rel), 'rb') as f:
-            add[entry] = f.read()
+        try:
+            with open(os.path.join(XR_COMPAT, rel), 'rb') as f:
+                add[entry] = f.read()
+        except OSError:
+            raise FrameError("the OpenXR compatibility layer isn't built; run frame/openxr-compat/build.sh")
     return add
 
 
@@ -326,7 +329,7 @@ def patch(src, dst, add=None):
         result['patched'] = (['launcher'] if manifest != original else []) + \
             (['openxr-compat'] if add and set(XR_COMPAT_FILES) <= set(add) else [])
         return result
-    except (OSError, ValueError, zipfile.BadZipFile, frame_apk.ApkError) as e:
+    except (OSError, ValueError, IndexError, struct.error, zipfile.BadZipFile, frame_apk.ApkError) as e:
         raise FrameError(str(e)) from e
 
 

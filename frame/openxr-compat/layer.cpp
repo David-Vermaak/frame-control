@@ -121,7 +121,8 @@ XrResult XRAPI_CALL destroySession(XrSession s) try {
 XrResult XRAPI_CALL locateSpaces(XrSession s, const XrSpacesLocateInfo* in, XrSpaceLocations* out) try {
     auto d = get(s); if (!d) return XR_ERROR_HANDLE_INVALID;
     if (!d->locate) return XR_ERROR_FUNCTION_UNSUPPORTED;
-    LOG("xrLocateSpaces -> xrLocateSpacesKHR (core/KHR type aliases)");
+    static std::once_flag logged;  // called every frame
+    std::call_once(logged, [] { LOG("xrLocateSpaces -> xrLocateSpacesKHR (core/KHR type aliases)"); });
     return frame::locate(d->locate, s, in, out);
 } GUARD_END
 XrResult XRAPI_CALL threadSettings(XrSession s, XrAndroidThreadTypeKHR type, uint32_t tid) try {
@@ -226,7 +227,9 @@ XrResult XRAPI_CALL createLayer(const XrInstanceCreateInfo* info, const XrApiLay
     d->gipa = next; d->instance = *instance;
     d->destroy = proc<PFN_xrDestroyInstance>(next, *instance, "xrDestroyInstance");
     // A successful runtime instance must expose xrDestroyInstance.
-    if (!d->destroy) { LOG("invalid downstream: missing xrDestroyInstance"); return XR_ERROR_INITIALIZATION_FAILED; }
+    if (!d->destroy) {  // nothing could ever destroy it, so don't hand it out
+        LOG("invalid downstream: missing xrDestroyInstance"); *instance = XR_NULL_HANDLE; return XR_ERROR_INITIALIZATION_FAILED;
+    }
     try {
         d->enabled = std::move(plan.downstream); d->stubbed = std::move(plan.stubbed);
         d->palm = frame::has(d->enabled, "XR_EXT_palm_pose");
