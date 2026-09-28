@@ -95,6 +95,28 @@ class SearchTests(SettingsTest):
         finally:
             release.set()
 
+    def test_query_arriving_as_a_search_finishes_is_not_stranded(self):
+        mod = fake()
+        source = mod.sources()[0]
+        arrived = []
+
+        class Event(threading.Event):
+            def set(self):
+                if not arrived:  # a request lands just as the first search completes
+                    arrived.append(None)
+                    t = threading.Thread(target=lambda: arrived.append(search._launch(mod, source, 'second', 50)))
+                    t.start()
+                    t.join(.3)  # blocks on search._lock if completion is published atomically
+                super().set()
+        with patch.object(search, 'threading', types.SimpleNamespace(Event=Event, Thread=threading.Thread)):
+            search._launch(mod, source, 'first', 50)
+            for _ in range(200):
+                if len(arrived) == 2:
+                    break
+                time.sleep(.01)
+            self.assertTrue(arrived[1]['event'].wait(2))
+        self.assertEqual(arrived[1]['query'], ('second', 50))
+
     def test_set_enabled_does_not_hold_search_lock_in_source(self):
         free = []
         def set_enabled(source_id, enabled):

@@ -249,11 +249,11 @@ def _start(key, task):
             task['error'] = str(e)
             task['limited'] = isinstance(e, SourceLimited)
         finally:
-            with _lock:
+            with _lock:  # completion and queue handover are one step for _launch
                 queued = _pending.pop(key, None)
                 if queued:
                     _running[key] = queued
-            task['event'].set()
+                task['event'].set()
         if queued:
             _start(key, queued)
     threading.Thread(target=run, daemon=True).start()
