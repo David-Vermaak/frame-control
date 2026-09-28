@@ -1,7 +1,7 @@
 # Privacy and analytics
 
 Frame Control sends anonymous analytics to [PostHog](https://posthog.com)
-(EU cloud) so the maintainer can see how many people use it, which features
+(US cloud) so the maintainer can see how many people use it, which features
 matter and where installs fail. You choose how much in **Privacy & updates**,
 the last panel on the page. `ui/frame_telemetry.py` is the whole
 implementation.
@@ -28,8 +28,9 @@ computer, exactly as they were sent.
   its data folder (`telemetry/settings.json`). It isn't derived from your
   computer, account or network. To get a new one, delete that file.
 - Events are sent without person profiles (`$process_person_profile: false`)
-  and without location lookup (`$geoip_disable: true`). The PostHog project
-  is also set to discard client IP addresses.
+  and without location lookup (`$geoip_disable: true`). Each carries a
+  placeholder address (`$ip: 0.0.0.0`), so PostHog stores that instead of
+  yours.
 - Every event includes the app version, OS name (macOS, Windows or Linux),
   CPU architecture and Python version.
 
@@ -97,10 +98,14 @@ The same error is sent at most once every 10 minutes.
 ## Report a problem
 
 **Report a problem** is the warning-sign button in the header, also in the
-Privacy panel and under **Help → Report a Problem…**. It files a public issue
-on [GitHub](https://github.com/saphid/frame-control/issues) through the
-website's feedback service, so no GitHub account is needed. It works whatever
-the analytics settings are, because the person sends it deliberately.
+Privacy panel and under **Help → Report a Problem…**. It sends the report
+privately to Frame Control's PostHog project as a `problem_report` event, the
+same way as the analytics above, so only the maintainer can read it and
+nothing is published. It works whatever the analytics settings are, because
+the person sends it deliberately. The report has the kind, title and text you
+wrote, how to reach you if you gave it, a short reference shown after sending,
+and the diagnostics below. It has its own random id, so it isn't linked to
+your analytics events.
 
 With **Include diagnostics** ticked (the default), the report adds:
 
@@ -114,10 +119,14 @@ because those lines can name files and apps. When ticked, it adds the newest
 Activity lines and server log lines, without the request lines.
 
 Everything is scrubbed like error details and limited to what fits in the
-issue. Environment details are kept first, then the newest lines. **Show
+report. Environment details are kept first, then the newest lines. **Show
 exactly what's included** shows the snapshot that will be sent, and later
-activity isn't added to it. If the service can't be reached, the dialog offers
-**Copy report** and **Open on GitHub instead**, a prefilled issue.
+activity isn't added to it. If PostHog can't be reached, **Copy report** puts
+the whole report on the clipboard.
+
+The maintainer reads reports on the Frame Control dashboard in PostHog, or
+with `python3 ui/frame_report.py inbox [days]`, which uses the same personal
+API key as `frame_compat_db.py sync`.
 
 ## Turning it all off
 
@@ -128,6 +137,7 @@ never sends anything unless `FRAME_CONTROL_TELEMETRY=1` is set.
 ## Update checks
 
 The desktop app asks GitHub for the latest release shortly after starting,
-then every 6 hours (`api.github.com/repos/saphid/frame-control/releases/latest`).
-That request carries no id. To stop it, set
+then every 6 hours: the latest release's `update.json` on GitHub, or
+`api.github.com/repos/saphid/frame-control/releases/latest` if that fails.
+Those requests carry no id. To stop it, set
 `FRAME_CONTROL_NO_UPDATE_CHECK=1`. See [releasing.md](releasing.md).

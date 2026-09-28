@@ -182,7 +182,7 @@ This is a first public test, so reports are really useful, especially from
 Windows and Linux. The quickest way is **Report a problem** in the app (the
 warning-sign button at the top, or **Help → Report a Problem…**). It adds
 diagnostics with personal details removed, shows you exactly what's included,
-and opens an issue here. You don't need a GitHub account. Without the app,
+and sends it privately to the maintainer; nothing is published. Without the app,
 use the [feedback form](https://frame-control.pages.dev/feedback/). Please include:
 
 - what you tried and what happened

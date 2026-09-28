@@ -759,19 +759,18 @@
       <option value="question">A question</option><option value="other">Something else</option></select></label>
     <label class="field">Title<input type="text" id="bugTitleIn" maxlength="120" required minlength="5"
       placeholder="e.g. Installing an APK stops at 'copying to the Frame'"></label>
-    <label class="field">What happened?<textarea id="bugText" maxlength="3500" required minlength="10"
+    <label class="field">What happened?<textarea id="bugText" maxlength="5000" required minlength="10"
       placeholder="What you did, what happened, and what you expected."></textarea></label>
-    <label class="field">GitHub username (optional, so you can follow replies)<input type="text" id="bugGithub" maxlength="40" placeholder="@yourname"></label>
+    <label class="field">How can we reach you? (optional, for a reply)<input type="text" id="bugContact" maxlength="120" placeholder="Email, GitHub or Discord name"></label>
     <label class="popt"><input type="checkbox" id="bugDiag" checked><b>Include diagnostics</b>
       <span class="sub">Frame Control's version, your OS and the Frame's SteamOS build.</span></label>
     <label class="popt"><input type="checkbox" id="bugLogs"><b>Also include recent activity and the server log</b>
       <span class="sub">Often shows what went wrong, but can contain file and app names. Check it below before sending.</span></label>
     <details id="bugDiagBox"><summary>Show exactly what's included</summary><div class="sentlog" id="bugDiagText">Loading…</div></details>
-    <p id="bugWarn">This becomes a public issue on GitHub (saphid/frame-control). No GitHub account is needed.</p>
+    <p id="bugWarn">Sent privately to the Frame Control developer. Nothing is published.</p>
     <div class="row rep-actions"><span class="sub" id="bugMsg"></span><span class="spacer"></span>
       <button type="button" class="small" id="bugCancel">Cancel</button>
       <button type="button" class="small" id="bugCopy">Copy report</button>
-      <a class="small" id="bugGithubLink" href="#" target="_blank" hidden>Open on GitHub instead</a>
       <button type="submit" class="action small" id="bugSend">Send report</button></div>
   </form>
 </dialog>
@@ -2331,17 +2330,13 @@ document.querySelectorAll("nav a").forEach(a => a.addEventListener("click", () =
   if (!tabsSeen.has(tab)) { tabsSeen.add(tab); pageEvent("tab_viewed", { tab }); }
 }));
 
-// ---- report a problem (ui/frame_report.py): a GitHub issue via the website, with diagnostics ----
-const bug = { opened: 0, preview: "" };
+// ---- report a problem (ui/frame_report.py): sent privately to PostHog, with diagnostics ----
+const bug = { preview: "" };
 const activityLines = () => [...$("log").children].slice(0, 25).map(el => el.textContent.trim());
 function bugReportText() {
-  const body = `${$("bugText").value.trim()}${bug.preview ? "\n\n---\nDiagnostics:\n```\n" + bug.preview + "\n```" : ""}`;
+  const contact = $("bugContact").value.trim();
+  const body = `Kind: ${$("bugKind").value}${contact ? `\nContact: ${contact}` : ""}\n\n${$("bugText").value.trim()}${bug.preview ? "\n\n---\nDiagnostics:\n```\n" + bug.preview + "\n```" : ""}`;
   return { title: $("bugTitleIn").value.trim(), body };
-}
-function bugGithubUrl() {
-  const { title, body } = bugReportText();
-  return "https://github.com/saphid/frame-control/issues/new?labels=feedback&title=" + encodeURIComponent(title)
-         + "&body=" + encodeURIComponent(body.slice(0, 6000));
 }
 // The preview is a snapshot: exactly this text is sent, even if more activity happens meanwhile.
 async function loadBugPreview() {
@@ -2353,10 +2348,9 @@ async function loadBugPreview() {
 }
 function openBugReport() {
   $("bugForm").reset();
-  $("bugMsg").textContent = ""; $("bugGithubLink").hidden = true; $("bugSend").disabled = false;
+  $("bugMsg").textContent = ""; $("bugSend").disabled = false;
   $("bugCancel").textContent = "Cancel";
   $("bugDiagBox").open = false; $("bugLogs").disabled = false;
-  bug.opened = performance.now();
   $("bugDlg").showModal();
   loadBugPreview();
 }
@@ -2376,14 +2370,12 @@ $("bugForm").onsubmit = async e => {
   try {
     const res = await api("/api/report", {
       kind: $("bugKind").value, title: $("bugTitleIn").value, message: $("bugText").value,
-      github: $("bugGithub").value, diagnostics: $("bugDiag").checked ? bug.preview : "",
-      elapsed: Math.round(performance.now() - bug.opened) });
-    $("bugMsg").innerHTML = `Sent. <a href="${esc(res.url)}" target="_blank">Issue #${esc(String(res.number))}</a> on GitHub.`;
+      contact: $("bugContact").value, diagnostics: $("bugDiag").checked ? bug.preview : "" });
+    $("bugMsg").textContent = `Sent, thank you. Your reference is ${res.id}.`;
     $("bugCancel").textContent = "Close";
     log(res.message, "ok");
   } catch (err) {
-    $("bugMsg").textContent = `Couldn't send it: ${err.message}.`;
-    $("bugGithubLink").href = bugGithubUrl(); $("bugGithubLink").hidden = false;
+    $("bugMsg").textContent = `Couldn't send it: ${err.message}. Try again later, or use Copy report.`;
     $("bugSend").disabled = false;
   }
 };

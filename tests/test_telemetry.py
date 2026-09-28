@@ -322,18 +322,17 @@ class Regressions(Base):
 
 
 class ReportProblem(Base):
-    """Report a problem: diagnostics are scrubbed and fit the feedback API; sending goes to it."""
+    """Report a problem: diagnostics are scrubbed and bounded; the report goes privately to PostHog."""
 
-    def serve(self, status=201, reply=None):
+    def serve(self, status=200):
         got = []
 
         class H(BaseHTTPRequestHandler):
             def do_POST(self):
-                got.append(json.loads(self.rfile.read(int(self.headers["Content-Length"]))))
+                got.append((self.path, json.loads(self.rfile.read(int(self.headers["Content-Length"])))))
                 self.send_response(status)
                 self.end_headers()
-                self.wfile.write(json.dumps(reply or {"ok": True, "number": 42,
-                                                      "url": "https://github.com/saphid/frame-control/issues/42"}).encode())
+                self.wfile.write(b'{"status":"Ok"}')
 
             def log_message(self, *a):
                 pass
@@ -342,7 +341,7 @@ class ReportProblem(Base):
         threading.Thread(target=httpd.serve_forever, daemon=True).start()
         self.addCleanup(httpd.server_close)
         self.addCleanup(httpd.shutdown)
-        p = mock.patch.object(fr, "FEEDBACK_URL", f"http://127.0.0.1:{httpd.server_port}/api/feedback")
+        p = mock.patch.dict(os.environ, {"FRAME_CONTROL_POSTHOG_HOST": f"http://127.0.0.1:{httpd.server_port}"})
         p.start()
         self.addCleanup(p.stop)
         return got
@@ -358,11 +357,12 @@ class ReportProblem(Base):
         for leaked in ("alice", "192.168.1.9", str(Path.home()), "bob", "pw@"):
             self.assertNotIn(leaked, text)
 
-    def test_a_report_fits_the_api_limit_in_utf16_units(self):
-        body = {"title": "Live view stops", "message": "It stops 😀 " * 600, "diagnostics": "log 😀 line\n" * 2000}
-        title, message = fr.compose(body)
-        self.assertLessEqual(fr.u16(message), fr.MESSAGE_MAX)
-        self.assertTrue(message.startswith("It stops"))
+    def test_a_report_is_bounded_in_utf16_units(self):
+        body = {"title": "Live view stops", "message": "It stops 😀 " * 800, "diagnostics": "log 😀 line\n" * 2000}
+        title, text, diag = fr.compose(body)
+        self.assertLessEqual(fr.u16(text), fr.TEXT_MAX)
+        self.assertLessEqual(fr.u16(diag), fr.DIAG_MAX)
+        self.assertTrue(text.startswith("It stops"))
         with self.assertRaises(ValueError):
             fr.compose({"title": "hi", "message": "It stops after a minute."})
 
@@ -381,24 +381,66 @@ class ReportProblem(Base):
 
     def test_the_previewed_diagnostics_are_what_is_sent(self):
         got = self.serve()
-        fr.send({"title": "Live view stops", "message": "It stops after a minute.", "elapsed": 9000,
+        fr.send({"title": "Live view stops", "message": "It stops after a minute.",
                  "diagnostics": "Frame Control 9.9.9\nssh janes-mac.tail12345.ts.net failed"})
-        self.assertIn("Frame Control 9.9.9", got[0]["message"])
-        self.assertNotIn("janes-mac", got[0]["message"])
+        diag = got[0][1]["batch"][0]["properties"]["diagnostics"]
+        self.assertIn("Frame Control 9.9.9", diag)
+        self.assertNotIn("janes-mac", diag)
 
-    def test_send_files_an_issue_and_reports_its_number(self):
+    def test_send_is_a_private_posthog_event_whatever_the_settings(self):
         got = self.serve()
-        res = fr.send({"kind": "bug", "title": "Live view stops", "message": "It stops after a minute.",
-                       "elapsed": 9000, "github": "@someone"})
-        self.assertEqual((res["number"], res["url"]), (42, "https://github.com/saphid/frame-control/issues/42"))
-        sent = got[0]
-        self.assertEqual((sent["kind"], sent["github"], sent["website"], sent["elapsed"]), ("bug", "someone", "", 9000))
-        self.assertEqual(sent["message"], "It stops after a minute.")
+        tm.update_settings({"usage": False})  # analytics off: a deliberate report still goes
+        res = fr.send({"kind": "idea", "title": "Live view stops", "message": "It stops after a minute.",
+                       "contact": "me@example.com"})
+        path, body = got[0]
+        event = body["batch"][0]
+        self.assertEqual((path, body["api_key"], event["event"]), ("/batch/", "phc_test", "problem_report"))
+        props = event["properties"]
+        self.assertEqual((props["kind"], props["title"], props["message"], props["contact"], props["report_id"]),
+                         ("idea", "Live view stops", "It stops after a minute.", "me@example.com", res["id"]))
+        self.assertEqual((props["$process_person_profile"], props["$geoip_disable"]), (False, True))
+        self.assertNotEqual(event["distinct_id"], tm.settings()["id"])  # not linked to the analytics
+        self.assertIn(res["id"], res["message"])
+        self.assertEqual([e["event"] for e in tm._read_lines(tm.SENT)], ["problem_report"])
 
-    def test_the_services_error_is_passed_on(self):
-        self.serve(status=429, reply={"error": "That's a lot of feedback in one hour."})
-        with self.assertRaisesRegex(fr.ReportError, "a lot of feedback"):
-            fr.send({"title": "Live view stops", "message": "It stops after a minute.", "elapsed": 9000})
+    def test_a_sent_report_is_not_an_error_if_the_local_log_fails(self):
+        self.serve()
+        with mock.patch.object(tm, "record_sent", side_effect=OSError("disk full")):
+            res = fr.send({"title": "Live view stops", "message": "It stops after a minute."})
+        self.assertTrue(res["id"])
+
+    def test_events_queued_by_older_versions_get_the_placeholder_address(self):
+        got = self.serve()
+        tm.update_settings({"noticeShown": True})
+        tm._write_lines(tm.OUTBOX, [{"event": "app_opened", "distinct_id": "x", "uuid": "u1",
+                                     "properties": {"level": "usage"}}])
+        self.assertEqual(tm.flush(), 1)
+        self.assertEqual(got[0][1]["batch"][0]["properties"]["$ip"], "0.0.0.0")
+        self.assertEqual(tm._read_lines(tm.SENT)[0]["properties"]["$ip"], "0.0.0.0")
+
+    def test_the_inbox_skips_malformed_reports(self):
+        good = ["2026-09-28T09:50:00Z", "AB12CD34", "bug", "Live view stops", "It stops.", None,
+                "0.4.0", "macOS", "", ""]
+        rows = [["2026-09-28T10:00:00Z", "X", "bug", "Hand-made", None, None, None, None, None, None], ["short"], good]
+        with mock.patch.object(db, "_posthog_query", return_value={"results": rows}), \
+             mock.patch.object(sys, "argv", ["frame_report.py", "inbox"]), \
+             mock.patch("builtins.print") as out:
+            fr.main()
+        printed = " ".join(str(c.args[0]) for c in out.call_args_list if c.args)
+        self.assertIn("AB12CD34", printed)
+        self.assertIn("Hand-made", printed)
+
+    def test_a_refused_report_is_an_error(self):
+        self.serve(status=401)
+        with self.assertRaisesRegex(fr.ReportError, "HTTP 401"):
+            fr.send({"title": "Live view stops", "message": "It stops after a minute."})
+        self.assertEqual(tm._read_lines(tm.SENT), [])
+
+    def test_no_key_means_no_report(self):
+        with mock.patch.dict(os.environ, {"FRAME_CONTROL_POSTHOG_KEY": ""}), \
+             mock.patch.object(tm, "HERE", tm.STATE):
+            with self.assertRaisesRegex(fr.ReportError, "no PostHog project key"):
+                fr.send({"title": "Live view stops", "message": "It stops after a minute."})
 
 
 if __name__ == "__main__":

@@ -14,8 +14,8 @@ every event and property):
   home folders, user names, addresses and keys.
 
 The first-run notice offers compat and diagnostics together, and the page's
-Report a problem dialog (frame_report.py) files bug reports whatever is chosen
-here.
+Report a problem dialog (frame_report.py) sends bug reports privately to the
+same project whatever is chosen here.
 
 Events are identified by a random id made on first run, not by the person or
 computer, and sent without person profiles or GeoIP. Nothing is sent without a
@@ -53,7 +53,7 @@ SENT_KEEP = 200
 OUTBOX_MAX = 2000  # events kept while offline; the oldest go first
 FLUSH_EVERY = 60
 REPEAT_WINDOW = 600  # the same diagnostic error is sent at most once in this many seconds
-DEFAULT_HOST = 'https://eu.i.posthog.com'
+DEFAULT_HOST = 'https://us.i.posthog.com'
 
 LEVELS = ('usage', 'compat', 'diagnostics')
 # Events the page may send through /api/telemetry, and the properties each may carry.
@@ -270,11 +270,12 @@ def categorize(message):
 
 # ---- capturing ------------------------------------------------------------------
 
-def _common():
+def common():
     return {'app_version': app_version(), 'os': frame_host.NAME, 'arch': platform.machine().lower(),
             'python': '%d.%d' % sys.version_info[:2], '$lib': 'frame-control',
-            # Anonymous events: no person profile, no location lookup.
-            '$process_person_profile': False, '$geoip_disable': True}
+            # Anonymous events: no person profile, no location lookup, and a placeholder address,
+            # since PostHog stores the sender's IP unless an event gives one.
+            '$process_person_profile': False, '$geoip_disable': True, '$ip': '0.0.0.0'}
 
 
 def app_version():
@@ -296,7 +297,7 @@ def capture(event, props=None, level='usage'):
         s = settings()
         e = {'event': event, 'distinct_id': s['id'], 'uuid': str(uuid.uuid4()),
              'timestamp': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
-             'properties': {**_common(), **(props or {}), 'level': level}}
+             'properties': {**common(), **(props or {}), 'level': level}}
         with _lock:
             lines = _read_lines(OUTBOX) + [e]
             _write_lines(OUTBOX, lines[-OUTBOX_MAX:])
@@ -459,28 +460,50 @@ def _drop_unwanted(s):
         _write_lines(OUTBOX, kept)
 
 
+def post(batch, timeout=20):
+    """Send events to PostHog now. Raises SendError if they weren't accepted."""
+    cfg = config()
+    if not cfg['key']:
+        raise SendError('no PostHog project key in this build')
+    for e in batch:  # also events queued by versions that didn't add the placeholder address
+        e.setdefault('properties', {})['$ip'] = '0.0.0.0'
+    body = json.dumps({'api_key': cfg['key'], 'batch': batch}).encode()
+    req = urllib.request.Request(cfg['host'] + '/batch/', data=body, method='POST',
+                                 headers={'content-type': 'application/json',
+                                          'user-agent': f'FrameControl/{app_version()}'})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            r.read()
+    except urllib.error.HTTPError as e:
+        e.close()
+        raise SendError(f'PostHog said HTTP {e.code}')
+    except (urllib.error.URLError, OSError, ValueError) as e:
+        raise SendError(f"couldn't reach PostHog: {e}")
+
+
+def record_sent(events):
+    """Add events sent outside the outbox to the log the page shows."""
+    with _lock:
+        _write_lines(SENT, (_read_lines(SENT) + list(events))[-SENT_KEEP:])
+
+
+class SendError(RuntimeError):
+    pass
+
+
 def flush(timeout=20):
     """Send what's queued. Returns how many were sent; on failure they stay queued."""
     with _send_lock:
         if blocked() or not settings()['notice_shown']:
             return 0
-        cfg = config()
         with _lock:
             _drop_unwanted(settings())
             batch = _read_lines(OUTBOX)[:100]
         if not batch:
             return 0
-        body = json.dumps({'api_key': cfg['key'], 'batch': batch}).encode()
-        req = urllib.request.Request(cfg['host'] + '/batch/', data=body, method='POST',
-                                     headers={'content-type': 'application/json',
-                                              'user-agent': f'FrameControl/{app_version()}'})
         try:
-            with urllib.request.urlopen(req, timeout=timeout) as r:
-                r.read()
-        except urllib.error.HTTPError as e:
-            e.close()
-            return 0
-        except (urllib.error.URLError, OSError, ValueError):
+            post(batch, timeout)
+        except SendError:
             return 0
         sent_ids = {e['uuid'] for e in batch}
         with _lock:

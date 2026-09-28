@@ -1,32 +1,26 @@
 """Report a problem from inside Frame Control. Python stdlib only.
 
 The page's Report a problem dialog shows the diagnostics below before anything
-is sent, then this sends the report to the website's feedback API
-(site/functions/api/feedback.js), which files it as a GitHub issue. The user
-needs no GitHub account. Everything collected is scrubbed first
-(frame_telemetry.scrub), since the issue is public.
+is sent, then this sends the report privately to Frame Control's PostHog
+project as a `problem_report` event: only the maintainer can read it, and
+nothing is published. It is sent whatever the analytics settings are, because
+the person sends it deliberately. Diagnostics are scrubbed first
+(frame_telemetry.scrub); the person's own words are sent as written.
 """
-import json
 import os
 import platform
 import sys
 import time
-import urllib.error
-import urllib.request
+import uuid
 
 import frame_host
 import frame_telemetry
 
-FEEDBACK_URL = os.environ.get('FRAME_CONTROL_FEEDBACK_URL', 'https://frame-control.pages.dev/api/feedback')
-ISSUES_URL = 'https://github.com/saphid/frame-control/issues/new'
 KINDS = ('bug', 'idea', 'question', 'other')
-MESSAGE_MAX = 5000  # the feedback API's limit, in JavaScript (UTF-16) units
-TEXT_MAX = 3500     # the person's own text
-DIAG_MAX = 1300     # the diagnostics block, so text + diagnostics always fit MESSAGE_MAX
-LOG_LINES = 40
+TEXT_MAX = 5000     # the person's own text, in JavaScript (UTF-16) units like the page's maxlength
+DIAG_MAX = 8000     # the diagnostics block
+LOG_LINES = 60
 ACTIVITY_LINES = 25
-HEAD = '\n\n---\nDiagnostics from Frame Control (personal details removed):\n```\n'
-TAIL = '\n```'
 
 frame = {}  # the Frame's last known SteamOS build, set by server.status()
 
@@ -96,52 +90,72 @@ def diagnostics(activity=(), include_logs=False, limit=DIAG_MAX):
 
 
 def compose(body):
-    """(title, message) for the feedback API: the person's text, then the diagnostics exactly as
-    the dialog previewed them (passed back, scrubbed again and bounded here)."""
+    """(title, text, diagnostics): the diagnostics exactly as the dialog previewed them (passed
+    back, scrubbed again and bounded here)."""
     title = ' '.join(str(body.get('title') or '').split())
     text = str(body.get('message') or '').strip()
     if len(title) < 5:
         raise ValueError('give it a short title (at least 5 characters)')
     if len(text) < 10:
         raise ValueError('say a little more about what happened (at least 10 characters)')
-    title, text = cut(title, 120), cut(text, TEXT_MAX)
     diag = body.get('diagnostics')
-    if not isinstance(diag, str) or not diag.strip():
-        return title, text
-    diag = cut(frame_telemetry.scrub(diag, 20000), DIAG_MAX)
-    return title, f'{text}{HEAD}{diag}{TAIL}'
+    diag = cut(frame_telemetry.scrub(diag, 40000), DIAG_MAX) if isinstance(diag, str) and diag.strip() else ''
+    return cut(title, 120), cut(text, TEXT_MAX), diag
 
 
 def send(body):
-    """File the report. Returns {"number", "url"} of the new issue; raises ReportError."""
+    """Send the report to PostHog. Returns {"id", "message"}; raises ReportError."""
     kind = body.get('kind') if body.get('kind') in KINDS else 'bug'
-    title, message = compose(body)
-    payload = {'kind': kind, 'title': title, 'message': message, 'website': '',
-               'github': str(body.get('github') or '').strip().lstrip('@')[:40],
-               'version': frame_telemetry.app_version(), 'os': f'{frame_host.NAME} {platform.machine()}',
-               'steamos': str(frame.get('build') or '')[:120],
-               # How long the dialog was open; the API treats anything under 3 s as a script.
-               'elapsed': max(0, int(body.get('elapsed') or 0))}
-    req = urllib.request.Request(FEEDBACK_URL, data=json.dumps(payload).encode(), method='POST',
-                                 headers={'content-type': 'application/json',
-                                          'user-agent': f'FrameControl/{frame_telemetry.app_version()}'})
+    title, text, diag = compose(body)
+    ref = uuid.uuid4().hex[:8].upper()
+    props = {**frame_telemetry.common(), 'kind': kind, 'title': title, 'message': text,
+             'contact': str(body.get('contact') or '').strip()[:120], 'diagnostics': diag,
+             'report_id': ref, 'steamos': str(frame.get('build') or '')[:120], 'level': 'report'}
+    # Its own random id: a report can carry contact details, so it isn't linked to this copy's analytics.
+    event = {'event': 'problem_report', 'distinct_id': str(uuid.uuid4()), 'uuid': str(uuid.uuid4()),
+             'timestamp': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()), 'properties': props}
     try:
-        with urllib.request.urlopen(req, timeout=30) as r:
-            res = json.loads(r.read() or b'{}')
-    except urllib.error.HTTPError as e:
-        try:
-            why = json.loads(e.read() or b'{}').get('error')
-        except ValueError:
-            why = None
-        e.close()
-        raise ReportError(why or f'the feedback service said HTTP {e.code}')
-    except (urllib.error.URLError, OSError, ValueError) as e:
-        raise ReportError(f"couldn't reach the feedback service: {e}")
-    if not res.get('url'):
-        raise ReportError("the feedback service didn't file it; try again in a moment")
-    frame_telemetry.capture('problem_reported', {'kind': kind, 'with_diagnostics': bool(body.get('diagnostics'))})
-    return {'number': res.get('number'), 'url': res['url'], 'message': f"Sent. It's issue #{res.get('number')} on GitHub."}
+        frame_telemetry.post([event], timeout=30)
+    except frame_telemetry.SendError as e:
+        raise ReportError(str(e))
+    try:
+        frame_telemetry.record_sent([event])
+    except OSError:
+        pass  # it was sent; failing to log it here mustn't make the person send it again
+    return {'id': ref, 'message': f'Sent privately to the Frame Control developer (report {ref}).'}
 
 
 class ReportError(RuntimeError):
     pass
+
+
+def inbox(days=30):
+    """The maintainer's recent reports from PostHog, newest first (needs the personal API key
+    frame_compat_db.sync uses)."""
+    import frame_compat_db
+    res = frame_compat_db._posthog_query(
+        "SELECT timestamp, properties.report_id, properties.kind, properties.title, properties.message, "
+        "properties.contact, properties.app_version, properties.os, properties.steamos, properties.diagnostics "
+        f"FROM events WHERE event = 'problem_report' AND timestamp > now() - INTERVAL {int(days)} DAY "
+        "ORDER BY timestamp DESC LIMIT 200")
+    return res.get('results') or []
+
+
+def main():
+    cmd, *args = sys.argv[1:] or ['inbox']
+    if cmd != 'inbox':
+        sys.exit('usage: frame_report.py inbox [days]')
+    for row in inbox(*(args[:1] or [30])):
+        if not isinstance(row, list) or len(row) != 10:
+            continue
+        ts, ref, kind, title, text, contact, version, osname, steamos, diag = (str(v or '') for v in row)
+        print(f"== {ts[:16].replace('T', ' ')}  {ref}  [{kind}] {title}")
+        print(f"   {version} on {osname}, SteamOS {steamos or 'unknown'}{', reply to ' + contact if contact else ''}")
+        print('   ' + text.replace('\n', '\n   '))
+        if diag:
+            print('   --- diagnostics\n   ' + diag.replace('\n', '\n   '))
+        print()
+
+
+if __name__ == '__main__':
+    main()

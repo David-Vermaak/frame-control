@@ -267,7 +267,7 @@ def _posthog_query(sql):
     project = os.environ.get('FRAME_CONTROL_POSTHOG_PROJECT') or cfg.get('project')
     if not project:
         raise DBError('No PostHog project id (ui/telemetry.json "project", or FRAME_CONTROL_POSTHOG_PROJECT)')
-    # The query API lives on the app host (eu.posthog.com), not the ingestion host (eu.i.posthog.com).
+    # The query API lives on the app host (us.posthog.com), not the ingestion host (us.i.posthog.com).
     host = cfg['host'].replace('.i.posthog.com', '.posthog.com')
     req = urllib.request.Request(f'{host}/api/projects/{urllib.parse.quote(str(project))}/query/', method='POST',
                                  data=json.dumps({'query': {'kind': 'HogQLQuery', 'query': sql}}).encode(),
@@ -352,15 +352,21 @@ def sync(dry_run=False):
     key()  # the maintainer's copy only
     state = _sync_state()
     since = time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(time.time() - SYNC_OVERLAP_DAYS * 86400))
-    events = []
-    for page in range(40):
-        res = _posthog_query("SELECT properties, distinct_id, timestamp FROM events "
-                             f"WHERE event = 'compat_report' AND timestamp >= toDateTime('{since}') "
-                             f"ORDER BY timestamp, uuid LIMIT {SYNC_PAGE} OFFSET {page * SYNC_PAGE}")
+    events, after = [], f"timestamp >= toDateTime('{since}', 'UTC')"
+    for _ in range(40):
+        # Keyset paging: PostHog refuses OFFSET with a personal API key. The cursor is in UTC,
+        # since a local time is ambiguous in the hour clocks go back.
+        res = _posthog_query("SELECT properties, distinct_id, timestamp, toString(uuid), "
+                             "formatDateTime(timestamp, '%Y-%m-%d %H:%i:%S.%f', 'UTC') FROM events "
+                             f"WHERE event = 'compat_report' AND {after} "
+                             f"ORDER BY timestamp, toString(uuid) LIMIT {SYNC_PAGE}")
         rows = res.get('results') or []
-        events += rows
+        events += [row[:3] for row in rows]
         if len(rows) < SYNC_PAGE:
             break
+        last_uuid, last_ts = rows[-1][3], rows[-1][4]
+        after = (f"(timestamp > toDateTime64('{last_ts}', 6, 'UTC') OR "
+                 f"(timestamp = toDateTime64('{last_ts}', 6, 'UTC') AND toString(uuid) > '{last_uuid}'))")
     rows, skipped = community_rows(events, state)
     if dry_run:
         return rows, skipped
