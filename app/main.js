@@ -194,6 +194,7 @@ function restartServer() {
       server = null;
       url = null;
       if (old) await endServer(old);
+      if (starting) await starting.catch(() => {});  // a start it cut short: then start afresh
       await load();
     })().finally(() => { restarting = null; });
   }

@@ -295,6 +295,12 @@ def status(_body):
 
 def headset_view():
     """Both eyes as SteamVR composites them (see frame_vrshot.py); PNG bytes."""
+    # Counts as work: the copy and clean-up must reach the headset that took the capture.
+    with working():
+        return _headset_view()
+
+
+def _headset_view():
     # `timeout`: VR_Init can block if SteamVR is restarting.
     out = ssh("timeout 15 python3 -", stdin=(HERE / "frame_vrshot.py").read_text(), timeout=30)
     # SteamVR prints its own notices (e.g. about vrwebhelper) on stdout too, so
