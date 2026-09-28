@@ -35,7 +35,8 @@ def _entry(source, c, approved=True):
     artwork = c.get('images') or {}
     icon = artwork.get('icon') or c.get('icon') or 'https://github.com/' + c['repo'].split('/')[0] + '.png'
     images = {'icon': icon,
-              'banner': artwork.get('banner') or 'https://opengraph.githubassets.com/1/' + c['repo'],
+              # No GitHub social-preview card: it's repo text and stats, not art; the UI draws a fallback.
+              'banner': artwork.get('banner'),
               'screenshots': list(artwork.get('screenshots') or [])}
     return {'source': source['id'], 'id': c['repo'], 'package': None,
             'name': c['name'], 'summary': c.get('summary') or '', 'icon': icon,
