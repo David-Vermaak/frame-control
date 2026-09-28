@@ -5,6 +5,12 @@ in **Lepton**, Valve's Waydroid-based container. Lepton is built for games,
 not general Android use
 ([GamingOnLinux](https://www.gamingonlinux.com/2026/09/lepton-from-valve-to-run-android-games-on-linux-is-now-open-source/)).
 
+**VR streaming clients:** WiVRn 26.9 and ALVR 20.14.1 install, but both fail
+OpenXR instance creation on the checked Frame because its Android runtime lacks
+`XR_KHR_convert_timespec_time` (**verified** 2026-09-28, SteamOS 0.4.1,
+BUILD_ID 20260925.6191901). They are not Frame Control dependencies. See
+[the feasibility results and options](linux-vr-streaming.md).
+
 ## Install from the Mac: one app, one Lepton instance (verified 2026-09-25)
 
 Use Frame Control's **Android apps** section (search, Install, Test, Report), drop
