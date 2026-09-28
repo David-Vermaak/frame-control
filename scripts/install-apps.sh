@@ -59,9 +59,13 @@ colordepth=32
 quality=9
 viewonly=0
 showcursor=1
+scale=1
+viewmode=1
+window_maximize=1
 EOF
     echo \"wrote \$d/mac-screen-sharing.remmina\"
   "
   print "On the Mac: System Settings > General > Sharing > Screen Sharing (i) >"
   print "  enable 'VNC viewers may control screen with password' and set one."
+  print "Remmina may ask for your Mac account name + login password instead (Apple auth)."
 fi

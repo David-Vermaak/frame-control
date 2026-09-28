@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Feedback form (no GitHub account needed, skips the queue)
+    url: https://frame-control.pages.dev/feedback/
+    about: Bugs, ideas and questions from the website become issues here without being auto-closed.
