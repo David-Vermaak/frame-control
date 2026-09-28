@@ -2,7 +2,7 @@
 list, verified downloads, installs into per-app Lepton instances, and
 compatibility reports. Python stdlib only.
 """
-import hashlib, os, shutil, sys, tempfile, threading, time, urllib.error, urllib.request
+import hashlib, json, os, shutil, sys, tempfile, threading, time, urllib.error, urllib.request
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CATALOG = os.path.join(ROOT, 'apk-catalog')
@@ -21,6 +21,36 @@ APK_HOSTS = ('https://f-droid.org/repo/', 'https://f-droid.org/archive/')
 _lock = threading.Lock()
 _cache = {'mtime': None, 'sig': None, 'apps': None, 'by_pkg': None}
 _env = {}
+
+
+_index_lock = threading.Lock()
+
+
+def load_index(repo):
+    """Share the catalogue's index files; installed apps use its writable cache."""
+    if repo not in APK_HOSTS:
+        raise ValueError('unexpected index URL')
+    directory = CACHE if os.environ.get('FRAME_CONTROL_APP') or '.app/Contents/Resources' in CATALOG else os.path.join(CATALOG, 'data')
+    filename = 'index-v2.json' if repo == APK_HOSTS[0] else 'index-v2.archive.json'
+    path = os.path.join(directory, filename)
+    with _index_lock:
+        if os.path.exists(path) and time.time() - os.path.getmtime(path) < 86400:
+            with open(path) as f:
+                return json.load(f)
+        os.makedirs(directory, exist_ok=True)
+        fd, tmp = tempfile.mkstemp(prefix=filename, suffix='.part', dir=directory)
+        try:
+            with os.fdopen(fd, 'wb') as f, urllib.request.urlopen(repo + 'index-v2.json', timeout=30) as r:
+                shutil.copyfileobj(r, f, 1 << 20)
+            with open(tmp) as f:
+                index = json.load(f)
+            if not isinstance(index.get('packages'), dict):
+                raise ValueError('invalid F-Droid index')
+            os.replace(tmp, path)
+            return index
+        finally:
+            if os.path.exists(tmp):
+                os.remove(tmp)
 
 
 def catalog():

@@ -6,7 +6,7 @@ apps, the lepton-show-flatscreen marker; plus a non-Steam shortcut, so it shows
 in the Steam library and gets its own SteamVR panel. Nothing goes through
 Lepton Development, which wipes its apps on exit. See docs/apks.md.
 
-Python stdlib only. CLI: python3 ui/frame_android.py {install APK|list|launch PKG|stop PKG|remove PKG|probe PKG}
+Python stdlib only. CLI: python3 ui/frame_android.py {info APK|versions APK-or-PKG|install APK|list|launch PKG|stop PKG|remove PKG|probe PKG}
 """
 import json, os, re, shlex, shutil, subprocess, sys, threading, time, zlib
 
@@ -276,7 +276,15 @@ def probe(pkg, wait=20):
 def main():
     cmd, *args = sys.argv[1:] or ['help']
     try:
-        if cmd == 'install':
+        if cmd in ('info', 'versions'):
+            import frame_apk_versions
+            if cmd == 'info':
+                print(frame_apk_versions.describe(apk_info(args[0])))
+                return
+            info = apk_info(args[0]) if os.path.isfile(args[0]) or args[0].lower().endswith('.apk') else None
+            r = frame_apk_versions.alternatives(
+                info['package'] if info else args[0], info.get('version_code') if info else None)
+        elif cmd == 'install':
             r = install(args[0], flatscreen='--vr' not in args)
         elif cmd == 'list':
             r = list_apps()

@@ -4,3 +4,4 @@ apk-catalog/data/cache/
 apk-catalog/data/index-v2.json*
 compat-db/.env.lakebed.server
 compat-db/.lakebed/
+apk-catalog/data/index-v2.archive.json*

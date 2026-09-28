@@ -46,6 +46,28 @@ Lepton Development must be installed once. Over SSH,
 `ssh frame 'steam steam://install/3056000'` queues it, but the install still
 needs to be confirmed or started in the headset.
 
+## When an app needs a newer Android
+
+Lepton is Android 11 (API 30), with arm64-v8a only. If Frame Control refuses
+an APK, it shows compatible versions from F-Droid's main and archive repos.
+Choose **Install** to download a listed version, verify its SHA-256 against
+the index, and install it as its own app.
+
+You can also inspect a file or look up a package from the command line:
+
+```sh
+python3 ui/frame_android.py info some-app.apk
+python3 ui/frame_android.py versions some-app.apk
+python3 ui/frame_android.py versions org.example.app
+```
+
+The search links open APKMirror, APKPure, Uptodown, F-Droid and GitHub. Pick a
+version whose minimum is Android 11 or lower and that has an arm64-v8a build
+(or no native code). Frame Control does not fetch APKs from those search sites.
+Older versions may lack fixes, and being installable does not guarantee an
+app will run: see the missing services below. Android may refuse a downgrade
+or an update signed by a different publisher; removing the app deletes its data.
+
 ## Installed apps disappear when Lepton Development closes (verified 2026-09-25)
 
 Lepton Development runs in a throwaway "dev" context. When it exits for any
