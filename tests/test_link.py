@@ -118,6 +118,10 @@ class Connecting(unittest.TestCase):
                             explain=explain)
         self.addCleanup(self.link.stop)
 
+    def pin(self, device_id):
+        fd.known_hosts(device_id).parent.mkdir(parents=True, exist_ok=True)
+        fd.known_hosts(device_id).write_text(f"frame-control-{device_id} ssh-ed25519 AAAA\n")
+
     def hosts(self, mapping):
         os.environ["FAKESSH_HOSTS"] = json.dumps(mapping)
 
@@ -199,7 +203,7 @@ class Connecting(unittest.TestCase):
 
     def test_pinned_identity_is_checked_strictly(self):
         d = self.device("localhost")
-        (self.dir / "ssh" / "frame-control_known_hosts").write_text(f"frame-control-{d['id']} ssh-ed25519 AAAA\n")
+        self.pin(d["id"])
         self.hosts({"localhost": "ok"})
         self.link.connect(["start"])
         master = [c for c in self.calls() if "ControlMaster=yes" in c][-1]
@@ -235,7 +239,7 @@ class Connecting(unittest.TestCase):
 
     def test_test_now_checks_every_address_without_touching_the_connection(self):
         d = self.device("127.0.0.1", "localhost", "nothing.invalid")
-        (self.dir / "ssh" / "frame-control_known_hosts").write_text(f"frame-control-{d['id']} ssh-ed25519 AAAA\n")
+        self.pin(d["id"])
         self.hosts({"127.0.0.1": "wrong", "localhost": "ok"})
         self.link.test(d["id"])
         rows = {r["host"]: r for r in self.link.snapshot()["tests"][d["id"]]["rows"]}
@@ -261,6 +265,25 @@ class Connecting(unittest.TestCase):
         self.assertEqual(alias, "frame-other")
         self.assertIn("HostName=nothing.invalid", opts)
         self.assertIn(f"HostKeyAlias=frame-control-{other['id']}", opts)
+
+    def test_an_attempt_overtaken_by_a_switch_routes_nothing_back(self):
+        self.device("localhost")
+        self.hosts({"localhost": "ok"})
+        other = self.reg.add_device("frame-other", port=self.port)
+        self.reg.add_address(other["id"], "nothing.invalid")
+        pick = fl.Link.pick
+
+        def switch_then_pick(*args):
+            if not getattr(self, "switched", False):
+                self.switched = True
+                self.link.use(other["id"])  # the user switches while A is being found
+            return pick(*args)
+        with mock.patch.object(fl.Link, "pick", staticmethod(switch_then_pick)):
+            self.link.connect(["start"])
+        self.assertEqual(self.routes[-1][0], "frame-other")
+        self.assertEqual(self.link.snapshot()["phase"], "connecting")
+        self.assertFalse(self.link.alive())
+        self.assertIsNone(self.link.master)
 
     def test_no_switching_while_something_is_installing(self):
         d = self.device("localhost")

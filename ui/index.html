@@ -2533,6 +2533,12 @@ function onConnection(s) {
     online = null;
     devGen++;               // answers still on their way are about the other headset
     refreshing = null;      // and the next status check must be a new one
+    if (live) toggleLive(false);  // the other headset's video or captures
+    viewGen++;              // a capture still on its way is the other headset's too
+    lastImg = null; lastShot = null;
+    $("canvas").hidden = true; $("viewerEmpty").hidden = false; $("zoombar").hidden = true;
+    ["stamp", "srcBadge", "asleep"].forEach(id => $(id).hidden = true);
+    $("saveBtn").disabled = true;
     link.reload = true;     // everything on the page was the other headset's
     $("battChip").hidden = true;
   }

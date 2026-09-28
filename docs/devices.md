@@ -24,8 +24,8 @@ work for each one.
 - **Nothing to migrate by hand.** On first start, the app imports every
   `# >>> steam-frame (ALIAS) >>>` block in `~/.ssh/config` as a headset, with
   the block's HostName as its first address. It also copies the host key your
-  `known_hosts` already trusts for that address into the app's own
-  `~/.ssh/frame-control_known_hosts`, so nobody is asked to trust it again.
+  `known_hosts` already trusts for that address into the headset's own
+  known_hosts file, `~/.ssh/frame-control-hosts/<id>`, so nobody is asked to trust it again.
 - **Add a headset** runs Set Up Connection (`scripts/connect.sh` on macOS,
   `ui/frame_connect.py --alias NAME` elsewhere) in a terminal with a new alias.
   When it writes its block, the app picks the headset up by itself. If Set Up
@@ -33,7 +33,9 @@ work for each one.
   at the top of its list.
 - **Use this headset** (or the switcher in the header, or the app's
   **Frame → Headset** menu) moves the whole app to another headset; every panel
-  reloads from it.
+  reloads from it. From that moment no command goes to the previous headset, even
+  if the new one never answers. It waits while an install is running, since an
+  install reads the SSH settings step by step.
 - **Remove** forgets a headset. Its `~/.ssh/config` block stays unless you tick
   the box; either way it isn't imported again unless Set Up Connection changes it.
 - A plain `FRAME_ALIAS` that Set Up Connection never configured still works: the
@@ -106,15 +108,18 @@ headset makes the connector start again.
 
 Once connected, every `ssh`, `scp` and `rsync` the app runs gets
 `-o HostName=<address> -o HostKeyAlias=frame-control-<id>
--o UserKnownHostsFile=~/.ssh/frame-control_known_hosts -o User=… -o Port=…`. The
+-o UserKnownHostsFile=~/.ssh/frame-control-hosts/<id> -o HashKnownHosts=no -o User=… -o Port=…`. The
 alias's block in `~/.ssh/config` is also updated to the last address that
 worked (and to the user and port you set), so Terminal's `ssh frame` and the
-scripts follow.
+scripts follow. Edits to `~/.ssh/config` take a lock file
+(`~/.ssh/config.frame-control.lock`) that Set Up Connection takes too, and never
+write over a change someone else made since the app last read the file.
 
 **Host keys are pinned per headset, not per address.** Your own `known_hosts`
 is keyed by address, so a different device answering at a remembered IP (a DHCP
-lease that moved) would look like a new host there. The app keys its own
-known_hosts by headset instead: a different device answering at one of its
+lease that moved) would look like a new host there. The app keeps one known_hosts
+file per headset instead, so saving or forgetting one headset's key never touches
+another's: a different device answering at one of its
 addresses is refused, and the pill says so. A headset's first connection trusts
 the key it shows, as Set Up Connection does. After reinstalling SteamOS the
 headset has a new key; **Forget identity** on the Devices tab lets the next

@@ -98,14 +98,17 @@ def probe(host, port, timeout=PROBE_TIMEOUT, update=None):
     except (socket.gaierror, UnicodeError, OSError) as e:
         return {"state": "unresolved", "detail": "Can't find this name on the network", "error": str(e)}
     last = None
-    for family, kind, proto, _, addr in infos[:4]:
+    infos = infos[:4]
+    for n, (family, kind, proto, _, addr) in enumerate(infos):
         ip = addr[0]
         left = deadline - now()
         if left <= 0:
             break
         update(state="trying", detail=f"Trying {ip}", ip=ip)
         s = socket.socket(family, kind, proto)
-        s.settimeout(left)
+        # Share the time out, so one address that never answers (a dead IPv6 route,
+        # say) leaves the others their turn.
+        s.settimeout(left / (len(infos) - n))
         t0 = time.monotonic()
         try:
             s.connect(addr)
@@ -154,7 +157,10 @@ class Link:
         self.last_attempt = 0
         self.config_mtime = None
         self.thread = None
+        self.attempt_gen = 0
         self.pending = None             # an ssh handshake still running
+        self.gen = 0                    # bumped when the headset or its login changes: older attempts are void
+        self.route_lock = threading.Lock()
         self.routed = None              # the device id every ssh command points at
 
     # ---- publishing ----
@@ -227,7 +233,7 @@ class Link:
         self.close_master()
 
     def alive(self):
-        if self.state["phase"] != "connected":
+        if self.state["phase"] != "connected" or self.kicks:
             return False
         if not self.control:
             return True
@@ -248,12 +254,20 @@ class Link:
                                                         self.state["phase"] != "connecting"), wait)
 
     def use(self, device_id):
-        """Switch to another headset. Commands go to it from now on (never the last one),
-        and wait in ensure() for the connector to reach it."""
+        """Switch to another headset."""
         self.reg.set_active(device_id)
         self.override = None
+        self.invalidate()
+
+    def invalidate(self):
+        """The headset in use, or how to log in to it, changed: from now on commands go to
+        the one now selected (never the last one), any attempt still running is void,
+        and ensure() waits for the connector to reach it."""
         device = self.active_device()
-        self.apply(device["alias"], self.first_route(device))
+        with self.route_lock:
+            self.gen += 1
+            self.apply(device["alias"], self.first_route(device))
+            self.routed = None  # the next attempt routes again
         with self.cond:
             self.state["phase"] = "connecting"
             self.kicks.append("switch")
@@ -301,7 +315,7 @@ class Link:
             return []
         return ["-o", f"HostName={frame_devices.ssh_host(host)}",
                 "-o", f"HostKeyAlias={frame_devices.host_key_alias(device['id'])}",
-                "-o", f"UserKnownHostsFile={frame_devices.known_hosts_opt()}", "-o", "HashKnownHosts=no",
+                "-o", f"UserKnownHostsFile={frame_devices.known_hosts_opt(device['id'])}", "-o", "HashKnownHosts=no",
                 "-o", f"User={device['user']}", "-o", f"Port={device['port']}"]
 
     def public_device(self, d):
@@ -361,7 +375,7 @@ class Link:
                 self.devices_changed()
                 after = self.active_device()
                 if (before.get("user"), before.get("port")) != (after.get("user"), after.get("port")):
-                    self.kick("switch")  # Set Up Connection changed the active headset's login
+                    self.invalidate()  # Set Up Connection changed the active headset's login
 
     def refresh_network(self):
         net = frame_network.current_network(self.last_fp)
@@ -374,13 +388,15 @@ class Link:
         why = self.describe(reasons)
         self.last_attempt = now()
         self.close_master()
-        device = self.active_device()
-        if self.route_key(device) != self.routed:
-            # Another headset, or a new user or port: nothing may go on using the old
-            # route, even if this attempt fails.
-            self.alias, self.opts = device["alias"], self.first_route(device)
-            self.apply(self.alias, self.opts)
-            self.routed = self.route_key(device)
+        with self.route_lock:
+            gen = self.attempt_gen = self.gen
+            device = self.active_device()
+            if self.route_key(device) != self.routed:
+                # Another headset, or a new user or port: nothing may go on using the old
+                # route, even if this attempt fails.
+                self.alias, self.opts = device["alias"], self.first_route(device)
+                self.apply(self.alias, self.opts)
+                self.routed = self.route_key(device)
         with self.cond:
             self.state.update(phase="connecting", reason=why, device=self.public_device(device), via=None,
                               error=None, retry_at=None, attempt=self.state["attempt"] + 1, started=now(),
@@ -393,6 +409,17 @@ class Link:
         try:
             ok = self.attempt(device)
         finally:
+            with self.cond:
+                if gen != self.gen:
+                    # The headset changed meanwhile: this attempt's result is about the
+                    # old one. Leave "connecting"; the queued switch starts the next.
+                    self.state["phase"] = "connecting"
+                    self.version += 1
+                    self.cond.notify_all()
+                    ok = None
+            if ok is None:
+                self.close_master()
+                return
             with self.cond:
                 self.state["finished"] = now()
                 if ok:
@@ -574,16 +601,16 @@ class Link:
             return
         if self.route_key(now_dev) != self.route_key(device):
             return
-        # Terminal's `ssh ALIAS` and the helper scripts use ~/.ssh/config: point it here too.
+        # Terminal's `ssh ALIAS` and the helper scripts use ~/.ssh/config: point it here too,
+        # unless the block changed since this attempt began (checked under the file lock).
+        login = device.get("config_login") or [None, None]
+        expect = {"hostname": device.get("config_host"), "user": login[0], "port": login[1]}
         try:
-            block = next((b for b in frame_devices.parse_blocks(frame_devices.read_config())
-                          if b["alias"] == device["alias"]), None)
-            moved = block and block["hostname"] != device.get("config_host") and device.get("config_host")
-            if not moved and frame_devices.rewrite_block(device["alias"], hostname=host, user=device["user"],
-                                                         port=device["port"]):
+            if frame_devices.rewrite_block(device["alias"], hostname=host, user=device["user"],
+                                           port=device["port"], expect=expect):
                 self.config_mtime = frame_devices.ssh_config().stat().st_mtime
-            if block and not moved:
                 self.reg.set_config_host(device["id"], host)
+                self.reg.sync_from_config()  # records the login it now holds
         except OSError:
             pass  # not fatal: the app itself doesn't need the file
         self.devices_changed()
@@ -622,8 +649,11 @@ class Link:
         -> "ok", "next" (try another address) or "stop"."""
         opts = self.host_opts(device, a["host"])
         alias = device["alias"]
-        self.alias, self.opts = alias, opts
-        self.apply(alias, opts)
+        with self.route_lock:
+            if self.attempt_gen != self.gen:
+                return "stop"  # the headset changed: don't route anything back to this one
+            self.alias, self.opts = alias, opts
+            self.apply(alias, opts)
         target = f"{a['host']}" + (f" ({found['ip']})" if found.get("ip") and found["ip"] != a["host"] else "")
         self.stage("ssh", "active", f"Opening SSH to {target}")
         if self.control and self.check(opts, alias):
@@ -850,16 +880,20 @@ def devices_action(link, body, open_setup, busy=lambda: 0):
         link.use(did)
         msg = f"Switched to {d['name']}"
     elif action == "update":
+        before = reg.get(did)
         d = reg.update_device(did, name=body.get("name"), user=body.get("user"), port=body.get("port"))
+        if is_active and (d["user"], d["port"]) != (before["user"], before["port"]):
+            link.invalidate()  # before anything else can fail: the old login mustn't stay in use
         try:
             frame_devices.rewrite_block(d["alias"], user=d["user"], port=d["port"])
         except OSError as e:
             raise frame_devices.DeviceError(f"Saved, but couldn't update ~/.ssh/config: {e}")
-        if is_active:
-            link.kick("switch")
         msg = f"Saved {d['name']}"
     elif action == "remove":
         d = reg.remove_device(did)
+        if is_active:
+            link.override = None
+            link.invalidate()
         frame_devices.forget_pin(did)
         removed = False
         if body.get("config"):
@@ -867,9 +901,6 @@ def devices_action(link, body, open_setup, busy=lambda: 0):
                 removed = frame_devices.remove_block(d["alias"])
             except OSError as e:
                 raise frame_devices.DeviceError(f"Removed, but couldn't edit ~/.ssh/config: {e}")
-        if is_active:
-            link.override = None
-            link.kick("switch")
         msg = f"Removed {d['name']}" + (f" and its '{d['alias']}' entry in ~/.ssh/config" if removed else "")
     elif action == "address-add":
         a = reg.add_address(did, body.get("host"), body.get("kind") or None, body.get("label") or "")

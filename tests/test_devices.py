@@ -181,6 +181,14 @@ class ConfigRewrite(Base):
         self.assertEqual([b["hostname"] for b in blocks], ["10.0.0.14", "10.0.1.14"])
         self.assertEqual([p.name for p in self.ssh.iterdir() if "frame-control." in p.name and not p.name.endswith(".lock")], [])  # no temp files left
 
+    def test_learning_skips_a_block_someone_changed(self):
+        # The connector learned an address, but Set Up Connection moved the block meanwhile.
+        self.assertFalse(fd.rewrite_block("frame", hostname="10.0.0.9",
+                                          expect={"hostname": "old.example", "user": None, "port": None}))
+        self.assertIn("HostName frame.tail1234.ts.net", (self.ssh / "config").read_text())
+        self.assertTrue(fd.rewrite_block("frame", hostname="10.0.0.9",
+                                         expect={"hostname": "frame.tail1234.ts.net", "user": "steamos", "port": 22}))
+
     def test_zone_is_escaped_and_read_back(self):
         fd.rewrite_block("frame", hostname="fe80::1%en0")
         self.assertIn("HostName fe80::1%%en0", (self.ssh / "config").read_text())
@@ -200,12 +208,21 @@ class Pins(Base):
         self.assertFalse(fd.pinned("d1"))
         self.assertTrue(fd.seed_pin("d1", ["frame.tail1234.ts.net"]))
         self.assertTrue(fd.pinned("d1"))
-        self.assertEqual(fd.known_hosts().read_text(), f"frame-control-d1 {KEY}\n")
+        self.assertEqual(fd.known_hosts("d1").read_text(), f"frame-control-d1 {KEY}\n")
         self.assertTrue(fd.seed_pin("d1", ["frame.tail1234.ts.net"]))  # idempotent
-        self.assertEqual(fd.known_hosts().read_text().count("\n"), 1)
+        self.assertEqual(fd.known_hosts("d1").read_text().count("\n"), 1)
         self.assertFalse(fd.seed_pin("d2", ["never-seen.example"]))
         self.assertTrue(fd.forget_pin("d1"))
         self.assertFalse(fd.pinned("d1"))
+        self.assertFalse(fd.forget_pin("d1"))
+
+    def test_each_headset_has_its_own_file(self):
+        (self.ssh / "known_hosts").write_text(f"a.local {KEY}\nb.local {KEY}\n")
+        fd.seed_pin("da", ["a.local"])
+        fd.seed_pin("db", ["b.local"])
+        fd.forget_pin("da")
+        self.assertTrue(fd.pinned("db"))  # forgetting one can't touch another
+        self.assertNotEqual(fd.known_hosts("da"), fd.known_hosts("db"))
 
     def test_hashed_and_non_default_port_entries(self):
         kh = self.ssh / "known_hosts"
@@ -213,19 +230,22 @@ class Pins(Base):
         subprocess.run(["ssh-keygen", "-H", "-f", str(kh)], capture_output=True, check=True)
         self.assertFalse(fd.seed_pin("d3", ["frame.local"]))  # port 22: not that entry
         self.assertTrue(fd.seed_pin("d3", ["frame.local"], port=2222))
-        self.assertIn(f"frame-control-d3 {KEY}", fd.known_hosts().read_text())
+        self.assertIn(f"frame-control-d3 {KEY}", fd.known_hosts("d3").read_text())
 
     def test_hashed_pins_are_found_and_forgotten(self):
-        fd.known_hosts().write_text(f"frame-control-d4 {KEY}\n")
-        subprocess.run(["ssh-keygen", "-H", "-f", str(fd.known_hosts())], capture_output=True, check=True)
-        self.assertNotIn("frame-control-d4", fd.known_hosts().read_text())
+        target = fd.known_hosts("d4")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(f"frame-control-d4 {KEY}\n")
+        subprocess.run(["ssh-keygen", "-H", "-f", str(target)], capture_output=True, check=True)
+        self.assertNotIn("frame-control-d4", target.read_text())
         self.assertTrue(fd.pinned("d4"))
         self.assertTrue(fd.forget_pin("d4"))
         self.assertFalse(fd.pinned("d4"))
-        self.assertFalse(fd.known_hosts().with_name("frame-control_known_hosts.old").exists())
 
     def test_known_hosts_option_uses_the_override(self):
-        self.assertEqual(fd.known_hosts_opt(), str(self.ssh / "frame-control_known_hosts"))
+        self.assertEqual(fd.known_hosts_opt("d5"), str(self.ssh / "frame-control-hosts" / "d5"))
+        os.environ.pop("FRAME_CONTROL_SSH_DIR")
+        self.assertEqual(fd.known_hosts_opt("d5"), "~/.ssh/frame-control-hosts/d5")  # no spaces to split on
 
 
 class Registry(Base):

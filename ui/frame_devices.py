@@ -22,8 +22,9 @@ scripts go on working, and the connector rewrites the block's HostName to the
 last address that worked, so they follow it.
 
 Host keys are pinned per headset, not per address: ssh gets
-`-o HostKeyAlias=frame-control-<id>` and a known_hosts file of our own, so a
-different device answering at a remembered IP is caught.
+`-o HostKeyAlias=frame-control-<id>` and a known_hosts file of the headset's own
+(~/.ssh/frame-control-hosts/<id>), so a different device answering at a
+remembered IP is caught.
 
 Python stdlib only.
 """
@@ -66,14 +67,21 @@ def ssh_config():
     return ssh_dir() / "config"
 
 
-def known_hosts():
-    return ssh_dir() / "frame-control_known_hosts"
+PIN_DIR = "frame-control-hosts"
 
 
-def known_hosts_opt():
-    """How ssh is told about our known_hosts file. `~` rather than the full path when it's
-    the usual place, so a home folder with a space in its name can't split the option."""
-    return "~/.ssh/frame-control_known_hosts" if not os.environ.get("FRAME_CONTROL_SSH_DIR") else str(known_hosts())
+def known_hosts(device_id):
+    """The headset's own known_hosts file: one per headset, so saving or forgetting one
+    headset's key (by ssh or by the app) can never touch another's."""
+    return ssh_dir() / PIN_DIR / device_id
+
+
+def known_hosts_opt(device_id):
+    """How ssh is told about it. `~` rather than the full path when it's the usual
+    place, so a home folder with a space in its name can't split the option."""
+    if os.environ.get("FRAME_CONTROL_SSH_DIR"):
+        return str(known_hosts(device_id))
+    return f"~/.ssh/{PIN_DIR}/{device_id}"
 
 
 def host_key_alias(device_id):
@@ -262,11 +270,18 @@ def _edit_config(path, change):
         raise OSError(f"{path} kept changing while Frame Control tried to update it")
 
 
-def rewrite_block(alias, path=None, hostname=None, user=None, port=None):
+def rewrite_block(alias, path=None, hostname=None, user=None, port=None, expect=None):
     """Change HostName, User or Port inside ALIAS's managed block, leaving the rest of the
-    file alone. -> True if the file changed. Does nothing if there's no such block."""
-    return _edit_config(Path(path or ssh_config()),
-                        lambda lines: _rewritten(lines, alias, hostname, user, port))
+    file alone. -> True if the file changed. Does nothing if there's no such block, or
+    if `expect` ({"hostname", "user", "port"}; None values match anything) no longer
+    describes the block, checked under the lock: someone else changed it meanwhile."""
+    def change(lines):
+        if expect:
+            block = next((b for b in parse_blocks("\n".join(lines)) if b["alias"] == alias), None)
+            if not block or any(v is not None and block[k] != v for k, v in expect.items()):
+                return None
+        return _rewritten(lines, alias, hostname, user, port)
+    return _edit_config(Path(path or ssh_config()), change)
 
 
 def _rewritten(lines, alias, hostname, user, port):
@@ -308,13 +323,6 @@ def remove_block(alias, path=None):
 
 # ---- pinned host keys -------------------------------------------------------------
 
-def _pin_lines(path=None):
-    try:
-        return Path(path or known_hosts()).read_text(encoding="utf-8").splitlines()
-    except (OSError, UnicodeDecodeError):
-        return []
-
-
 def _keygen(*args):
     try:
         return subprocess.run(["ssh-keygen", *args], capture_output=True, stdin=subprocess.DEVNULL, text=True,
@@ -323,29 +331,27 @@ def _keygen(*args):
         return None
 
 
-def _pin_lock(target):
-    return file_lock(target.with_name(target.name + ".lock"))
-
-
-def pinned(device_id, path=None):
-    """Whether a key is saved for the device. The app's own entries are plain text (it
-    passes HashKnownHosts=no), but ask ssh-keygen too in case one was hashed."""
+def pinned(device_id):
+    """Whether a key is saved for the headset. Entries are plain text (ssh gets
+    HashKnownHosts=no), but ask ssh-keygen too in case one was hashed."""
+    target = known_hosts(device_id)
+    try:
+        lines = target.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeDecodeError):
+        return False
     name = host_key_alias(device_id)
-    target = Path(path or known_hosts())
-    if any(line.split(None, 1)[0].split(",").count(name) for line in _pin_lines(target)
+    if any(line.split(None, 1)[0].split(",").count(name) for line in lines
            if line.strip() and not line.startswith("#")):
         return True
-    if not target.is_file():
-        return False
     r = _keygen("-F", name, "-f", str(target))
     return bool(r and r.returncode == 0 and r.stdout.strip())
 
 
-def seed_pin(device_id, hosts, port=22, sources=None, path=None):
-    """Copy the host keys ssh already trusts for one of `hosts` into our file under the
-    device's alias, so moving to per-device pinning asks nobody to trust anything again.
-    -> True if a key was pinned."""
-    if pinned(device_id, path):
+def seed_pin(device_id, hosts, port=22, sources=None):
+    """Copy the host keys ssh already trusts for one of `hosts` into the headset's file
+    under its alias, so moving to per-headset pinning asks nobody to trust anything again.
+    -> True if a key is pinned."""
+    if pinned(device_id):
         return True
     sources = sources or [ssh_dir() / "known_hosts", ssh_dir() / "known_hosts2"]
     name = host_key_alias(device_id)
@@ -355,56 +361,30 @@ def seed_pin(device_id, hosts, port=22, sources=None, path=None):
         for src in sources:
             if not Path(src).is_file():
                 continue
-            try:
-                out = subprocess.run(["ssh-keygen", "-F", wanted, "-f", str(src)], capture_output=True,
-                                     stdin=subprocess.DEVNULL, text=True, timeout=10).stdout
-            except (OSError, subprocess.TimeoutExpired):
-                continue
-            for line in out.splitlines():
+            r = _keygen("-F", wanted, "-f", str(src))
+            for line in (r.stdout if r else "").splitlines():
                 f = line.split()
                 if len(f) >= 3 and not line.startswith("#") and not f[0].startswith("@"):
                     keys.append(f"{name} {f[1]} {f[2]}")
         if keys:
-            target = Path(path or known_hosts())
-            with _pin_lock(target):
-                with open(target, "a", encoding="utf-8") as fh:
-                    fh.write("\n".join(dict.fromkeys(keys)) + "\n")
-                if not frame_host.WINDOWS:
-                    target.chmod(0o600)
+            target = known_hosts(device_id)
+            target.parent.mkdir(**({} if frame_host.WINDOWS else {"mode": 0o700}), parents=True, exist_ok=True)
+            fd_, tmp = tempfile.mkstemp(prefix=".seed-", dir=str(target.parent))
+            with os.fdopen(fd_, "w", encoding="utf-8") as fh:
+                fh.write("\n".join(dict.fromkeys(keys)) + "\n")
+            os.replace(tmp, target)  # whole file at once: ssh never sees half of it
             return True
     return False
 
 
-def forget_pin(device_id, path=None):
-    """Drop a device's pinned keys, e.g. after SteamOS was reinstalled. The next connection
+def forget_pin(device_id):
+    """Drop a headset's saved key, e.g. after SteamOS was reinstalled. The next connection
     trusts whatever key the headset shows, as a first connection does."""
-    target = Path(path or known_hosts())
-    name = host_key_alias(device_id)
-    with _pin_lock(target):
-        # ssh itself may append a first-seen key meanwhile (accept-new): swap the file
-        # only if it still holds what was read, else read it again.
-        removed = False
-        for _ in range(5):
-            text = "\n".join(_pin_lines(target))
-            lines = text.splitlines()
-            kept = [line for line in lines if not (line.strip() and name in line.split(None, 1)[0].split(","))]
-            if kept == lines:
-                break
-            fd_, tmp = tempfile.mkstemp(prefix=target.name + ".", dir=str(target.parent))
-            with os.fdopen(fd_, "w", encoding="utf-8") as fh:
-                fh.write("".join(line + "\n" for line in kept))
-            if "\n".join(_pin_lines(target)) == text:
-                os.replace(tmp, target)
-                removed = True
-                break
-            os.unlink(tmp)
-        if target.is_file() and pinned(device_id, target):  # a hashed entry: ssh-keygen finds it
-            r = _keygen("-R", name, "-f", str(target))
-            removed = removed or bool(r and r.returncode == 0)
-            old = target.with_name(target.name + ".old")  # ssh-keygen -R leaves a backup
-            if old.exists():
-                old.unlink()
-    return removed
+    try:
+        known_hosts(device_id).unlink()
+        return True
+    except FileNotFoundError:
+        return False
 
 
 # ---- address order --------------------------------------------------------------------
