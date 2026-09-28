@@ -197,8 +197,7 @@ for name, ret, args in [
     ('pw_main_loop_get_loop', C.c_void_p, [C.c_void_p]),
     ('pw_context_new', C.c_void_p, [C.c_void_p, C.c_void_p, C.c_size_t]),
     ('pw_context_find_factory', C.c_void_p, [C.c_void_p, C.c_char_p]),
-    ('pw_context_load_spa_handle', C.c_void_p, [C.c_void_p, C.c_char_p, C.c_void_p]),
-    ('pw_unload_spa_handle', C.c_int, [C.c_void_p]),
+    ('pw_context_find_spa_lib', C.c_char_p, [C.c_void_p, C.c_char_p]),
     ('pw_context_destroy', None, [C.c_void_p]),
     ('pw_main_loop_destroy', None, [C.c_void_p])]:
     fn = getattr(lib, name)
@@ -209,9 +208,20 @@ assert loop, 'bundled SPA loop support did not load'
 context = lib.pw_context_new(lib.pw_main_loop_get_loop(loop), None, 0)
 assert context, 'bundled PipeWire client modules did not load'
 assert lib.pw_context_find_factory(context, b'adapter'), 'video adapter factory is missing'
-handle = lib.pw_context_load_spa_handle(context, b'video.convert.dummy', None)
-assert handle, 'bundled SPA passthrough video converter did not load'
-lib.pw_unload_spa_handle(handle)
+# The exported factory is video.adapt, which needs a live follower node to
+# instantiate. Check its configured library and exported factory without
+# pretending a headless context is a consented video stream.
+plugin_name = lib.pw_context_find_spa_lib(context, b'video.adapt')
+assert plugin_name, 'video.adapt has no bundled library mapping'
+plugin = C.CDLL(os.path.join(os.environ['SPA_PLUGIN_DIR'], plugin_name.decode() + '.so'))
+class Factory(C.Structure):
+    _fields_ = [('version', C.c_uint32), ('name', C.c_char_p)]
+plugin.spa_handle_factory_enum.argtypes = [C.POINTER(C.POINTER(Factory)), C.POINTER(C.c_uint32)]
+plugin.spa_handle_factory_enum.restype = C.c_int
+factory, index, names = C.POINTER(Factory)(), C.c_uint32(), []
+while plugin.spa_handle_factory_enum(C.byref(factory), C.byref(index)) > 0:
+    names.append(factory.contents.name)
+assert b'video.adapt' in names, 'bundled SPA video adapter factory is missing'
 lib.pw_context_destroy(context)
 lib.pw_main_loop_destroy(loop)
 """

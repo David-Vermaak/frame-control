@@ -71,7 +71,7 @@ def build(destination):
         config = destination / 'share' / 'pipewire'
         config.mkdir(parents=True, exist_ok=True)
         (config / 'client.conf').write_text(
-            'context.spa-libs = { support.* = support/libspa-support video.convert.* = videoconvert/libspa-videoconvert }\n'
+            'context.spa-libs = { support.* = support/libspa-support video.* = videoconvert/libspa-videoconvert }\n'
             'context.modules = [\n'
             '  { name = libpipewire-module-protocol-native }\n'
             '  { name = libpipewire-module-client-node }\n'
