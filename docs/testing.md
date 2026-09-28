@@ -148,3 +148,20 @@ For example, on 2026-09-27 the smoke test found that Steam's `create-shortcut`
 refuses ids with a hyphen (`missing/invalid arguments`), which the fake had
 accepted. The fake now refuses them the same way, and Frame Control makes ids
 Steam accepts.
+
+## Panel switcher
+
+`tests/test_panels.py` supplies fake-Frame `vrcmd --overlays` output, checks
+main-panel filtering (including hidden panels), revalidates closed panels before
+focus, and drives the headset helper's real loopback HTTP server to test access
+keys, Host/Origin guards, malformed requests, offline errors and Close. It runs
+in the normal unit suite without OpenVR or a headset. The fixture format comes
+from SteamVR 2.18.1, BUILD_ID `20260925.6191901`; it does not simulate rendering.
+
+On the Frame, run `python3 -` over SSH with `ui/frame_panels.py` on stdin to
+list panels. `--focus <key>` rechecks the list and requests focus. In Frame
+Control, **Tools → Panel switcher → Open in headset** exercises installation,
+Chromium rendering and the same helper through HTTP. Close the switcher after
+testing. [The recorded device checks](panels.md#frame-controls-panel-switcher)
+cover actual focus, HTTP guards and an OpenXR sample transition, and separately
+identify the unverified Steam-game, spatial layout, reboot and laser behaviors.
