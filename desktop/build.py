@@ -59,6 +59,7 @@ def build(destination):
                          'pipewire-0.3/libpipewire-module-client-node.so',
                          'pipewire-0.3/libpipewire-module-adapter.so',
                          'spa-0.2/support/libspa-support.so',
+                         'spa-0.2/support/libspa-dbus.so',
                          'spa-0.2/videoconvert/libspa-videoconvert.so'):
             source = libdir / relative
             if not source.is_file():

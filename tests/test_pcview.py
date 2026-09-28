@@ -209,8 +209,8 @@ assert loop, 'bundled SPA loop support did not load'
 context = lib.pw_context_new(lib.pw_main_loop_get_loop(loop), None, 0)
 assert context, 'bundled PipeWire client modules did not load'
 assert lib.pw_context_find_factory(context, b'adapter'), 'video adapter factory is missing'
-handle = lib.pw_context_load_spa_handle(context, b'video.convert', None)
-assert handle, 'bundled SPA video converter did not load'
+handle = lib.pw_context_load_spa_handle(context, b'video.convert.dummy', None)
+assert handle, 'bundled SPA passthrough video converter did not load'
 lib.pw_unload_spa_handle(handle)
 lib.pw_context_destroy(context)
 lib.pw_main_loop_destroy(loop)
