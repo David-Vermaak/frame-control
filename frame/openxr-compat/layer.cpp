@@ -21,6 +21,7 @@ struct Dispatch {
     PFN_xrPathToString pathToString{};
     PFN_xrSuggestInteractionProfileBindings suggest{};
     PFN_xrSetAndroidApplicationThreadKHR thread{};
+    PFN_xrRequestDisplayRefreshRateFB refresh{};
     frame::Names enabled, stubbed;
     XrInstance instance{};
     bool promote{}, palm{};
@@ -131,6 +132,17 @@ XrResult XRAPI_CALL threadSettings(XrSession s, XrAndroidThreadTypeKHR type, uin
     }
     return d->thread ? d->thread(s, type, tid) : XR_ERROR_FUNCTION_UNSUPPORTED;
 } GUARD_END
+// SteamVR offers only the current refresh rate; Quest apps ask for 72/90/120 Hz
+// and abort on the error, so keep the current rate and report success.
+XrResult XRAPI_CALL requestRefreshRate(XrSession s, float hz) try {
+    auto d = get(s); if (!d) return XR_ERROR_HANDLE_INVALID;
+    auto r = d->refresh(s, hz);
+    if (r == XR_ERROR_DISPLAY_REFRESH_RATE_UNSUPPORTED_FB) {
+        LOG("xrRequestDisplayRefreshRateFB %.1f Hz unsupported; keeping the current rate", hz);
+        return XR_SUCCESS;
+    }
+    return r;
+} GUARD_END
 XrResult XRAPI_CALL stringToPath(XrInstance i, const char* path, XrPath* out) try {
     auto d = get(i); if (!d) return XR_ERROR_HANDLE_INVALID;
     if (!path) return XR_ERROR_VALIDATION_FAILURE;
@@ -224,6 +236,7 @@ XrResult XRAPI_CALL createLayer(const XrInstanceCreateInfo* info, const XrApiLay
         LOAD(suggest, xrSuggestInteractionProfileBindings);
         if (frame::has(d->enabled, "XR_KHR_locate_spaces")) LOAD(locate, xrLocateSpacesKHR);
         if (frame::has(d->enabled, frame::stubs[0])) LOAD(thread, xrSetAndroidApplicationThreadKHR);
+        if (frame::has(d->enabled, "XR_FB_display_refresh_rate")) LOAD(refresh, xrRequestDisplayRefreshRateFB);
 #undef LOAD
         if (!d->createSession || !d->destroySession || !d->stringToPath || !d->pathToString || !d->suggest) {
             d->destroy(*instance); *instance = XR_NULL_HANDLE; return XR_ERROR_INITIALIZATION_FAILED;
@@ -249,6 +262,7 @@ XrResult XRAPI_CALL gipa(XrInstance i, const char* name, PFN_xrVoidFunction* out
     RETURN_PROC("xrSuggestInteractionProfileBindings", suggest)
     if (d->locate && d->promote) { RETURN_PROC("xrLocateSpaces", locateSpaces) }
     if (frame::has(d->stubbed, frame::stubs[0])) { RETURN_PROC("xrSetAndroidApplicationThreadKHR", threadSettings) }
+    if (d->refresh) { RETURN_PROC("xrRequestDisplayRefreshRateFB", requestRefreshRate) }
 #undef RETURN_PROC
     // Includes xrGetInstanceProperties: report the actual runtime's identity.
     return d->gipa(i, name, out);

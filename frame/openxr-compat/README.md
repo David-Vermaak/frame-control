@@ -238,7 +238,7 @@ from the binary; runtime execution of those paths remains unverified.
 Prebuilt library SHA-256:
 
 ```
-57abbcec6fbc6df7c79e2b9a46db1a5d8613b4db3c0d7e49bf87cb3172280d10
+aace99b7bcdb3c79fa844d75a9483f8f4b16bd6e669fb3003515df8c673ce54b
 ```
 
 APK SHA-256:
