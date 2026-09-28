@@ -2032,11 +2032,11 @@ function renderDetail() {
 function updateInstall() {
   const o=currentOffer();if(!o || !$("detailInstall"))return;
   const job=sourceState.jobs.get(`${o.source}:${o.id}`), blocked=o.verdict?.tone==='blocked', page=sourcePage(o.page), b=$("detailInstall");
-  b.disabled=!!(job && !job.done) || (blocked && !job?.result) || (!o.downloadable && !page);
-  b.textContent=job?.result ? 'Open in Steam' : job && !job.done ? (job.stage||'Downloading')+(job.percent!=null?` ${Math.round(job.percent)}%`:'…') : blocked ? 'Not compatible' : o.downloadable ? (job?.error?'Try again':'Install on Frame') : 'Get from the creator ↗';
+  b.disabled=!!(job && !job.done) || !!job?.addingData || (blocked && !job?.result) || (!o.downloadable && !page);
+  b.textContent=job?.result?.game_data ? (job.addingData ? 'Adding game data…' : 'Add game data') : job?.result ? 'Open in Steam' : job && !job.done ? (job.stage||'Downloading')+(job.percent!=null?` ${Math.round(job.percent)}%`:'…') : blocked ? 'Not compatible' : o.downloadable ? (job?.error?'Try again':'Install on Frame') : 'Get from the creator ↗';
   $("detailProgress").hidden=!job || job.done;
   if(job?.percent!=null)$("detailProgress").value=job.percent;else $("detailProgress").removeAttribute("value");
-  $("detailInstallNote").textContent=job?.result ? '✓ Installed. Find it in your Steam library.' : job?.error || (job && !job.done ? 'Keep exploring. We’ll take care of the installation.' : o.verdict?.tone==='works' ? 'Adds to your Steam library.' : 'Compatibility can vary. Adds to your Steam library.');
+  $("detailInstallNote").textContent=job?.result?.game_data ? (job.dataError || 'Installed. It also needs its game data: open it once on the Frame, then choose Add game data.') : job?.result ? '✓ Installed. Find it in your Steam library.' : job?.error || (job && !job.done ? 'Keep exploring. We’ll take care of the installation.' : o.verdict?.tone==='works' ? 'Adds to your Steam library.' : 'Compatibility can vary. Adds to your Steam library.');
   $("detailOffers").querySelectorAll('input').forEach(input=>input.disabled=!!job&&!job.done);
 }
 async function openStoreApp(index) {
@@ -2056,6 +2056,13 @@ async function loadOfferDetails() {
 }
 async function installStoreApp() {
   const o=currentOffer(), key=`${o.source}:${o.id}`, existing=sourceState.jobs.get(key);
+  if(existing?.result?.game_data) {
+    let error="";existing.addingData=true;existing.dataError="";updateInstall();
+    const added=await runJob(`Add game data for ${o.name}`,`${key}:data`,()=>api('/api/sources',{action:'game-data',package:existing.result.package}),j=>{error=j.error||"";});
+    Object.assign(existing,{addingData:false,dataError:added?"":error||"We couldn't add the game data. Try again."});
+    if(added)existing.result={...existing.result,game_data:false};
+    updateInstall();return;
+  }
   if(existing?.result) { await act(`Open ${o.name}`,()=>api('/api/android',{action:'launch',package:existing.result.package}),$("detailInstall"));return; }
   if(!o.downloadable) { const url=sourcePage(o.page);if(url)window.open(url,'_blank','noopener,noreferrer');return; }
   if(existing&&!existing.done)return;

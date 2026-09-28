@@ -1294,6 +1294,9 @@ def source_manage(body):
                 return {'message': message, 'source': {k: source.get(k) for k in
                                                        ('id', 'name', 'fingerprint', 'trust_on_first_use')}}
             return start_job('Add repository', add)
+        if action == 'game-data':
+            package = source_text(body, 'package')
+            return start_job('Add game data', lambda: apk_search.add_game_data(package))
         if action == 'remove':
             apk_search.manage_repo('remove_repo', source_id=source_text(body, 'source'))
             return {'message': 'Repository removed'}

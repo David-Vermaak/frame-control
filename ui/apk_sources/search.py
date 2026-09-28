@@ -20,6 +20,7 @@ from apk_sources import SourceError, SourceLimited
 _lock = threading.RLock()
 _running = {}
 _pending = {}  # source id -> newest query waiting for the running one
+_game_data = {}  # package -> downloaded OBB paths waiting for "Add game data"
 _status = {}
 TIMEOUT = 12
 
@@ -315,5 +316,21 @@ def install(source_id, entry_id, version_code=None, progress=None):
         progress('Installing', None)
     result = frame_android.install(downloaded['apk'], **kwargs)
     if obb:
-        frame_android.install_obb(result['package'], obb)
+        # OBB files go into the app's own instance, which only exists while the app runs.
+        with _lock:
+            _game_data[result['package']] = list(obb)
+        result = dict(result, game_data=True, message='Installed ' + (entry.get('name') or result['package']) +
+                      '. It also needs its game data: open it once on the Frame, then choose Add game data.')
     return result
+
+
+def add_game_data(package):
+    import frame_android
+    with _lock:
+        paths = _game_data.get(package)
+    if not paths:
+        raise SourceError('No downloaded game data is waiting for this app; install it again from the store')
+    result = frame_android.install_obb(package, paths)
+    with _lock:
+        _game_data.pop(package, None)
+    return dict(result, message='Game data added')

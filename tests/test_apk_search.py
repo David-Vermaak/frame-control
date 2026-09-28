@@ -31,8 +31,8 @@ class SettingsTest(unittest.TestCase):
         p = patch.object(search, 'settings_path', return_value=Path(self.tmp.name) / 'enabled.json')
         p.start()
         self.addCleanup(p.stop)
-        search._running.clear()
-        search._status.clear()
+        for state in (search._running, search._pending, search._status, search._game_data):
+            state.clear()
 
 
 class SearchTests(SettingsTest):
@@ -141,8 +141,16 @@ class SearchTests(SettingsTest):
              patch.object(server.frame_android, 'install_obb', create=True) as obb:
             # An actual function exposes the future signature for inspection.
             with patch.object(server.frame_android, 'install', install):
-                search.install('one', 'brush', 1)
+                result = search.install('one', 'brush', 1)
+            # The app's instance isn't running right after install, so game data is a follow-up step.
+            obb.assert_not_called()
+            self.assertTrue(result['game_data'])
+            self.assertIn('Add game data', result['message'])
+            obb.return_value = {'package': 'org.brush', 'obb': []}
+            self.assertEqual(search.add_game_data('org.brush')['message'], 'Game data added')
             obb.assert_called_once_with('org.brush', ['main.obb'])
+            with self.assertRaisesRegex(SourceError, 'install it again'):
+                search.add_game_data('org.brush')
             mod.download.assert_called_once_with(mod.sources()[0] | {'status': 'not searched'}, 'brush', version_code=1)
 
     def test_discovery_and_demo_are_opt_in(self):
@@ -264,6 +272,18 @@ class EndpointTests(SettingsTest):
                 self.assertEqual(self.request('POST', '/api/sources', {'action': 'add', 'url': url})[0], 400)
             self.assertEqual(self.request('POST', '/api/sources', {'action': 'remove', 'source': 'fdroid'})[0], 200)
             mod.remove_repo.assert_called_once_with(source_id='fdroid')
+
+    def test_http_add_game_data_job(self):
+        search._game_data['org.brush'] = ['/cache/main.1.org.brush.obb']
+        self.addCleanup(search._game_data.clear)
+        with patch.object(server.frame_android, 'install_obb', create=True,
+                          side_effect=server.frame_android.FrameError('start this app instance before installing OBB data')):
+            job = self.wait(self.request('POST', '/api/sources', {'action': 'game-data', 'package': 'org.brush'})[1]['job'])
+        self.assertEqual(job['error'], 'start this app instance before installing OBB data')
+        with patch.object(server.frame_android, 'install_obb', create=True, return_value={'package': 'org.brush'}) as obb:
+            job = self.wait(self.request('POST', '/api/sources', {'action': 'game-data', 'package': 'org.brush'})[1]['job'])
+        self.assertEqual(job['message'], 'Game data added')
+        obb.assert_called_once_with('org.brush', ['/cache/main.1.org.brush.obb'])
 
     def wait(self, job_id):
         for _ in range(200):
