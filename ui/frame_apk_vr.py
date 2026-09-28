@@ -19,6 +19,8 @@ def inspect(data):
                 package = attrs.get('package', (None, None, None))[2] or ''
             if tag in ('activity', 'activity-alias'):
                 owner = attrs.get('targetActivity', (None, None, None))[2] if tag == 'activity-alias' else value
+                if owner and '.' not in owner:  # PackageParser.buildClassName: bare names are relative too
+                    owner = '.' + owner
                 owner = package + owner if owner and owner.startswith('.') else owner
             if tag == 'intent-filter' and stack and stack[-1] in ('activity', 'activity-alias'):
                 current = {'actions': set(), 'categories': set(), 'templates': [], 'alias': stack[-1] == 'activity-alias', 'activity': owner}
