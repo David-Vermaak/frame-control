@@ -318,28 +318,109 @@ class Repositories(unittest.TestCase):
         self.assertEqual(fdroid.add_repo(URL)['fingerprint'], pin)
 
     def test_concurrent_processes_cannot_publish_an_older_index_last(self):
+        # Threads with their own in-memory locks, as separate processes would have; each
+        # _state_file_lock() opens its own file description, so flock contends for real.
         import threading
         self.files['entry.jar'], _ = entry_jar(50)
         source = fdroid.add_repo(URL)
-        self.files['entry.jar'], _ = entry_jar(100)
-        newer, _ = entry_jar(200)
+        jars = {'older': entry_jar(100)[0], 'newer': entry_jar(200)[0]}
+        def fetch(url, path, maximum):
+            name = threading.current_thread().name
+            if name in jars and url.endswith('entry.jar'):
+                Path(path).write_bytes(jars[name])
+            else:
+                self.fetch(url, path, maximum)
+        self.fetch_mock.side_effect = fetch
+        inside, go, order = threading.Event(), threading.Event(), []
+        real_write = fdroid._write
+        def write(path, value):
+            if path.name.endswith('.json') and 'apps' in value and threading.current_thread().name == 'older':
+                inside.set()  # the older load has passed its locked recheck; hold it there
+                go.wait(5)
+            order.append(threading.current_thread().name)
+            real_write(path, value)
+        errors = {}
+        def load():
+            try:
+                fdroid._load(source, force=True)
+            except SourceError as e:
+                errors[threading.current_thread().name] = str(e)
+        with patch.object(fdroid, '_source_lock', lambda source_id: threading.Lock()), \
+                patch.object(fdroid, '_write', write):
+            older = threading.Thread(target=load, name='older')
+            older.start()
+            self.assertTrue(inside.wait(5))
+            newer = threading.Thread(target=load, name='newer')
+            newer.start()
+            newer.join(.5)
+            self.assertTrue(newer.is_alive())  # blocked on the file lock, not publishing
+            go.set()
+            older.join(5)
+            newer.join(5)
+        self.assertEqual(errors, {})
+        self.assertEqual(order, ['older', 'older', 'newer', 'newer'])  # cache+state, one load at a time
+        self.assertEqual(fdroid._state(source)['timestamp'], 200)
+
+    def test_overlapping_v1_load_cannot_replace_accepted_v2(self):
+        import threading
+        v1 = json.loads(zipfile.ZipFile(FIXTURES / 'index-v1.jar').read('index-v1.json'))
+        v1['repo'] = {'timestamp': 100}
+        self.files['index-v1.jar'], pin = signed_jar('index-v1.json', json.dumps(v1).encode())
+        self.files['entry.jar'], _ = entry_jar(100)  # the same timestamp as the v1 index
+        source = dict(id='overlap', name='Overlap', url=URL, fingerprint=None)
+        self.v1 = True
         inner = []
         def fetch(url, path, maximum):
-            if url.endswith('index-v2.json') and not inner:
-                # Another process (its own in-memory locks) loads a newer index after our early check.
-                inner.append(1)
-                self.files['entry.jar'] = newer
-                self.assertEqual(len(fdroid._load(source, force=True)[0]), 1)
+            if url.endswith('index-v1.jar') and not inner:
+                inner.append(1)  # the v1 load passed its fallback check; a v2 load finishes now
+                self.v1 = False
+                t = threading.Thread(target=lambda: inner.append(fdroid._load(source, force=True)))
+                with patch.object(fdroid, '_source_lock', lambda source_id: threading.Lock()):
+                    t.start()
+                    t.join(5)
+                self.v1 = True
             self.fetch(url, path, maximum)
         self.fetch_mock.side_effect = fetch
-        writes = []
-        real_write = fdroid._write
-        with patch.object(fdroid, '_source_lock', lambda source_id: threading.Lock()), \
-                patch.object(fdroid, '_write', lambda path, value: (writes.append(path.name), real_write(path, value))):
-            with self.assertRaisesRegex(SourceError, 'older'):
-                fdroid._load(source, force=True)
-        self.assertEqual(fdroid._state(source)['timestamp'], 200)
-        self.assertEqual(writes, [source['id'] + '.json', 'apk-repo-state.json'])  # only the newer index published
+        with self.assertRaisesRegex(SourceError, 'v2'):
+            fdroid._load(source, force=True)
+        self.assertEqual(inner[1][1], pin)
+        self.assertTrue(fdroid._state(source)['v2'])
+        self.v1 = False
+        count = self.fetch_mock.call_count
+        apps, _ = fdroid._load(dict(source, fingerprint=pin))
+        self.assertEqual((apps['org.example.app']['version_code'], self.fetch_mock.call_count), (2, count))  # v2 cache stayed
+
+    def test_apk_removed_during_cache_check_is_downloaded_again(self):
+        source = self.add()
+        first = fdroid.download(source, 'org.example.app', 1)
+        count = self.fetch_mock.call_count
+        real = fdroid._sha256
+        def removed_first(path):
+            if str(path) == first['apk'] and not hashed:
+                hashed.append(1)
+                os.remove(first['apk'])  # deleted between the existence check and the open
+            return real(path)
+        hashed = []
+        with patch.object(fdroid, '_sha256', removed_first):
+            again = fdroid.download(source, 'org.example.app', 1)
+        self.assertEqual(self.fetch_mock.call_count, count + 1)
+        self.assertEqual(Path(again['apk']).read_bytes(), (FIXTURES / 'example.apk').read_bytes())
+
+    def test_cached_apk_is_touched_before_hashing(self):
+        source = self.add()
+        first = fdroid.download(source, 'org.example.app', 1)
+        os.utime(first['apk'], (1, 1))
+        count = self.fetch_mock.call_count
+        real = fdroid._sha256
+        def prune_first(path):
+            if str(path) == first['apk']:
+                with patch.object(_web, 'APK_CAP', 0):
+                    _web.prune()  # a pruner running now sees a just-used APK
+            return real(path)
+        with patch.object(fdroid, '_sha256', prune_first):
+            fdroid.download(source, 'org.example.app', 1)
+        self.assertEqual(self.fetch_mock.call_count, count)
+        self.assertTrue(Path(first['apk']).exists())
 
     def test_cli_search_waits_for_background_refresh(self):
         source = self.add()
@@ -353,6 +434,24 @@ class Repositories(unittest.TestCase):
         self.assertEqual(self.fetch_mock.call_count, before + 2)  # the refresh finished before exit
         self.assertFalse(fdroid.stale(source))
         self.assertNotIn(source['id'], fdroid._refreshing)
+
+    def test_cli_error_still_waits_for_background_refresh(self):
+        import threading
+        source = self.add()
+        self.expire(source)
+        release = threading.Event()
+        def slow(url, path, maximum):
+            release.wait(5)
+            self.fetch(url, path, maximum)
+        self.fetch_mock.side_effect = slow
+        threading.Timer(.3, release.set).start()
+        with patch.object(sys, 'argv', ['fdroid.py', 'download', source['id'], 'org.missing']), \
+                patch('sys.stderr', io.StringIO()) as err, self.assertRaises(SystemExit):
+            fdroid.main()
+        self.assertIn('no Lepton-compatible version', err.getvalue())
+        self.assertTrue(release.is_set())
+        self.assertEqual(fdroid._refreshing, {})  # joined before exiting
+        self.assertFalse(fdroid.stale(source))
 
     def test_no_v1_fallback_once_v2_accepted(self):
         source = self.add()

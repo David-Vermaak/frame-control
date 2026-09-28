@@ -85,7 +85,11 @@ def cache():
 
 
 def prune():
-    """Trim the download caches: APKs to APK_CAP by mtime, orphaned .part/temp files, old listings."""
+    """Trim the download caches: APKs to APK_CAP by mtime, orphaned .part/temp files, old listings.
+
+    Only the long-running app prunes (at start and after store downloads): claim() is
+    in-process, so the CLIs never prune and so can't delete an APK the app is installing.
+    """
     now, apks = time.time(), []
     for folder in (str(frame_host.cache_dir('apk-sources')), cache()):
         try:
@@ -220,7 +224,6 @@ def apk(url, hosts, digest=None, name=None):
                 raise SourceError('Download is not an APK')
         path = os.path.join(cache(), actual + '.apk')
         os.replace(tmp, path)
-        prune()
         return {'apk': path, 'obb': [], 'sha256': actual, 'verified': bool(digest)}
     except urllib.error.HTTPError as e:
         if e.code in (403, 429):

@@ -2,6 +2,7 @@
 import argparse
 import base64
 import contextlib
+import errno
 import hashlib
 from html.parser import HTMLParser
 import json
@@ -295,8 +296,9 @@ def _state_file_lock():
                     f.seek(0)
                     msvcrt.locking(f.fileno(), msvcrt.LK_LOCK, 1)
                     break
-                except OSError:
-                    pass  # LK_LOCK gives up after ~10 s; keep waiting
+                except OSError as e:  # LK_LOCK gives up after ~10 s of contention; keep waiting
+                    if e.errno not in (errno.EACCES, errno.EDEADLK):
+                        raise
             try:
                 yield
             finally:
@@ -555,6 +557,8 @@ def _load(source, force=False):
                 apps = _reduce(raw, source)
                 with _state_file_lock():  # recheck: another process may have accepted a newer index meanwhile
                     _check_timestamp(source, timestamp)
+                    if not v2 and _state(source).get('v2'):  # a v2 index was accepted while we fetched v1
+                        raise SourceError('repository now has a signed v2 index; refusing the older v1 index')
                     _write(cache, {'version': CACHE_VERSION, 'url': source['url'], 'fingerprint': pin, 'apps': apps})
                     _accept(source, timestamp, v2)
                 _stale.discard(source['id'])
@@ -647,7 +651,13 @@ def download(source, entry_id, version_code=None):
     sha = version['sha256']
     path = frame_host.cache_dir('apk-sources', sha + '.apk')
     try:
-        if not (path.exists() and _sha256(path) == sha and _web.touch(path)):  # touch: recently used, not pruned
+        reuse = False
+        if _web.touch(path):  # before hashing: a just-used APK is never pruned
+            try:
+                reuse = _sha256(path) == sha
+            except FileNotFoundError:  # removed anyway (e.g. by hand): download again
+                pass
+        if not reuse:
             path.parent.mkdir(parents=True, exist_ok=True)
             fd, tmp = tempfile.mkstemp(dir=str(path.parent), suffix='.part')
             os.close(fd)
@@ -659,7 +669,6 @@ def download(source, entry_id, version_code=None):
             finally:
                 if os.path.exists(tmp):
                     os.unlink(tmp)
-            _web.prune()
         return {'apk': str(path), 'obb': [], 'sha256': sha, 'verified': True}
     except SourceLimited as e:
         raise _limited(source, e) from e
@@ -683,6 +692,14 @@ def main():
         p.add_argument('query' if command == 'search' else 'package')
     args = parser.parse_args()
     try:
+        _cli(parser, args)
+    finally:
+        for thread in list(_refreshing.values()):  # daemon refreshes would die with the CLI, even on errors
+            thread.join()
+
+
+def _cli(parser, args):
+    try:
         if args.command == 'add':
             result = add_repo(args.url, args.fingerprint, args.name)
         elif args.command == 'list':
@@ -694,8 +711,6 @@ def main():
             if not source:
                 raise SourceError('unknown repository id; use list')
             result = search(source, args.query) if args.command == 'search' else download(source, args.package)
-        for thread in list(_refreshing.values()):  # daemon refreshes would die with the CLI
-            thread.join()
         print(json.dumps(result, indent=2))
     except SourceError as e:
         parser.exit(1, 'error: ' + str(e) + '\n')

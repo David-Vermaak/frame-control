@@ -71,6 +71,8 @@ Authenticated reduced indexes and APKs live under
 `frame_host.cache_dir('apk-sources')`; indexes refresh after 24 hours. An
 expired index is still served (marked stale in the store) while it refreshes in
 the background; a failed refresh is retried after 10 minutes.
+Only the running Frame Control app prunes cached APKs (at start and after store
+downloads); the command-line tools never do.
 The existing catalogue's unverified index cache is never treated as authenticated.
 
 Rollback protection: each repository's newest accepted signed index timestamp

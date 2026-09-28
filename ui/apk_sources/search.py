@@ -324,6 +324,7 @@ def install(source_id, entry_id, version_code=None, progress=None):
     except OSError as e:
         raise SourceError('The downloaded APK disappeared before installing; try again') from e
     try:
+        _web.prune()  # the app is the only pruner (see _web.prune)
         result = frame_android.install(downloaded['apk'], **kwargs)
     finally:
         _web.release(downloaded['apk'])
