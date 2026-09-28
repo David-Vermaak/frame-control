@@ -153,6 +153,9 @@ class Link:
     def __init__(self, registry, *, env_alias, mux_base, control, apply, explain):
         self.reg = registry
         self.override = env_alias       # FRAME_ALIAS, if set: the headset this server starts on
+        self.work_lock = threading.Lock()  # the server's: held, no install starts (see server.working)
+        self.work = lambda: 0              # how many installs are running
+        self.deferred = False              # a login change from ~/.ssh/config waiting for them
         self.session_alias = env_alias  # ...and stays selectable after switching away
         self.mux_base = list(mux_base)  # ["ssh", "-o", "BatchMode=yes", ControlPath...]
         self.control = control          # ControlPath, or None where ssh can't share connections
@@ -407,11 +410,19 @@ class Link:
         if mtime != self.config_mtime:
             self.config_mtime = mtime
             before = self.active_device()
+            if before.get("transient") and not before.get("none") and self.routed is not None:
+                # A bare alias is in use: a headset set up now doesn't take over by itself.
+                self.override = self.override or before["alias"]
             if self.reg.sync_from_config():
                 self.devices_changed()
                 after = self.active_device()
                 if (before.get("user"), before.get("port")) != (after.get("user"), after.get("port")):
-                    self.invalidate()  # Set Up Connection changed the active headset's login
+                    self.deferred = True  # Set Up Connection changed the active headset's login
+        if self.deferred:
+            with self.work_lock:  # not while an install runs: it reads the route step by step
+                if not self.work():
+                    self.deferred = False
+                    self.invalidate()
 
     def refresh_network(self):
         net = frame_network.current_network(self.last_fp)
@@ -937,13 +948,21 @@ def devices_action(link, body, open_setup, busy=lambda: 0):
     elif action == "update":
         before = reg.get(did)
         d = reg.update_device(did, name=body.get("name"), user=body.get("user"), port=body.get("port"))
-        if is_active and (d["user"], d["port"]) != (before["user"], before["port"]):
+        login_changed = (d["user"], d["port"]) != (before["user"], before["port"])
+        if is_active and login_changed:
             link.invalidate()  # before anything else can fail: the old login mustn't stay in use
-        try:
-            frame_devices.rewrite_block(d["alias"], user=d["user"], port=d["port"])
-        except OSError as e:
-            raise frame_devices.DeviceError(f"Saved, but couldn't update ~/.ssh/config: {e}")
         msg = f"Saved {d['name']}"
+        if login_changed:
+            # Only what changed, and only if the block still says what it did: Set Up
+            # Connection may have written a new login meanwhile, which then stands.
+            try:
+                if not frame_devices.rewrite_block(d["alias"], user=d["user"], port=d["port"],
+                                                   expect={"user": before["user"], "port": before["port"]}) \
+                        and any(b["alias"] == d["alias"] and (b["user"], b["port"]) != (d["user"], d["port"])
+                                for b in frame_devices.parse_blocks(frame_devices.read_config())):
+                    msg += "; ~/.ssh/config changed meanwhile, so it was left as it is"
+            except OSError as e:
+                raise frame_devices.DeviceError(f"Saved, but couldn't update ~/.ssh/config: {e}")
     elif action == "remove":
         if not body.get("config") and len(reg.devices()) == 1 and reg.get(did)["alias"] in {
                 b["alias"] for b in frame_devices.parse_blocks(frame_devices.read_config())}:

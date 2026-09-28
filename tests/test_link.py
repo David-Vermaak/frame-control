@@ -263,6 +263,36 @@ class Connecting(unittest.TestCase):
         self.assertEqual(self.link.active_device()["alias"], "frame-bare")
         self.assertEqual(self.routes[-1], ("frame-bare", []))
 
+    def test_setup_changing_the_login_waits_for_installs(self):
+        d = self.device("localhost")
+        self.hosts({"localhost": "ok"})
+        self.link.connect(["start"])
+        cfg = self.dir / "ssh" / "config"
+        cfg.write_text("# >>> steam-frame (frame-t) >>>\nHost frame-t\n  HostName localhost\n  User steamos\n"
+                       f"  Port {self.port}\nHost *\n# <<< steam-frame (frame-t) <<<\n")
+        self.link.watch_config()  # the block's login is recorded
+        routes = len(self.routes)
+        cfg.write_text(cfg.read_text().replace("User steamos", "User deck"))
+        running = [1]
+        self.link.work = lambda: running[0]
+        self.link.config_mtime = None
+        self.link.watch_config()
+        self.assertEqual(len(self.routes), routes)  # an install is running: not yet
+        running[0] = 0
+        self.link.watch_config()
+        self.assertIn("User=deck", self.routes[-1][1])
+
+    def test_a_rename_leaves_the_login_in_the_config_alone(self):
+        d = self.device("localhost")
+        cfg = self.dir / "ssh" / "config"
+        cfg.write_text("# >>> steam-frame (frame-t) >>>\nHost frame-t\n  HostName localhost\n  User deck\n"
+                       "Host *\n# <<< steam-frame (frame-t) <<<\n")  # setup wrote a new user, not yet imported
+        fl.devices_action(self.link, {"action": "update", "id": d["id"], "name": "Desk"}, None)
+        self.assertIn("User deck", cfg.read_text())
+        out = fl.devices_action(self.link, {"action": "update", "id": d["id"], "port": 2200}, None)
+        self.assertIn("User deck", cfg.read_text())  # changed meanwhile: left as it is
+        self.assertIn("left as it is", out["message"])
+
     def test_probes_from_an_earlier_attempt_leave_the_new_rows_alone(self):
         self.link.state.update(attempt=2, probes=[{"host": "b", "state": "waiting"}])
         self.link.probe_update(0, 1, state="answered", ip="10.0.0.2")

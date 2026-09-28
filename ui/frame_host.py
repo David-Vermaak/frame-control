@@ -257,9 +257,9 @@ def open_steam_link():
     return "Steam Link isn't installed; opened its download page"
 
 
-def open_rdp(alias):
-    """Remote desktop to the Frame's xrdp (user steamos)."""
-    host = ssh_hostname(alias)
+def open_rdp(alias, host=None):
+    """Remote desktop to the Frame's xrdp (user steamos), at `host` or where the alias points."""
+    host = host or ssh_hostname(alias)
     if MAC:
         if subprocess.run(["open", "-a", "Windows App"], capture_output=True).returncode == 0:
             return "Opened Windows App"

@@ -580,19 +580,25 @@ def open_thing(body):
         if what in ("reboot", "poweroff", "suspend"):
             return power(what, body.get("password"))
         raise Failure("open that from the app", 400)
+    # The headset and address in use, as every other command gets them (one snapshot).
+    with _route_lock:
+        alias, opts = FRAME, list(HOST_OPTS)
+    host = next((o.split("=", 1)[1].replace("%%", "%") for o in opts if o.startswith("HostName=")), None)
+    if what in ("terminal", "reboot", "poweroff", "suspend", "rdp", "sftp") and host and host.endswith(".invalid"):
+        raise Failure("No headset address to use: add one on the Devices tab", 400)
     try:
         if what == "terminal":
-            return {"message": f"Opened an SSH session in {terminal(['ssh', FRAME])}"}
+            return {"message": f"Opened an SSH session in {terminal(['ssh', *opts, alias])}"}
         if what in ("reboot", "poweroff", "suspend"):
             # logind answers "challenge" over SSH, so sudo (and the password) is needed.
-            where = terminal(["ssh", "-t", FRAME, "sudo", "systemctl", what])
+            where = terminal(["ssh", "-t", *opts, alias, "sudo", "systemctl", what])
             return {"message": f"Confirm with the Developer Mode password in {where} to {what}"}
         if what == "steamlink":
             return {"message": frame_host.open_steam_link()}
         if what == "rdp":
-            return {"message": frame_host.open_rdp(FRAME)}
+            return {"message": frame_host.open_rdp(alias, host)}
         if what == "sftp":
-            return {"message": f"Opened an SFTP session in {terminal(['sftp', FRAME])}"}
+            return {"message": f"Opened an SFTP session in {terminal(['sftp', *opts, alias])}"}
         if what == "shots":
             SHOTS_DIR.mkdir(parents=True, exist_ok=True)
             frame_host.open_path(SHOTS_DIR)
@@ -1659,6 +1665,7 @@ def main():
     if not LOCAL:
         LINK = frame_link.Link(frame_devices.Registry(), env_alias=FRAME if FRAME_FROM_ENV else None,
                                mux_base=MUX_BASE, control=CONTROL, apply=route, explain=unreachable)
+        LINK.work_lock, LINK.work = _work_lock, lambda: _work[0]
         LINK.start()
     if not frame_host.WINDOWS:
         signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(KeyboardInterrupt))
