@@ -98,10 +98,16 @@ def set_enabled(source_id, enabled):
     return {'message': source['name'] + (' enabled' if enabled else ' disabled')}
 
 
+def repo_module():
+    module = next((m for m in modules()[0] if m.KIND == 'fdroid'), None)
+    if module is None or not hasattr(module, 'add_repo'):
+        raise SourceError('User repositories are not available in this build')
+    return module
+
+
 def manage_repo(action, **kwargs):
-    mods, _ = modules()
-    module = next((m for m in mods if m.KIND == 'fdroid'), None)
-    if module is None or not hasattr(module, action):
+    module = repo_module()
+    if not hasattr(module, action):
         raise SourceError('User repositories are not available in this build')
     return getattr(module, action)(**kwargs)
 

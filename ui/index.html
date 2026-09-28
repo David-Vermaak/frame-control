@@ -2080,7 +2080,14 @@ $("detailBody").onchange=e=>{if(e.target.name==='storeOffer'){sourceState.detail
 $("sourcesOpen").onclick=()=>{loadSources();$('sourcesDialog').showModal();};
 $("sourcesList").onchange=e=>{if(e.target.matches('[data-enable]'))changeSource({action:'enable',source:e.target.dataset.enable,enabled:e.target.checked});};
 $("sourcesList").onclick=e=>{const b=e.target.closest('[data-remove]');if(b)changeSource({action:'remove',source:b.dataset.remove});};
-$("addSource").onsubmit=e=>{e.preventDefault();const f=new FormData(e.target);changeSource({action:'add',url:f.get('url'),fingerprint:f.get('fingerprint')});};
+async function addSource(body) {
+  $("sourceError").textContent="Checking the repository. Large ones can take a minute…";
+  let error="";
+  const result=await runJob('Add repository',`repo:${body.url}`,()=>api('/api/sources',body).catch(e=>{error=e.message;throw e;}),j=>{error=j.error||"";});
+  $("sourceError").textContent=result ? result.message : error || "We couldn't add that repository.";
+  if(result){$("addSource").reset();sourceState.source='';await loadSources();await searchSources();}
+}
+$("addSource").onsubmit=e=>{e.preventDefault();const f=new FormData(e.target);addSource({action:'add',url:f.get('url'),fingerprint:f.get('fingerprint')});};
 document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>$(b.dataset.close).close());
 $('appDetail').addEventListener('close',()=>{sourceState.detailRequest++;});
 document.querySelectorAll('[data-store-tab]').forEach(b=>b.onclick=()=>{const browse=b.dataset.storeTab==='browse';$('appStore').hidden=!browse;$('androidLibrary').hidden=browse;$('repNew').hidden=browse;$('sourcesOpen').hidden=!browse;document.querySelectorAll('[data-store-tab]').forEach(t=>{t.classList.toggle('on',t===b);t.setAttribute('aria-pressed',t===b);});if(!browse)loadAndroid();});

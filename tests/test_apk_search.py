@@ -243,9 +243,32 @@ class EndpointTests(SettingsTest):
         self.assertEqual(code, 400)
         self.assertIn('not available', reply['error'])
         mod = fake('fdroid')
-        mod.add_repo, mod.remove_repo, mod.set_enabled = Mock(), Mock(), Mock()
+        added = {'id': 'fdroid-user-1', 'name': 'repo.example', 'fingerprint': 'ab' * 32, 'trust_on_first_use': True}
+        mod.add_repo, mod.remove_repo, mod.set_enabled = Mock(return_value=added), Mock(), Mock()
         with patch.object(search, 'modules', return_value=([mod], [])):
-            self.assertEqual(self.request('POST', '/api/sources', {'action': 'add', 'url': 'https://repo.example/repo'})[0], 200)
+            code, reply = self.request('POST', '/api/sources', {'action': 'add', 'url': 'https://repo.example/repo'})
+            self.assertEqual(code, 200)
+            job = self.wait(reply['job'])
+            self.assertEqual(job['message'], 'Added repo.example. Trusted on first use: ' + 'AB' * 32)
+            self.assertEqual(job['result']['source']['fingerprint'], 'ab' * 32)
             mod.add_repo.assert_called_once_with(url='https://repo.example/repo', fingerprint=None, name=None)
+            link = 'fdroidrepos://repo.example/repo?fingerprint=' + 'ab' * 32
+            mod.add_repo.return_value = dict(added, trust_on_first_use=False)
+            job = self.wait(self.request('POST', '/api/sources', {'action': 'add', 'url': link})[1]['job'])
+            self.assertEqual(job['message'], 'Added repo.example')
+            mod.add_repo.assert_called_with(url=link, fingerprint=None, name=None)
+            mod.add_repo.side_effect = SourceError('repository fingerprint mismatch')
+            job = self.wait(self.request('POST', '/api/sources', {'action': 'add', 'url': link})[1]['job'])
+            self.assertEqual(job['error'], 'repository fingerprint mismatch')  # no "SourceError:" prefix
+            for url in ('http://repo.example/repo', 'fdroidrepo://repo.example/repo', 'https://u@repo.example/'):
+                self.assertEqual(self.request('POST', '/api/sources', {'action': 'add', 'url': url})[0], 400)
             self.assertEqual(self.request('POST', '/api/sources', {'action': 'remove', 'source': 'fdroid'})[0], 200)
             mod.remove_repo.assert_called_once_with(source_id='fdroid')
+
+    def wait(self, job_id):
+        for _ in range(200):
+            job = self.request('GET', '/api/job?id=' + job_id)[1]
+            if job['done']:
+                return job
+            time.sleep(.01)
+        self.fail('job did not finish')

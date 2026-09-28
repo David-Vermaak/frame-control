@@ -167,6 +167,8 @@ def start_job(label, work, progress=False):
             fields = {"message": result.get("message") or f"{label}: done", "result": result}
         except (Failure, frame_android.FrameError) as e:
             fields = {"error": unreachable(str(e)) or str(e)}
+        except SourceError as e:  # already user-readable, and about a store, not the Frame
+            fields = {"error": str(e)}
         except Exception as e:
             fields = {"error": f"{type(e).__name__}: {e}"}
         finally:
@@ -1278,11 +1280,20 @@ def source_manage(body):
             return apk_search.set_enabled(source_text(body, 'source'), body['enabled'])
         if action == 'add':
             url = source_text(body, 'url')
-            if urlparse(url).scheme != 'https' or not urlparse(url).hostname or urlparse(url).username:
-                raise Failure('Use an HTTPS repository URL without credentials', 400)
-            apk_search.manage_repo('add_repo', url=url, fingerprint=source_text(body, 'fingerprint', True),
-                                   name=source_text(body, 'name', True))
-            return {'message': 'Repository added'}
+            fingerprint, name = source_text(body, 'fingerprint', True), source_text(body, 'name', True)
+            parts = urlparse(url)
+            if parts.scheme not in ('https', 'fdroidrepos') or not parts.hostname or parts.username:
+                raise Failure('Use an HTTPS or fdroidrepos:// repository URL without credentials', 400)
+            apk_search.repo_module()  # fail now if this build can't manage repositories
+
+            def add():  # downloads and verifies the whole index: a job, not a request
+                source = apk_search.manage_repo('add_repo', url=url, fingerprint=fingerprint, name=name)
+                message = 'Added ' + source['name']
+                if source.get('trust_on_first_use'):
+                    message += '. Trusted on first use: ' + source['fingerprint'].upper()
+                return {'message': message, 'source': {k: source.get(k) for k in
+                                                       ('id', 'name', 'fingerprint', 'trust_on_first_use')}}
+            return start_job('Add repository', add)
         if action == 'remove':
             apk_search.manage_repo('remove_repo', source_id=source_text(body, 'source'))
             return {'message': 'Repository removed'}

@@ -53,8 +53,10 @@ Adding fetches and validates the complete index **before saving** the source.
 Without a fingerprint, Frame Control verifies the JAR signature and remembers
 its signer: trust on first use (TOFU). This establishes continuity with the
 first server response, not independent publisher identity. Obtain the published
-fingerprint through a trusted channel when possible. Re-adding an existing URL
-preserves its pin; changing it requires deliberately removing and re-adding it.
+fingerprint through a trusted channel when possible; the store's Add a source
+form shows the pinned one ("Trusted on first use: …") so you can compare it.
+Re-adding an existing URL preserves its pin; changing it requires deliberately
+removing and re-adding it.
 
 The API for the search/server integration is in `ui/apk_sources/fdroid.py`:
 `add_repo(url, fingerprint=None, name=None)`, `remove_repo(source_id)`,
