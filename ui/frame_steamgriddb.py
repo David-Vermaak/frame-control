@@ -3,6 +3,8 @@ import json
 import os
 import re
 import tempfile
+import time
+import unicodedata
 import urllib.parse
 import urllib.request
 
@@ -48,36 +50,42 @@ def save_settings(body):
     return settings()
 
 
-def _get(path, key):
+def _get(path, key, deadline=None):
+    timeout = 12 if deadline is None else min(12, deadline - time.monotonic())
+    if timeout <= 0:
+        raise ValueError('SteamGridDB lookup took too long')
     request = urllib.request.Request(API + path, headers={'Authorization': 'Bearer ' + key,
                                                          'User-Agent': 'FrameControl/1.0'})
     # Do not carry the credential to redirects or include it in error messages.
     class NoRedirect(urllib.request.HTTPRedirectHandler):
         def redirect_request(self, *args, **kwargs):
             return None
-    with urllib.request.build_opener(NoRedirect()).open(request, timeout=12) as response:
+    with urllib.request.build_opener(NoRedirect()).open(request, timeout=timeout) as response:
         data = response.read(MAX_JSON + 1)
     if len(data) > MAX_JSON:
         raise ValueError('SteamGridDB response too large')
     result = json.loads(data)
-    if not result.get('success') or not isinstance(result.get('data'), list):
+    if not isinstance(result, dict) or not result.get('success') or not isinstance(result.get('data'), list):
         raise ValueError('SteamGridDB lookup failed')
     return result['data']
 
 
 def _name(value):
-    return re.sub(r'[^a-z0-9]', '', str(value).casefold())
+    # Letters and digits of any script, so a CJK title never normalises to ''.
+    return ''.join(c for c in unicodedata.normalize('NFKC', str(value or '')).casefold() if c.isalnum())
 
 
-def lookup(name):
+def lookup(name, deadline=None):
     """Best-voted art per slot for an exact title match; unrelated games are never guessed."""
     key = api_key()
     if not key:
         return {}, []
     try:
-        matches = _get('/search/autocomplete/' + urllib.parse.quote(name, safe=''), key)
-        names = {_name(name), _name(re.sub(r'\s+VR$', '', name, flags=re.I))}
-        game = next((g for g in matches if _name(g.get('name')) in names), None)
+        names = {_name(name), _name(re.sub(r'\s+VR$', '', name, flags=re.I))} - {''}
+        if not names:
+            return {}, []
+        matches = _get('/search/autocomplete/' + urllib.parse.quote(name, safe=''), key, deadline)
+        game = next((g for g in matches if isinstance(g, dict) and _name(g.get('name')) in names), None)
         if not game:
             return {}, []
         gid = int(game['id'])
@@ -88,16 +96,17 @@ def lookup(name):
                 query = {'types': 'static', 'nsfw': 'false', 'humor': 'false', 'mimes': 'image/png,image/jpeg'}
                 if dimensions:
                     query['dimensions'] = dimensions
-                records = _get('/' + kind + '/game/' + str(gid) + '?' + urllib.parse.urlencode(query), key)
-                records = [r for r in records if r.get('url', '').startswith('https://') and not r.get('nsfw')]
+                records = _get('/' + kind + '/game/' + str(gid) + '?' + urllib.parse.urlencode(query), key, deadline)
+                records = [r for r in records if isinstance(r, dict) and str(r.get('url', '')).startswith('https://')
+                           and not r.get('nsfw')]
                 if dimensions:
                     w, h = map(int, dimensions.split('x'))
                     records = [r for r in records if (r.get('width'), r.get('height')) == (w, h)]
                 records.sort(key=lambda r: (int(r.get('score') or 0), int(r.get('upvotes') or 0)), reverse=True)
                 if records:
                     result[slot] = records[0]['url']
-            except (OSError, ValueError, KeyError, TypeError):
+            except Exception:  # HTTPException, odd JSON: this slot falls back
                 warnings.append('SteamGridDB ' + slot + ' unavailable; using source or generated art')
         return result, warnings
-    except (OSError, ValueError, KeyError, TypeError):
+    except Exception:
         return {}, ['SteamGridDB unavailable; using source or generated art']

@@ -795,7 +795,7 @@
         <a href="https://www.steamgriddb.com/profile/preferences/api" target="_blank" rel="noreferrer">Get a free key</a>
       </div>
       <div id="steamGridStatus" class="hint" role="status"></div>
-      <button id="refreshAndroidArt" class="small" style="margin-top:12px">Refresh installed Android artwork</button>
+      <button id="refreshAndroidArt" class="small" style="margin-top:12px">Refresh artwork for installed apps and titles</button>
     </section>
     <section class="panel" id="power">
       <div class="shelf-head"><h2>Remote &amp; power</h2></div>
@@ -1801,6 +1801,7 @@ async function loadTitles() {
     <div class="item">
       <div class="grow"><div class="t">${esc(t.id)}</div>
         <div class="s" title="${esc(t.target)}">${esc(t.runtime_label)}${t.target ? " · " + esc(t.target) : ""}</div></div>
+      ${t.art_missing ? `<button class="small" data-title="refresh-art" data-id="${esc(t.id)}" title="Its Steam library tile has no artwork yet">Add artwork</button>` : ""}
       <button class="play small" data-title="launch" data-id="${esc(t.id)}" title="Launch in the headset">▶</button>
       <button class="small danger" data-title="remove" data-id="${esc(t.id)}">Remove</button>
     </div>`).join("") : `<div class="sub">None yet.</div>`;
@@ -1811,6 +1812,9 @@ $("titleList").onclick = async e => {
   if (b.dataset.title === "remove") {
     if (!confirm(`Remove ${id} and its files from the Frame?`)) return;
     await act(`Remove ${id}`, () => api("/api/titles", { action: "remove", id }), b);
+    loadTitles();
+  } else if (b.dataset.title === "refresh-art") {
+    await runJob(`Add Steam artwork for ${id}`, "art-" + id, () => api("/api/titles", { action: "refresh-art", id }));
     loadTitles();
   } else await act(`Launch ${id}`, () => api("/api/titles", { action: "launch", id }), b);
 };
@@ -2133,6 +2137,7 @@ async function loadAndroid() {
       <div class="row and-btns">
         ${a.running ? `<button class="small" data-and="stop" data-pkg="${esc(a.package)}">Stop</button>`
                     : `<button class="play small" data-and="launch" data-pkg="${esc(a.package)}">▶</button>`}
+        ${a.art_missing ? `<button class="small" data-and="refresh-art" data-pkg="${esc(a.package)}" data-name="${esc(a.label)}" title="Its Steam library tile has no artwork yet">Add artwork</button>` : ""}
         <button class="small" data-and="probe" data-pkg="${esc(a.package)}" title="Launch it and record whether it stays up">Test</button>
         <button class="small" data-and="rate" data-pkg="${esc(a.package)}" data-ver="${esc(a.version)}" data-name="${esc(a.label)}" data-src="${esc(a.source || "")}" title="Report how it worked">Report</button>
         <button class="small danger" data-and="remove" data-pkg="${esc(a.package)}" data-name="${esc(a.label)}">Remove</button>
@@ -2215,6 +2220,8 @@ document.body.addEventListener("click", async e => {
   } else if (action === "remove") {
     if (!confirm(`Remove ${b.dataset.name} and its data from the Frame?`)) return;
     await act(`Remove ${b.dataset.name}`, () => api("/api/android", { action, package: pkg }), b);
+  } else if (action === "refresh-art") {
+    await runJob(`Add Steam artwork for ${b.dataset.name}`, "art-" + pkg, () => api("/api/android", { action, package: pkg }));
   } else if (action === "rate") {
     openReport({ package: pkg, version: b.dataset.ver, label: b.dataset.name, source: b.dataset.src });
     return;

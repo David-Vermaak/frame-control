@@ -104,11 +104,20 @@ non-NSFW image in each slot. Provider failures use the next source.
 
 Sources pass `install(apk_path, artwork={...})`: keys are `grid`, `wide`,
 `hero`, `logo`, `icon`, `banner`, `feature_graphic`, `screenshot`, or a list
-`screenshots`. Values are PNG/JPEG bytes or HTTP(S) URLs (12 MiB/8 million
-pixels maximum). Banners and feature graphics supply hero/wide art;
+`screenshots`. Values are PNG/JPEG bytes or HTTP(S) URLs (12 MiB and
+4096×4096 pixels maximum; any PNG depth or interlace, since the Frame's
+Chromium decodes them). URLs must resolve to public addresses, follow at most
+three redirects and share one deadline per install. Any source that fails,
+for any reason, becomes a warning and generated art. Banners and feature graphics supply hero/wide art;
 screenshots are the next fallback. Source images are cached for refresh.
 All images are fitted to 600×900 portrait, 920×430 wide, 3840×1240 hero,
 1280×480 logo and 256×256 icon. Explicit logos retain transparency.
+Photo-based portrait, wide and hero slots are JPEG: Steam takes at most
+12 MiB per slot, and on the Frame (2026-09-28) a noise-heavy 3840×1240 hero
+came to more than 12 MiB as PNG, 3.7 MB as JPEG (2.7 s to render); a
+landscape photo hero 5.6 MB as PNG, 0.76 MB as JPEG (0.75 s). A render that
+still fails is retried once with generated art. Steam keeps a slot's `.png`
+and `.jpg` side by side, so each slot is cleared before it is set.
 
 Generated art uses the APK icon, a dominant-colour gradient, a blurred
 backdrop and large foreground icon with shadow. Steam's Chromium canvas and
@@ -124,10 +133,26 @@ python3 ui/frame_android.py refresh-art org.godotengine.open_saber_plus
 python3 ui/frame_android.py refresh-art --all
 ```
 
-The settings panel offers the same refresh-all action. The API is
-`POST /api/android` with `{"action":"refresh-art","all":true}` or a
-`package` instead of `all`; it returns a background job. Batch results retain
-per-app errors, and the CLI exits nonzero if any failed.
+Devkit titles installed by Frame Control have the same command,
+`python3 ui/frame_titles.py refresh-art ID|--all`. The settings panel's
+refresh covers both. The API is `POST /api/android` with
+`{"action":"refresh-art","all":true}` (apps and titles) or a `package`, and
+`POST /api/titles` with `{"action":"refresh-art","id":…}`; each returns a
+background job. Batch results retain per-item errors, and the CLIs exit
+nonzero if any failed. Apps and titles without complete artwork show **Add
+artwork**, `list` prints the command, and when Frame Control lists them while
+Steam is running it re-applies their art in the background (at most every
+five minutes), for example for a title Steam registered after an install made
+while it wasn't running.
+
+Steam's app overviews carry no `devkit_gameid` (checked 2026-09-28, build
+20260925.6191901, on every non-Steam shortcut). A title's shortcut is found by
+its saved id, or by an executable or start folder inside
+`~/devkit-game/<id>/`, read from `appDetailsStore`; never by display name.
+That the devkit shortcut's exe/start folder sit inside the title folder is
+inferred from `docs/sideloading.md` (`proton waitforexitandrun
+"/home/steamos/devkit-game/<id>/<exe>"`), not yet seen in app details.
+Devkit titles keep the VR flag Steam gave them.
 
 **Verified on build 20260925.6191901, SteamVR 2.18.1 (2026-09-28):** both
 Open Saber Plus and SuperTux were backfilled. Steam's cached portrait, wide,
@@ -148,8 +173,11 @@ supported shortcut description/store-page, developer/publisher, release
 metadata or custom achievement API was found; these are not fabricated.
 
 The launcher supervises Lepton and handles TERM/INT/HUP and normal exit by
-stopping its own container and child process group. A lock and container check
-refuse duplicate launches. Steam Stop uses `TerminateApp` with the exact
+stopping its own container and child process group. A lock refuses duplicate launches;
+a container still running while the lock is free was orphaned by a killed
+launcher and is stopped before the new launch. Lepton doesn't inherit the
+lock. Removing an app or title still deletes its files when Steam isn't
+running; tidying Steam's collections and artwork is best effort. Steam Stop uses `TerminateApp` with the exact
 64-bit game ID string. Frame Control's Stop additionally has a direct-container
 fallback. The stable instance ID and compatdata paths remain unchanged.
 

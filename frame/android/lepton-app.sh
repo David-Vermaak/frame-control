@@ -30,9 +30,11 @@ fi
 exec 9>"$DIR/launch.lock"
 flock -n 9 || { echo "Android app is already running" >&2; exit 1; }
 CONTAINER="lepton-steamlaunch-$SteamAppId"
+# Holding the lock means no launcher owns a running container: it was orphaned
+# (this script SIGKILLed), so stop it rather than refuse every later Play.
 if [[ "$(podman inspect --format '{{.State.Running}}' "$CONTAINER" 2>/dev/null || true)" == true ]]; then
-  echo "Android container is already running" >&2
-  exit 1
+  echo "Stopping orphaned $CONTAINER" >&2
+  podman stop -t 5 "$CONTAINER" >/dev/null 2>&1 || true
 fi
 export STEAM_COMPAT_INSTALL_PATH="$DIR"
 # Must be under ~/.local/share/Steam: only that tree is mounted in the container.
@@ -63,7 +65,8 @@ trap cleanup EXIT
 trap 'exit 143' TERM
 trap 'exit 130' INT
 trap 'exit 129' HUP
-setsid --wait "$LEPTON" waitforexitandrun -- "$DIR/app.apk" &
+# 9>&-: the lock is this launcher's alone; Lepton's tree mustn't keep it held.
+setsid --wait "$LEPTON" waitforexitandrun -- "$DIR/app.apk" 9>&- &
 child=$!
 rc=0
 wait "$child" || rc=$?

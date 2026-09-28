@@ -10,7 +10,7 @@ async function renderLibraryArtwork(input) {
       const img = new Image();
       img.src = `data:image/${item[0]};base64,${item[1]}`;
       await img.decode();
-      if (!img.width || !img.height || img.width*img.height > 8000000) throw Error('dimensions');
+      if (!img.width || !img.height || img.width*img.height > 16777216) throw Error('dimensions');
       images[slot] = img;
     } catch (_) { warnings.push(`${slot} could not be decoded; generated art used`); }
   }
@@ -138,7 +138,9 @@ async function renderLibraryArtwork(input) {
       if (slot==='wide') title(ctx,w,h,h*.69,h*.92,52);
       // Hero intentionally has no title: Steam overlays the transparent logo.
     }
-    result[slot]=canvas.toDataURL('image/png').split(',')[1];
+    // Photos as PNG can pass Steam's 12 MiB limit at hero size; the logo keeps its transparency.
+    const jpeg=scene && slot!=='logo' && slot!=='icon';
+    result[slot]=[jpeg?'jpg':'png', canvas.toDataURL(jpeg?'image/jpeg':'image/png',.9).split(',')[1]];
   }
   return {images:result,warnings,font};
 }

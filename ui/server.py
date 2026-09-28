@@ -148,6 +148,39 @@ _jobs_lock = threading.Lock()
 _jobs = {}  # id -> {"label", "done", "error", "message", "result", "time"}
 
 
+_backfill = {"running": False, "last": 0.0}
+_backfill_lock = threading.Lock()
+
+
+def backfill_art(apps=(), titles=()):
+    """Give installs that lack Steam artwork (Steam wasn't running, say) their art once Steam is up.
+
+    Runs in the background, at most once every five minutes; refresh-art reports failures on demand."""
+    pkgs = [a["package"] for a in apps if a.get("art_missing")]
+    gids = [t["id"] for t in titles if t.get("art_missing")]
+    with _backfill_lock:
+        if not (pkgs or gids) or _backfill["running"] or time.time() - _backfill["last"] < 300:
+            return False
+        _backfill.update(running=True, last=time.time())
+
+    def run():
+        try:
+            frame_android.shortcut_tool("list")  # Steam isn't up: try again on a later listing
+            for refresh, key in [(frame_android.refresh_art, p) for p in pkgs] + \
+                                [(frame_titles.refresh_art, g) for g in gids]:
+                try:
+                    refresh(key)
+                except Exception as e:
+                    print(f"artwork backfill for {key}: {e}", file=sys.stderr)
+        except Exception:
+            pass
+        finally:
+            with _backfill_lock:
+                _backfill["running"] = False
+    threading.Thread(target=run, daemon=True).start()
+    return True
+
+
 def start_job(label, work, progress=False):
     """Run work() in the background. It returns a dict with a "message"."""
     now = time.time()
@@ -599,8 +632,11 @@ def android(body):
         if action == "refresh-art":
             if not pkg and not body.get("all"):
                 raise Failure('choose a package or all apps', 400)
+            if not body.get('all'):
+                return start_job('Refresh Steam artwork', lambda: {'apps': [frame_android.refresh_art(pkg)]})
+            # Everything Frame Control sideloaded: Android apps and devkit titles.
             return start_job('Refresh Steam artwork', lambda: {
-                'apps': frame_android.refresh_art(None if body.get('all') else pkg)})
+                'apps': frame_android.refresh_art(), 'titles': frame_titles.refresh_art()})
         if action in ("launch", "stop"):
             m = getattr(frame_android, action)(pkg)
             return {"message": f"{'Launching' if action == 'launch' else 'Stopped'} {m['label']}"}
@@ -717,12 +753,14 @@ def titles(body):
         threading.Thread(target=_run_title_install, daemon=True,
                          args=(token, entry, opt("name"), opt("exe"), opt("runtime"))).start()
         return {"message": f"Installing {entry['plan']['source']}", "job": token}
-    if action not in ("launch", "remove"):
+    if action not in ("launch", "remove", "refresh-art"):
         raise Failure("unknown action", 400)
     gid = str(body.get("id", ""))
     if not frame_titles.ID_RE.match(gid):
         raise Failure("bad title id", 400)
     ensure_master()
+    if action == "refresh-art":
+        return start_job(f"Steam artwork for {gid}", lambda: {"titles": [frame_titles.refresh_art(gid)]})
     try:
         m = getattr(frame_titles, action)(gid)
     except frame_android.FrameError as e:
@@ -1446,10 +1484,14 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(apk_versions(url.query))
             elif path == "/api/android":
                 ensure_master()
-                self.send_json({"apps": frame_android.list_apps()})
+                apps = frame_android.list_apps()
+                backfill_art(apps=apps)
+                self.send_json({"apps": apps})
             elif path == "/api/titles":
                 ensure_master()
-                self.send_json({"titles": frame_titles.list_titles()})
+                titles_list = frame_titles.list_titles()
+                backfill_art(titles=titles_list)
+                self.send_json({"titles": titles_list})
             elif path == "/api/titles/job":
                 self.send_json(title_job(url.query))
             elif path == "/api/job":

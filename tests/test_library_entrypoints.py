@@ -81,12 +81,37 @@ class EntryPoints(unittest.TestCase):
         self.assertEqual(result['kind'], 'apk')
         self.assert_art()
 
-    def test_refresh_api(self):
+    def test_refresh_api_covers_android_apps_and_titles(self):
         with patch.object(server, 'ensure_master'), \
                 patch.object(server, 'start_job', side_effect=lambda label, work: work()), \
-                patch.object(android, 'refresh_art', return_value=[]) as refresh:
-            self.assertEqual(server.android({'action':'refresh-art', 'all':True}), {'apps':[]})
-        refresh.assert_called_once_with(None)
+                patch.object(android, 'refresh_art', return_value=[]) as refresh, \
+                patch.object(titles, 'refresh_art', return_value=[{'id':'G','error':'x'}]) as title_refresh:
+            self.assertEqual(server.android({'action':'refresh-art', 'all':True}),
+                             {'apps':[], 'titles':[{'id':'G','error':'x'}]})
+            refresh.assert_called_once_with(); title_refresh.assert_called_once_with()
+            server.titles({'action':'refresh-art', 'id':'G'})
+            title_refresh.assert_called_with('G')
+
+    def test_backfill_applies_missing_art_once_steam_answers(self):
+        import threading
+        ran = threading.Event()
+        with patch.dict(server._backfill, {'running': False, 'last': 0.0}), \
+                patch.object(android, 'refresh_art', side_effect=[RuntimeError('odd'), None]) as refresh, \
+                patch.object(titles, 'refresh_art', side_effect=lambda gid: ran.set()) as title_refresh:
+            apps = [{'package':'org.a.x','art_missing':True}, {'package':'org.b.x','art_missing':True},
+                    {'package':'org.c.x','art_missing':False}]
+            with contextlib.redirect_stderr(io.StringIO()):
+                self.assertTrue(server.backfill_art(apps=apps, titles=[{'id':'G','art_missing':True}]))
+                self.assertTrue(ran.wait(5))
+            self.assertFalse(server.backfill_art(apps=apps))  # throttled
+        self.assertEqual([c.args for c in refresh.call_args_list], [('org.a.x',), ('org.b.x',)])
+        title_refresh.assert_called_once_with('G')
+        self.assertFalse(server.backfill_art(apps=[{'package':'org.c.x','art_missing':False}]))
+
+    def test_art_missing_flags(self):
+        self.assertTrue(android.art_missing({'artwork': {}}))
+        self.assertTrue(android.art_missing({'artwork': {'grid': 'x'}}))
+        self.assertFalse(android.art_missing({'artwork': {s: 'x' for s in artwork.SLOTS}}))
 
     def test_source_search_shared_installer_contract(self):
         # Source workers hand their download and optional images to this public seam.
@@ -110,11 +135,83 @@ class EntryPoints(unittest.TestCase):
         config = next(c.args for c in self.api.call_args_list if c.args[0] == 'configure')
         self.assertEqual(json.loads(config[8])['category'], 'Sideloaded')
         self.assertEqual(config[3:5], ('',''))  # Never replace devkit's executable/runtime wiring.
+        self.assertEqual(config[6], '')  # nor the VR flag the title declares
+        self.assertEqual(set(result['artwork']), set(artwork.SLOTS))
 
     def test_native_renamed_shortcut_uses_saved_identity(self):
         self.api.side_effect = lambda *args, **kw: '[{"appid":42,"name":"Renamed"}]'
         with patch.object(titles, 'ssh', return_value='{"shortcut":42}'):
-            self.assertEqual(titles._library_shortcut('Original', 'Original'), 42)
+            self.assertEqual(titles._library_shortcut('Original', '/home/steamos/devkit-game/Original'), 42)
+
+    def test_native_shortcut_never_matched_by_name_alone(self):
+        d = '/home/steamos/devkit-game/Game'
+        shortcuts = [{'appid':1,'name':'Game','exe':'"/home/steamos/.local/bin/game"','start_dir':'/home/steamos'},
+                     {'appid':2,'name':'Other','exe':'"/home/steamos/devkit-game/Game2/g.exe"','start_dir':''}]
+        self.api.side_effect = lambda *args, **kw: json.dumps(shortcuts)
+        with patch.object(titles, 'ssh', return_value=''):
+            self.assertIsNone(titles._library_shortcut('Game', d))
+            shortcuts.append({'appid':3,'name':'Renamed','exe':'"/home/steamos/devkit-game/Game/bin/g.exe"','start_dir':''})
+            self.assertEqual(titles._library_shortcut('Game', d), 3)
+            shortcuts.append({'appid':4,'name':'Copy','exe':'','start_dir':d})
+            with self.assertRaisesRegex(android.FrameError, 'ambiguous'):
+                titles._library_shortcut('Game', d)
+
+    def test_native_cleanup_failure_keeps_original_error(self):
+        with tempfile.TemporaryDirectory() as root:
+            plan = {'id':'Example','name':'Example','root':root,'size':3,'target':'game.exe',
+                    'runtime':'proton-experimental','source':'example.zip'}
+            def ssh(cmd, **kwargs):
+                if 'steamos-prepare-upload' in cmd: return '{"directory":"/home/steamos/devkit-game/Example"}'
+                if 'steam-client-create-shortcut' in cmd: return '{"success":"registered"}'
+                return ''
+            def steam(*args, **kwargs):
+                if args[0] == 'remove': raise android.FrameError('Steam went away')
+                return self.steam(*args)
+            self.api.side_effect = steam
+            with patch.object(titles, 'ssh', side_effect=ssh), patch.object(titles, 'ensure_utils'), \
+                    patch.object(titles, '_copy_tree'), patch.object(titles, '_rsync', return_value=True), \
+                    patch.object(android, 'apply_library', side_effect=android.FrameError('render failed')):
+                with self.assertRaisesRegex(android.FrameError, 'render failed'):
+                    titles._install(plan, lambda *args: None)
+
+    def test_native_remove_survives_steam_being_down(self):
+        cmds = []
+        def ssh(cmd, **kwargs):
+            cmds.append(cmd)
+            return 'yes' if 'test -d' in cmd else '/home/steamos' if 'HOME' in cmd else ''
+        self.api.side_effect = android.FrameError('SharedJSContext not found')
+        with patch.object(titles, 'ssh', side_effect=ssh), patch.object(titles, 'ensure_utils'):
+            titles.remove('Game')
+        self.assertTrue(any('steamos-delete --delete-title Game' in c for c in cmds))
+
+    def test_native_refresh_art_backfills_registered_title(self):
+        meta = {'id':'Game','name':'My Game','source':'game.zip'}
+        writes = []
+        def ssh(cmd, input=None, **kwargs):
+            if 'test -d' in cmd: return 'yes'
+            if 'HOME' in cmd: return '/home/steamos'
+            if cmd.startswith('cat devkit-game/Game-framecontrol.json'): return json.dumps(meta)
+            if cmd == 'python3 -':
+                self.assertIn("/home/steamos/devkit-game/Game/.frame-artwork", input)
+                return json.dumps({'artwork': {'banner': 'YmFubmVy'}, 'icon': ''})
+            if cmd.startswith('cat > devkit-game/Game-framecontrol.json'): writes.append(json.loads(input))
+            return ''
+        shortcuts = [{'appid':7,'name':'My Game','exe':'','start_dir':'/home/steamos/devkit-game/Game'}]
+        self.api.side_effect = lambda *args, **kw: json.dumps(shortcuts) if args[0] == 'list' else self.steam(*args)
+        with patch.object(titles, 'ssh', side_effect=ssh), \
+                patch.object(artwork, 'prepare', return_value=({}, [])) as prepare:
+            result = titles.refresh_art('Game')
+        self.assertEqual(prepare.call_args.args[2], {'banner': b'banner'})
+        self.assertEqual(result['shortcut'], 7)
+        self.assertEqual(set(writes[-1]['artwork']), set(artwork.SLOTS))
+        self.assert_art()
+        shortcuts.clear()
+        with patch.object(titles, 'ssh', side_effect=ssh), \
+                patch.object(titles, 'list_titles', return_value=[{'id':'Game','name':'My Game','frame_control':True},
+                                                                 {'id':'Valve','name':'V','frame_control':False}]):
+            results = titles.refresh_art()
+        self.assertEqual(len(results), 1)
+        self.assertIn("hasn't registered", results[0]['error'])
 
     def test_native_failure_removes_new_blank_shortcut(self):
         with tempfile.TemporaryDirectory() as root:
@@ -140,8 +237,10 @@ class EntryPoints(unittest.TestCase):
         stop.assert_not_called(); copy.assert_not_called(); self.assert_art()
 
     def test_all_refresh_reports_partial_failures(self):
+        import http.client
         with patch.object(android, 'list_apps', return_value=[{'package':'org.a.game'},{'package':'org.b.game'}]), \
-                patch.object(android, '_meta_or_fail', side_effect=android.FrameError('missing')):
+                patch.object(android, '_meta_or_fail', side_effect=[http.client.RemoteDisconnected('gone'),
+                                                                    AttributeError('odd')]):
             result=android.refresh_art()
         self.assertEqual(len(result),2)
         self.assertTrue(all('error' in a for a in result))
@@ -173,7 +272,7 @@ class SteamGridDB(unittest.TestCase):
 
     def test_exact_match_and_top_votes_per_slot(self):
         calls=[]
-        def get(path,key):
+        def get(path,key,deadline=None):
             calls.append(path)
             if 'search' in path: return [{'id':1,'name':'Other Game'},{'id':2,'name':'Game'}]
             dims=(600,900) if '600x900' in path else (920,430)
@@ -185,6 +284,17 @@ class SteamGridDB(unittest.TestCase):
         self.assertEqual(set(images),set(artwork.SLOTS));self.assertEqual(warnings,[])
         self.assertTrue(all(url.endswith('/top.png') for url in images.values()))
         self.assertTrue(all('/game/2?' in p for p in calls[1:]))
+
+    def test_unicode_titles_match_exactly_and_symbols_never_match_all(self):
+        self.assertEqual(sgdb._name('ビートセイバー VR!'), 'ビートセイバーvr')
+        with patch.object(sgdb,'api_key',return_value='test-key'), \
+                patch.object(sgdb,'_get',return_value=[{'id':1,'name':'Unrelated'},{'id':2,'name':'!!!'}]) as get:
+            self.assertEqual(sgdb.lookup('★★★'),({},[]))
+            get.assert_not_called()
+            self.assertEqual(sgdb.lookup('ビートセイバー'),({},[]))
+        with patch.object(sgdb,'api_key',return_value='test-key'), \
+                patch.object(sgdb,'_get',side_effect=AttributeError("'list' object has no attribute 'get'")):
+            self.assertEqual(sgdb.lookup('Game')[0],{})
 
     def test_wrong_title_and_failed_lookup_fall_back(self):
         with patch.object(sgdb,'api_key',return_value='test-key'),patch.object(sgdb,'_get',return_value=[{'id':1,'name':'Unrelated'}]):
