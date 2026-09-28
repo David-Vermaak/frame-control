@@ -5,6 +5,8 @@ Python stdlib only; the Mac runs it with `ssh frame python3 - <args> < this`.
 
   steam_shortcuts.py add NAME EXE START_DIR [ICON]  -> prints the shortcut app id
   steam_shortcuts.py list                           -> JSON [{appid, name, exe}]
+  steam_shortcuts.py configure APPID NAME EXE START_DIR ICON VR ARTWORK_JSON
+  steam_shortcuts.py stop APPID
   steam_shortcuts.py remove APPID
 """
 import base64, json, os, socket, struct, sys, urllib.request
@@ -83,6 +85,91 @@ def evaluate(js):
     return res.get('result', {}).get('value')
 
 
+# Steam's ELibraryAssetType (Capsule, Hero, Logo, Header, Icon).
+ASSETS = {'grid': 0, 'hero': 1, 'logo': 2, 'wide': 3, 'icon': 4}
+
+
+def collections_js(appid, vr=None):
+    wanted = [] if vr is None else ['Android', *(['Android VR'] if vr else [])]
+    return f'''async function syncCollections() {{
+      const wanted = {json.dumps(wanted)};
+      if (typeof collectionStore === "undefined" ||
+          typeof collectionStore.GetUserCollectionsByName !== "function" ||
+          typeof collectionStore.NewUnsavedCollection !== "function" ||
+          typeof collectionStore.SaveCollection !== "function")
+        return ["Steam collections API unavailable"];
+      const app = {{appid: {appid}}};
+      const warnings = [];
+      for (const name of ["Android", "Android VR"]) {{
+        const matches = collectionStore.GetUserCollectionsByName(name);
+        let collection = matches.find(c => !c.bIsDynamic && c.bAllowsDragAndDrop);
+        if (wanted.includes(name)) {{
+          if (!collection && matches.length) {{
+            warnings.push(name + " is an existing dynamic or read-only collection");
+            continue;
+          }}
+          if (!collection) {{
+            collection = collectionStore.NewUnsavedCollection(name, undefined, [app]);
+          }} else {{
+            collection.AsDragDropCollection().AddApps([app]);
+          }}
+          await collectionStore.SaveCollection(collection);
+        }} else if (collection) {{
+          collection.AsDragDropCollection().RemoveApps([app]);
+          await collectionStore.SaveCollection(collection);
+        }}
+      }}
+      return warnings;
+    }}'''
+
+
+def configure(appid, name, exe, start_dir, icon, vr, artwork):
+    images = []
+    for slot, path in artwork.items():
+        if slot not in ASSETS:
+            raise ValueError('unknown artwork slot')
+        ext = os.path.splitext(path)[1][1:]
+        if ext not in ('png', 'jpg'):
+            raise ValueError('artwork must be PNG or JPEG')
+        with open(path, 'rb') as f:
+            data = f.read(12 * 1024 * 1024 + 1)
+        if len(data) > 12 * 1024 * 1024:
+            raise ValueError('artwork is too large')
+        images.append([ASSETS[slot], ext, base64.b64encode(data).decode()])
+    return evaluate(f'''(async () => {{
+      const id = {int(appid)}, warnings = [];
+      SteamClient.Apps.SetShortcutName(id, {json.dumps(name)});
+      SteamClient.Apps.SetShortcutExe(id, {json.dumps(exe)});
+      SteamClient.Apps.SetShortcutStartDir(id, {json.dumps(start_dir)});
+      SteamClient.Apps.SetShortcutIcon(id, {json.dumps(icon)});
+      if (typeof SteamClient.Apps.SetShortcutIsVR === "function")
+        SteamClient.Apps.SetShortcutIsVR(id, {json.dumps(vr)});
+      else warnings.push("Steam VR shortcut flag API unavailable");
+      if (typeof SteamClient.Apps.SetCustomArtworkForApp === "function") {{
+        for (const [type, ext, data] of {json.dumps(images)})
+          await SteamClient.Apps.SetCustomArtworkForApp(id, data, ext, type);
+      }} else warnings.push("Steam artwork API unavailable");
+      {collections_js(int(appid), vr)}
+      try {{ warnings.push(...await syncCollections()); }}
+      catch (e) {{ warnings.push("Steam collections: " + String(e)); }}
+      return {{warnings}};
+    }})()''')
+
+
+def remove(appid):
+    return evaluate(f'''(async () => {{
+      const id = {int(appid)};
+      {collections_js(int(appid))}
+      const warnings = await syncCollections();
+      if (typeof SteamClient.Apps.ClearCustomArtworkForApp === "function") {{
+        for (const type of [0, 1, 2, 3, 4])
+          await SteamClient.Apps.ClearCustomArtworkForApp(id, type);
+      }} else throw new Error("Steam artwork removal API unavailable");
+      SteamClient.Apps.RemoveShortcut(id);
+      return {{warnings}};
+    }})()''')
+
+
 def main():
     cmd, args = sys.argv[1], sys.argv[2:]
     if cmd == 'add':
@@ -100,9 +187,13 @@ def main():
         js = '''(() => appStore.allApps.filter(a => a.app_type === 1073741824)
                   .map(a => ({appid: a.appid, name: a.display_name})))()'''
         print(json.dumps(evaluate(js)))
+    elif cmd == 'configure':
+        print(json.dumps(configure(int(args[0]), *args[1:5], args[5] == '1', json.loads(args[6]))))
+    elif cmd == 'stop':
+        evaluate(f'SteamClient.Apps.TerminateApp({json.dumps(str((int(args[0]) << 32) | 0x02000000))}, false)')
+        print('stopping')
     elif cmd == 'remove':
-        evaluate(f'SteamClient.Apps.RemoveShortcut({int(args[0])})')
-        print('removed')
+        print(json.dumps(remove(int(args[0]))))
     else:
         sys.exit(__doc__)
 

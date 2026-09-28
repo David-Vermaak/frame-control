@@ -84,6 +84,53 @@ not being worn, so it did not reach `FOCUSED`).
 The loader was never the problem: Wolvic's Quest `libopenxr_loader.so` is a
 Khronos-style loader and found SteamVR through `/vendor`.
 
+## In the Steam library
+
+**Implemented; Steam UI behavior still inferred (2026-09-28).** Installs and
+updates refresh the same shortcut's name, VR flag and five artwork slots:
+600×900 grid, 920×430 wide capsule, 3840×1240 hero, transparent 1280×480 logo
+and 256×256 icon. Stdlib PNG fallbacks use the APK icon and label (including
+Godot's `assets/icon.png`); unsupported/missing icons get a letter tile.
+Generated lettering uses ASCII; Steam's native title retains the full label.
+
+Sources can pass `install(apk_path, artwork={'hero': image_bytes_or_http_url})`.
+Slots are `grid`, `wide`, `hero`, `logo`, `icon`; supplied PNG/JPEG images keep
+their dimensions. Limits: 12 MiB and 8 million pixels per image. The PNG
+reader accepts non-interlaced 1/2/4-bit palette/grayscale and 8-bit
+RGB/RGBA/grayscale. PNG icons also seed missing slots. Images are staged
+inside the app directory, then applied through Steam's custom-artwork API.
+
+Immersive installs join **Android** and **Android VR** and get
+`SetShortcutIsVR`; `--flat` installs join **Android** only. Existing dynamic
+or read-only collections are preserved. Unsupported APIs/collection conflicts
+appear in `library_warnings`. Removal clears all five custom slots and managed
+memberships before deleting the shortcut and folder; `--keep-data` retains
+app data. Failed Steam cleanup leaves metadata for a retry.
+
+The launcher stays alive around Lepton's separate session and handles
+TERM/INT/HUP by stopping its own container and child process group. Normal
+exit also cleans up. A lock and container check refuse duplicate launches.
+The Stop helper uses `SteamClient.Apps.TerminateApp` with the exact 64-bit
+game ID string, matching Steam's Stop action; Frame Control also falls back
+to a direct container stop. Persistent data remains under the same instance ID.
+
+**Verified:** offline artwork, mocked SSH and V8 API tests; signal and
+normal-exit tests on the Frame with real Linux `setsid`/`flock` and fake
+Lepton/podman. **Not verified:** actual Steam Play/Stop, library rendering,
+collections and direct-to-scene launch. On build `20260925.6191901`, the
+headset showed “There was an issue launching Steam”, CDP port 8080 refused
+connections and the updater was stuck. Capture:
+`/tmp/vrlib-evidence/headset-preflight.png` on the development Mac. No installed
+apps or global VR settings were changed during verification.
+
+The VR flag does not override wear detection. Steam's Resume action hides
+the dashboard when its scene-app ID matches the shortcut (inferred from
+[Steam's UI source](https://github.com/SteamDatabase/SteamTracking/blob/master/ClientExtracted/steamui/chunk~2dcc5aaf7.js)).
+Whether Lepton gets that association still needs a headset test. No forced
+hide or power override is installed. If using temporary standby settings
+for unattended testing, restore `power.pauseCompositorOnStandby 1` and
+`power.turnOffScreensTimeout 5`; see [the device notes](how-the-frame-works.md).
+
 ## Out of scope
 
 - **Meta entitlement.** Apps that call the Oculus Platform SDK

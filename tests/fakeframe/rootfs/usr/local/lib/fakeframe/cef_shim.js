@@ -54,7 +54,22 @@ function build(steam) {
     }
   };
 
+  // Library API shapes from SteamTracking / decky-frontend-lib (2026-09-28).
+  // Not yet verified on this Frame build: Steam was unavailable during testing.
+  steam.collections ||= [];
+  const collection = value => ({
+    ...value, displayName: value.name, bIsDynamic: !!value.dynamic, bAllowsDragAndDrop: true,
+    AsDragDropCollection() { return this; },
+    AddApps(apps) { value.apps = [...new Set([...value.apps, ...apps.map(a => a.appid)])]; },
+    RemoveApps(apps) { value.apps = value.apps.filter(id => !apps.some(a => a.appid === id)); },
+    value,
+  });
   return {
+    collectionStore: {
+      GetUserCollectionsByName(name) { return steam.collections.filter(c => c.name === name).map(collection); },
+      NewUnsavedCollection(name, filter, apps) { return collection({name, apps: apps.map(a => a.appid)}); },
+      async SaveCollection(c) { if (!steam.collections.includes(c.value)) steam.collections.push(c.value); },
+    },
     appStore: {
       get allApps() { return allApps(); },
       GetAppOverviewByAppID(id) { return allApps().find(a => a.appid === Number(id)) || null; },
@@ -75,6 +90,17 @@ function build(steam) {
         SetShortcutStartDir(id, dir) { const s = findShortcut(id); if (s) s.start_dir = String(dir); },
         SetShortcutIcon(id, icon) { const s = findShortcut(id); if (s) s.icon = String(icon); },
         SetShortcutExe(id, exe) { const s = findShortcut(id); if (s) s.exe = String(exe); },
+        SetShortcutIsVR(id, vr) { const s = findShortcut(id); if (s) s.vr = vr; },
+        async SetCustomArtworkForApp(id, data, ext, type) {
+          const s = findShortcut(id);
+          if (s) { s.artwork ||= {}; s.artwork[type] = {data, ext}; }
+        },
+        async ClearCustomArtworkForApp(id, type) {
+          const s = findShortcut(id);
+          if (s?.artwork) delete s.artwork[type];
+        },
+        // Container fallback in frame_android.stop performs the simulated stop.
+        TerminateApp(gameid) { steam.last_terminate = gameid; },
         RemoveShortcut(id) {
           steam.shortcuts = steam.shortcuts.filter(s => s.appid !== Number(id));
           delete steam.compat_tools[String(id)];
