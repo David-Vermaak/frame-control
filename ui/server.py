@@ -36,6 +36,8 @@ from urllib.parse import parse_qs, unquote, urlparse
 # sys.path, so add it for the sibling modules below.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import frame_agent  # noqa: E402
+import frame_assistant  # noqa: E402
 import frame_android  # noqa: E402
 import frame_apk_versions  # noqa: E402
 import frame_catalog  # noqa: E402
@@ -1227,7 +1229,20 @@ def _sweep_one(prefix, d):
         pass
 
 
-POST = {"/api/android/display": android_display, "/api/android": android, "/api/titles": titles, "/api/launch": launch, "/api/steam": steam, "/api/volume": set_volume, "/api/clipboard": clipboard,
+def agent_call(body):
+    return frame_agent.call(sys.modules[__name__], body)
+
+
+def assistant_chat(body):
+    return frame_assistant.chat(body, headset_view)
+
+
+def agent_approval(body):
+    return frame_agent.approvals.decide(body.get("confirmation"), body.get("accept"))
+
+
+POST = {"/api/agent/call": agent_call, "/api/agent/approval": agent_approval,
+        "/api/assistant/chat": assistant_chat, "/api/android/display": android_display, "/api/android": android, "/api/titles": titles, "/api/launch": launch, "/api/steam": steam, "/api/volume": set_volume, "/api/clipboard": clipboard,
         "/api/flatpak": flatpak, "/api/open": open_thing, "/api/shots/save": save_shots,
         "/api/webinstall/check": webinstall_check, "/api/webinstall/start": webinstall_start,
         "/api/webinstall/cancel": webinstall_cancel}
@@ -1331,6 +1346,12 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if path in ("/", "/index.html"):
                 self.send_bytes((HERE / "index.html").read_bytes(), "text/html; charset=utf-8")
+            elif path == "/assistant":
+                page = (HERE / "assistant.html").read_text().replace("__FRAME_KEY__", json.dumps(UI_KEY).replace("<", "\\u003c"))
+                self.send_bytes(page.encode(), "text/html; charset=utf-8")
+            elif path == "/api/agent/approval":
+                token = (parse_qs(url.query).get("confirmation") or [""])[0]
+                self.send_json(frame_agent.approvals.inspect(token))
             elif path == "/api/host":
                 self.send_json({"os": "SteamOS", "fileManager": None, "computer": DEVICE, "mobile": True} if LOCAL else
                                {"os": frame_host.NAME, "fileManager": frame_host.FILE_MANAGER,
@@ -1377,6 +1398,8 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json({"error": "not found"}, 404)
         except Failure as e:
             self.send_error_json(str(e), e.status, e.apk)
+        except ValueError as e:
+            self.send_json({"error": str(e)}, 400)
         except frame_android.FrameError as e:
             self.send_error_json(str(e), 502)
         except Exception as e:

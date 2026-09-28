@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Frame Control · Assistant</title>
+<style>
+:root { color-scheme:dark; font:20px/1.5 system-ui,sans-serif; background:#171d25; color:#e4e9ef }
+* { box-sizing:border-box } body { max-width:1050px; margin:0 auto; padding:28px }
+h1 { font-size:30px; margin:0 } h2 { font-size:24px } p { color:#b8c6d5 }
+a { color:#70c9ff } section { background:#202d3c; border:1px solid #425268; border-radius:12px; padding:24px; margin:22px 0 }
+label { display:block; margin:14px 0 } input:not([type=checkbox]),textarea { display:block; width:100%; margin-top:6px; padding:12px; background:#101923; color:inherit; border:1px solid #728398; border-radius:6px; font:inherit }
+input[type=checkbox] { width:24px; height:24px; vertical-align:middle; margin-right:10px } button { font:inherit; padding:12px 24px; min-height:52px; border:1px solid #728398; border-radius:6px; background:#30445b; color:white; cursor:pointer; margin:6px 12px 6px 0 }
+button.primary { background:#176b9c } button:disabled { opacity:.5; cursor:wait } :focus-visible { outline:3px solid #70c9ff; outline-offset:3px }
+pre { white-space:pre-wrap; overflow-wrap:anywhere; font:inherit; max-height:380px; overflow:auto } [hidden] { display:none!important } #status { min-height:1.5em } small { color:#b8c6d5 }
+</style>
+<header><h1>Frame Control · Assistant</h1><a href="/">Back to Frame Control</a></header>
+<section id="approval" hidden aria-labelledby="approval-title">
+<h2 id="approval-title">An agent wants to change your Frame</h2>
+<p>Review the exact action below. Approve only if you asked for it. Approval expires after five minutes and works once.</p>
+<pre id="action"></pre><button id="approve" class="primary">Approve this action</button><button id="reject">Reject</button>
+<p id="approval-status" role="status"></p>
+</section>
+<section aria-labelledby="chat-title">
+<h2 id="chat-title">Ask your chosen model</h2>
+<p>Nothing is sent until you opt in and press Send. Each request sends only the message below and, if selected, a fresh headset screenshot. Replies cannot operate your Frame.</p>
+<form id="chat">
+<details id="settings" open><summary>Endpoint and model settings</summary>
+<label>Chat-completions endpoint<input id="endpoint" type="url" placeholder="http://127.0.0.1:1234/v1/chat/completions" required autocomplete="off"></label>
+<small>Use an OpenAI-compatible endpoint. Loopback means the computer running Frame Control. Remote endpoints require HTTPS.</small>
+<label>Model<input id="model" required placeholder="Model name from your endpoint" autocomplete="off"></label>
+<label>API key (optional)<input id="key" type="password" autocomplete="off"></label>
+<small>Settings, keys and messages stay in this page’s memory. Reload or close to clear them. No analytics, saved chat history or automatic model discovery.</small></details>
+<label><input id="consent" type="checkbox">I allow sending this message to the endpoint shown above.</label>
+<label><input id="screenshot" type="checkbox">Also send one headset screenshot with this message. It may contain private information.</label>
+<label>Message<textarea id="prompt" rows="3" maxlength="32000" required></textarea></label>
+<button id="send" class="primary" type="submit">Send message</button><button id="clear" type="button">Clear everything</button>
+</form>
+<p id="status" role="status" aria-live="polite"></p><pre id="reply" aria-label="Model reply"></pre>
+</section>
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const key = __FRAME_KEY__;
+let generation = 0;
+async function api(path, body) {
+  const response = await fetch(path, {method:body === undefined ? 'GET' : 'POST',
+    headers:{'X-Frame-UI':key,'Content-Type':'application/json'},
+    body:body === undefined ? undefined : JSON.stringify(body)});
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Request failed');
+  return data;
+}
+function revoke() { $('consent').checked = false; $('screenshot').checked = false; }
+$('endpoint').addEventListener('input', revoke);
+$('model').addEventListener('input', revoke);
+$('clear').onclick = () => { generation++; $('chat').reset(); $('settings').open = true; $('reply').textContent = ''; $('status').textContent = 'Cleared. A request already sent cannot be recalled.'; };
+$('chat').onsubmit = async event => {
+  event.preventDefault();
+  if (!$('consent').checked) { $('status').textContent = 'Opt in before sending a message.'; return; }
+  const current = ++generation;
+  const body = Object.fromEntries(['endpoint','model','key','prompt'].map(id => [id,$(id).value]));
+  Object.assign(body, {consent:true,screenshot:$('screenshot').checked});
+  $('settings').open = false; $('send').disabled = true; $('reply').textContent = ''; $('status').textContent = 'Sending to ' + body.endpoint + '…'; revoke();
+  try { const data = await api('/api/assistant/chat', body); if (current === generation) { $('reply').textContent = data.reply; $('status').textContent = 'Reply received.'; } }
+  catch (error) { if (current === generation) $('status').textContent = error.message; }
+  finally { $('send').disabled = false; }
+};
+let confirmation;
+async function loadApproval() {
+  confirmation = new URLSearchParams(location.hash.slice(1)).get('confirm');
+  $('approval').hidden = !confirmation;
+  if (!confirmation) return;
+  $('approve').disabled = $('reject').disabled = true;
+  try {
+    const data = await api('/api/agent/approval?confirmation=' + encodeURIComponent(confirmation));
+    $('action').textContent = JSON.stringify(data.action, null, 2);
+    $('approval-status').textContent = data.approved ? 'Already approved. Ask the agent to retry.' : '';
+    $('approve').disabled = data.approved; $('reject').disabled = false;
+  } catch (error) { $('action').textContent = ''; $('approval-status').textContent = error.message; }
+}
+for (const [id, accept] of [['approve',true],['reject',false]]) $(id).onclick = async () => {
+  $('approve').disabled = $('reject').disabled = true;
+  try { const data = await api('/api/agent/approval', {confirmation,accept}); $('approval-status').textContent = data.message + (accept ? '. Ask the agent to retry now.' : '.'); }
+  catch (error) { $('approval-status').textContent = error.message; }
+};
+window.addEventListener('hashchange', loadApproval); loadApproval();
+</script>
+</html>
