@@ -130,3 +130,10 @@ The optional list shows the latest `works`, `issues` or `broken` report with its
 date, build and notes, separately from public sources and ownership. With no
 report the status stays **untested**. No shared database schema change or
 production deployment is needed; no reports were published by this work.
+
+## Validation and review
+
+166 unit tests and 8 website tests passed locally. The new fake-Frame cases
+passed in GitHub CI (Docker was unavailable locally). Desktop and phone-width
+preview checks passed. The two independent review attempts did not produce a
+verdict; [commands, real exit statuses and limitations](evidence/vr-utilities/review.md).
