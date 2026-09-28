@@ -24,7 +24,7 @@ spec.loader.exec_module(shortcuts)
 
 @unittest.skipIf(os.name == 'nt', 'POSIX launcher')
 class LauncherTests(unittest.TestCase):
-    def exercise(self, terminate, sig=signal.SIGTERM, blocked=None, orphan=False):
+    def exercise(self, terminate, sig=signal.SIGTERM, blocked=None, orphan=False, stale=None):
         with tempfile.TemporaryDirectory() as tmp:
             d = Path(tmp)
             app = d / 'Applications/Android/org.test.app'
@@ -60,6 +60,13 @@ class LauncherTests(unittest.TestCase):
             saved = d / '.local/share/Steam/steamapps/compatdata/2800000001/internal/save'
             saved.parent.mkdir(parents=True)
             saved.write_text('saved game')
+            previous = None
+            if stale:
+                # A Lepton left by a SIGKILLed launcher (its own session), or an unrelated reused id.
+                args = [sys.executable, '-c', 'import time; time.sleep(30)']
+                previous = subprocess.Popen(args + ([str(app / 'app.apk')] if stale == 'lepton' else ['other']),
+                                            start_new_session=True)
+                (app / 'launch.pgid').write_text(str(previous.pid))
             proc = subprocess.Popen(['bash', str(app / 'launch.sh')], env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             try:
                 if blocked:
@@ -73,6 +80,10 @@ class LauncherTests(unittest.TestCase):
                 while not (d / 'started').exists() and proc.poll() is None and time.monotonic() < deadline:
                     time.sleep(.02)
                 self.assertTrue((d / 'started').exists(), 'launcher did not start Lepton')
+                if previous:
+                    self.assertEqual(previous.poll() is not None, stale == 'lepton')
+                    self.assertEqual((app / 'launch.pgid').read_text().strip(),
+                                     (d / 'started').read_text().strip())  # the new group is recorded
                 self.assertFalse((d / 'inherited-lock').exists(), 'Lepton inherited the launch lock')
                 if terminate:
                     self.assertIsNone(proc.poll(), 'Steam-tracked wrapper exited during the session')
@@ -84,7 +95,12 @@ class LauncherTests(unittest.TestCase):
                 self.assertEqual(proc.returncode, 128 + sig if terminate else 23)
                 self.assertEqual(saved.read_text(), 'saved game')
                 self.assertTrue((app / 'app.apk').exists())
+                self.assertFalse((app / 'launch.pgid').exists())
             finally:
+                if previous and previous.poll() is None:
+                    previous.kill()
+                if previous:
+                    previous.wait()
                 if proc.poll() is None:
                     proc.kill()
                     proc.communicate()
@@ -104,6 +120,12 @@ class LauncherTests(unittest.TestCase):
 
     def test_duplicate_launch_leaves_existing_session_alone(self):
         self.exercise(False, blocked='LOCKED')
+
+    def test_previous_launch_left_by_sigkill_is_reaped_first(self):
+        self.exercise(True, stale='lepton')
+
+    def test_reused_process_group_id_is_left_alone(self):
+        self.exercise(True, stale='other')
 
     def test_orphaned_container_is_stopped_and_play_proceeds(self):
         # Container running but the lock free: its launcher was SIGKILLed.
