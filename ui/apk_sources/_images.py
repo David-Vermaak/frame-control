@@ -69,8 +69,14 @@ def fetch(url, redirects=3, deadline=None, limit=MAX_IMAGE):
     return data, image_type(data)
 
 
+# Lookups that outlast their deadline keep running; cap them so they can't pile up.
+_resolvers = threading.BoundedSemaphore(4)
+
+
 def _resolve(host, port, timeout):
     # getaddrinfo has no timeout of its own; a thread keeps a slow resolver inside the budget.
+    if not _resolvers.acquire(blocking=False):
+        raise SourceError('Too many slow artwork name lookups are still running; try again shortly')
     found = {}
 
     def run():
@@ -78,6 +84,8 @@ def _resolve(host, port, timeout):
             found['addresses'] = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
         except OSError as e:
             found['error'] = e
+        finally:
+            _resolvers.release()
     worker = threading.Thread(target=run, daemon=True)
     worker.start()
     worker.join(timeout)
@@ -110,8 +118,8 @@ def get(url, headers=None, redirects=3, deadline=None, limit=MAX_IMAGE):
     live = [socket.create_connection((addresses[0][4][0], port), timeout=min(10, left()))]
 
     def expire():
-        try:
-            live[0].shutdown(socket.SHUT_RDWR)
+        try:  # the plain socket method: it also ends a TLS handshake in progress
+            socket.socket.shutdown(live[0], socket.SHUT_RDWR)
         except OSError:
             pass
     watchdog = threading.Timer(left(), expire)
@@ -120,7 +128,11 @@ def get(url, headers=None, redirects=3, deadline=None, limit=MAX_IMAGE):
     conn = http.client.HTTPConnection(p.hostname, port, timeout=10)
     try:
         if p.scheme == 'https':
-            live[0] = ssl.create_default_context().wrap_socket(live[0], server_hostname=p.hostname)
+            # Handshake only once the watchdog can reach the TLS socket, within the remaining time.
+            live[0] = ssl.create_default_context().wrap_socket(live[0], server_hostname=p.hostname,
+                                                               do_handshake_on_connect=False)
+            live[0].settimeout(min(10, left()))
+            live[0].do_handshake()
         conn.sock = live[0]
         path = p.path or '/'
         if p.query:

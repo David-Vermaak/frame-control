@@ -196,6 +196,42 @@ class ArtworkTests(unittest.TestCase):
         self.assertLess(self.trickle(b'HTTP/1.1 200 OK\r\nContent-Length: 1000\r\n\r\n', 0.15), 0.4)
         self.assertLess(self.trickle(b'HTTP/1.1 200 OK\r\n', 0.15), 0.4)  # headers never finish
 
+    def test_deadline_covers_a_stalled_tls_handshake(self):
+        import socket
+        from apk_sources import _images
+        client, server = socket.socketpair()
+        public = [(2, 1, 6, '', ('93.184.216.34', 443))]
+        try:
+            with patch.object(_images.socket, 'getaddrinfo', return_value=public), \
+                    patch.object(_images.socket, 'create_connection', return_value=client):
+                start = time.monotonic()
+                with self.assertRaisesRegex(_images.SourceError, 'too long'):
+                    _images.get('https://example.org/a.png', deadline=start + 0.25)  # server never answers
+                self.assertLess(time.monotonic() - start, 0.45)
+        finally:
+            server.close()
+
+    def test_timed_out_lookups_are_capped(self):
+        import threading
+        from apk_sources import _images
+        gate = threading.Event()
+        try:
+            with patch.object(_images.socket, 'getaddrinfo', side_effect=lambda *a, **k: gate.wait(5) and []):
+                errors = []
+                for _ in range(6):
+                    try:
+                        _images.get('https://example.org/a.png', deadline=time.monotonic() + 0.05)
+                    except _images.SourceError as e:
+                        errors.append(str(e))
+            self.assertEqual(sum('too long' in e for e in errors), 4)
+            self.assertEqual(sum('Too many' in e for e in errors), 2)
+        finally:
+            gate.set()
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline and not _images._resolvers.acquire(blocking=False):
+            time.sleep(0.01)
+        _images._resolvers.release()  # the stuck lookups finished and gave their slots back
+
     def test_deadline_covers_name_resolution(self):
         import threading
         from apk_sources import _images
