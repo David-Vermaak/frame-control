@@ -87,3 +87,31 @@ Khronos-style loader and found SteamVR through `/vendor`.
   services. Frame Control won't work around that.
 - **VrApi-era apps** (`libvrapi.so`, before OpenXR) need an API translator,
   not a patch.
+
+## Frame Control does this for you
+
+APK uploads and `python3 ui/frame_android.py install app.apk` detect VR
+manifest categories, Samsung's `vr_only` flag and the arm64 OpenXR loader.
+VR apps default to immersive mode without the flatscreen marker. The upload
+selector or CLI `--flat` / `--vr` overrides that choice. Compatibility notes
+identify legacy VrApi, Meta platform SDK and OpenXR libraries.
+
+If a VR MAIN intent filter lacks LAUNCHER, Frame Control inserts it, repacks
+and v2-signs the APK locally before copying it; `meta.json` records
+`"patched": ["launcher"]`. Unchanged ZIP members retain their compressed
+bytes; stored libraries are aligned to 16 KiB. The RSA signing identity lives
+in Frame Control's per-user app-data directory as `apk-signing-key.json`
+(mode 0600). Keep this key to preserve the signer on subsequent patched
+updates. A re-signed APK cannot update an installation signed by its original
+publisher; Android also treats it as a different signer for signature checks.
+
+Inspect or prepare an APK without contacting the headset:
+
+```sh
+python3 ui/frame_android.py info app.apk
+python3 ui/frame_android.py patch app.apk patched.apk
+python3 ui/frame_android.py patch app.apk patched.apk --add assets/openxr/1/api_layers/implicit.d/X.json=X.json --add lib/arm64-v8a/libX.so=libX.so
+```
+
+The patch fixes Lepton's launch-category requirement. It does not supply an
+OpenXR 1.1 translation layer, Meta services or a VrApi implementation.

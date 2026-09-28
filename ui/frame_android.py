@@ -6,12 +6,18 @@ apps, the lepton-show-flatscreen marker; plus a non-Steam shortcut, so it shows
 in the Steam library and gets its own SteamVR panel. Nothing goes through
 Lepton Development, which wipes its apps on exit. See docs/apks.md.
 
-Python stdlib only. CLI: python3 ui/frame_android.py {install APK|list|launch PKG|stop PKG|remove PKG|probe PKG}
+Python stdlib only. CLI: python3 ui/frame_android.py
+  install APK [--vr|--flat] | info APK | patch SRC DST [--add NAME=PATH ...]
+  list | launch PKG | stop PKG | remove PKG | probe PKG
 """
 import json, os, re, shlex, shutil, subprocess, sys, threading, time, zlib
 
 import frame_apk
 import frame_host
+import tempfile
+import zipfile
+from frame_apk_vr import add_launcher_category
+from frame_apk_sign import repack
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FRAME = os.environ.get('FRAME_ALIAS', 'frame')
@@ -106,7 +112,7 @@ def _write_meta(d, meta):
     ssh(f'cat > {d}/meta.json.tmp && mv {d}/meta.json.tmp {d}/meta.json', input=json.dumps(meta, indent=1))
 
 
-def install(apk_path, flatscreen=True, name=None, source=None, icon_png=None):
+def install(apk_path, flatscreen=None, name=None, source=None, icon_png=None):
     info = apk_info(apk_path)
     if icon_png:
         info['icon_png'] = icon_png
@@ -114,7 +120,16 @@ def install(apk_path, flatscreen=True, name=None, source=None, icon_png=None):
     pkg = info['package']
     if not PKG_RE.match(pkg):
         raise FrameError(f'unexpected package name {pkg!r}')
+    if flatscreen is None:
+        flatscreen = not info['vr']
     with _install_lock:
+        if not info['launchable'] and info['vr_activity']:
+            with tempfile.TemporaryDirectory(prefix='frame-vr-') as tmp:
+                patched = os.path.join(tmp, 'app.apk')
+                patch(apk_path, patched)
+                info['patched'] = ['launcher']
+                info['launchable'] = True
+                return _install(patched, info, pkg, flatscreen, name, source or os.path.basename(apk_path))
         return _install(apk_path, info, pkg, flatscreen, name, source)
 
 
@@ -143,6 +158,8 @@ def _install(apk_path, info, pkg, flatscreen, name, source):
                 raise FrameError(f'Steam did not return a shortcut id (got {reply[:80]!r})')
         meta = {'package': pkg, 'label': name or info['label'], 'version': info['version'],
                 'instance': iid, 'shortcut': shortcut, 'game_id': game_id(shortcut),
+                'vr': info.get('vr', False), 'vr_issues': info.get('vr_issues', []),
+                'launchable': info.get('launchable', False), 'patched': info.get('patched', []),
                 'flatscreen': flatscreen, 'installed': time.strftime('%Y-%m-%dT%H:%M:%S'),
                 'source': source or os.path.basename(apk_path)}
         _write_meta(d, meta)
@@ -273,11 +290,46 @@ def probe(pkg, wait=20):
             'container_up': ctr in running_instances()}
 
 
+def patch(src, dst, add=None):
+    try:
+        info = apk_info(src)
+        with zipfile.ZipFile(src) as z:
+            original = frame_apk._read(z, 'AndroidManifest.xml', frame_apk.MAX_MANIFEST)
+        manifest = add_launcher_category(original) if info['vr_activity'] else original
+        if not info['launchable'] and not info['vr_activity']:
+            raise FrameError('APK has no MAIN/LAUNCHER or patchable VR activity')
+        repack(src, dst, replace={'AndroidManifest.xml': manifest}, add=add)
+        result = apk_info(dst)
+        result.pop('icon_png', None)
+        result['patched'] = ['launcher'] if manifest != original else []
+        return result
+    except (OSError, ValueError, zipfile.BadZipFile, frame_apk.ApkError) as e:
+        raise FrameError(str(e)) from e
+
+
 def main():
     cmd, *args = sys.argv[1:] or ['help']
     try:
         if cmd == 'install':
-            r = install(args[0], flatscreen='--vr' not in args)
+            r = install(args[0], flatscreen=False if '--vr' in args else True if '--flat' in args else None)
+        elif cmd in ('info', 'describe'):
+            r = apk_info(args[0])
+            r.pop('icon_png', None)
+        elif cmd == 'patch':
+            import argparse
+            parser = argparse.ArgumentParser(description='Patch and v2-sign an APK locally')
+            parser.add_argument('src')
+            parser.add_argument('dst')
+            parser.add_argument('--add', action='append', default=[], metavar='NAME=PATH')
+            opts = parser.parse_args(args)
+            additions = {}
+            for item in opts.add:
+                if '=' not in item:
+                    raise FrameError('--add requires NAME=PATH')
+                entry, path = item.split('=', 1)
+                with open(path, 'rb') as f:
+                    additions[entry] = f.read()
+            r = patch(opts.src, opts.dst, additions)
         elif cmd == 'list':
             r = list_apps()
         elif cmd in ('launch', 'stop', 'probe'):
@@ -286,7 +338,7 @@ def main():
             r = remove(args[0], keep_data='--keep-data' in args)
         else:
             sys.exit(__doc__)
-    except FrameError as e:
+    except (FrameError, OSError) as e:
         sys.exit(f'error: {e}')
     print(json.dumps(r, indent=1))
 

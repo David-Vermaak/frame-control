@@ -1337,10 +1337,16 @@ class Handler(BaseHTTPRequestHandler):
             if mode == "apk":
                 ensure_master()
                 try:
-                    m = frame_android.install(str(dest), source=name)
+                    display = self.headers.get("X-APK-Display", "auto")
+                    if display not in ("auto", "flat", "vr"):
+                        raise frame_android.FrameError("invalid APK display mode")
+                    m = frame_android.install(str(dest), source=name,
+                                              flatscreen=None if display == "auto" else display == "flat")
                 except frame_android.FrameError as e:
                     raise Failure(str(e), 400)
-                return {"message": f"Installed {m['label']} as its own app in the Steam library", "app": m}
+                kind = "VR app" if not m['flatscreen'] else "app"
+                notes = " ".join(m.get("vr_issues", []))
+                return {"message": f"Installed {m['label']} as its own {kind} in the Steam library. {notes}".strip(), "app": m}
             return {"message": push_file(dest)}
         finally:
             if not keep:
