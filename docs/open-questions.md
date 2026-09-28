@@ -137,3 +137,31 @@ Still open: 4, 6, 7, 12–15, 16 (off-LAN and after a reboot), 17–21.
   reports, not tested with the Frame.
 - `connect.sh --harden`, `serve-bootstrap.sh` and
   `bootstrap-on-frame.sh` haven't run against real hardware.
+
+## Remote wake (2026-09-28)
+
+Goal: the Frame sleeps on the charger but Frame Control can wake it to reach
+it over SSH. Findings so far are in the Wake-on-WLAN row of
+[how-the-frame-works.md](how-the-frame-works.md). Independent review: GPT-6
+Astra (xhigh), 2026-09-28.
+
+- **Magic packet from `deep`: no (tested 2026-09-28).** Unicast and broadcast packets didn't wake it, the chip came back in MHI RESET, and Wi-Fi stayed broken until a restart. Details are in how-the-frame-works.md. Don't leave WoWLAN on with `deep`.
+- **`s2idle`: no (tested 2026-09-28).** Same chip reset and broken Wi-Fi as `deep`. SteamOS doesn't pick `deep` itself (no `sleep.conf.d`, no `mem_sleep_default`, and no sleep hook touching ath12k), so this was a clean one-setting test. Wake over Wi-Fi is out until a SteamOS/ath12k update. Re-test after updates.
+- **Recovering from the broken Wi-Fi: reboot cleanly, never `modprobe -r ath12k`.** On 2026-09-28, unloading the wedged driver oopsed the kernel (`Unable to handle kernel paging request`) and the Frame reset itself. The next boot had truncated Steam files (`steamclient.so`, then `steamui.so`), and the displays were broken for the whole boot (`msm_dsi … wait for video done timed out` from 28 s in, 240 times). `vrcompositor` segfaulted on its first present, `steamvr.service` took the gamescope session and Steam down every ~15 s, and the screen said "There was an issue launching Steam". Steam's updater also hung on the same GPU wait. The fixes: Steam re-verified its files, a leftover pending-install manifest identical to the `.manifest` was moved aside, and a clean reboot brought the displays back (0 DSI errors). The USB-C cable gives SSH at 10.86.200.233 when Wi-Fi is down. Checks and fixes are in [frame-doctor.md](frame-doctor.md).
+- **Charger / smart-plug wake (hypothesis):** during confirmed sleep, test
+  physically attaching the charger, detaching it, and switching off its AC
+  supply, each separately. If one works, a Home Assistant smart plug on the
+  charger can wake it while it keeps deep sleep.
+- **RTC dark wake:** a root `WakeSystem=yes` timer that checks for queued
+  work and suspends again. Needs a root unit.
+- **Controller wake:** does a paired controller's button wake it? `hci0` is a
+  UART radio with no paired devices listed, so the controllers may use a
+  separate link.
+- **AC-only Never:** `system_idle_suspend_ac_sec = 0`, with battery left at
+  15 min. This is Steam's own setting and needs no sudo, but the Frame stays
+  awake with its displays off rather than suspended. Measure wall power and
+  confirm the displays blank.
+- **Off the LAN:** a sleeping Frame's Tailscale can't receive anything, so
+  something awake on the LAN has to send the packet (for example the
+  EdgeRouter's `etherwake`, already used for lxso2, or the Mac).
+

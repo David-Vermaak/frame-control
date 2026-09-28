@@ -28,6 +28,7 @@ desktop or panels.
 | Launch an app inside the desktop panel | the script's header comment | `scripts/run-on-frame.sh` |
 | Mac GUI over all of this | `README.md` → Frame Control | `scripts/frame-ui.sh` |
 | iPhone/iPad app (server runs on the Frame, `FRAME_LOCAL=1`) | `docs/iphone.md` | `ios/`, `ui/local-bin/ssh` |
+| Frame unreachable, Wi-Fi dead, Steam won't start (doctor runbook) | `docs/frame-doctor.md` | — |
 | Recovery images, factory reset, boot loops | `docs/recovery-and-images.md`, `docs/how-the-frame-works.md` | `~/Downloads/steam-frame-recovery/` |
 | Test without the headset (the Frame OS image's own sshd) | `tests/frame-container/README.md` | `tests/frame-container/frame-image.sh` |
 | What's still unverified | `docs/open-questions.md` | — |
