@@ -16,6 +16,8 @@
 //   POST /ticket?src=...                  ?k=: a ticket for one viewer of src
 //   POST /close[?src=...]                 ?k=: end those streams, close their windows
 //   POST /permissions                     ?k=: show macOS's permission prompts
+//   GET  /stats[?id=&since=]              ?k=: per-frame timing records (for benchmarks)
+//   POST /bench?src=&action=...           ?k=: ask viewers of src to type, click or show their overlay
 // src is window:<CGWindowID>, display:<CGDirectDisplayID> or test.
 import AppKit
 import ApplicationServices
@@ -43,7 +45,9 @@ func displaysJSON() -> [[String: Any]] {
     var n: UInt32 = 0
     // Online, not active: a display that's asleep is still one you can stream.
     CGGetOnlineDisplayList(16, &ids, &n)
-    return ids.prefix(Int(n)).filter { CGDisplayMirrorsDisplay($0) == kCGNullDirectDisplay }.map { id in
+    return ids.prefix(Int(n)).filter {
+        CGDisplayMirrorsDisplay($0) == kCGNullDirectDisplay && !VirtualDisplay.isOurs($0)  // not a separated window's
+    }.map { id in
         let b = CGDisplayBounds(id)
         return ["id": id, "src": "display:\(id)", "name": displayName(id), "w": Int(b.width), "h": Int(b.height),
                 "main": CGDisplayIsMain(id) != 0]
@@ -59,6 +63,9 @@ func printJSON(_ obj: Any) {
     FileHandle.standardOutput.write(d + Data("\n".utf8))
 }
 
+/// A number from a JSON message, whatever its JSON type.
+func num(_ v: Any?) -> Double? { (v as? NSNumber)?.doubleValue }
+
 /// One viewer watching one source.
 final class Session {
     let id: Int
@@ -68,11 +75,28 @@ final class Session {
     let ws: WebSocket
     let codec: Codec
     let reconnectKey: String
+    let stats = StreamStats()
+    let controller: RateController
+    private var appliedScale = 1.0
+    private var lastSubmit: Int64 = 0
+    private var paceScheduled = false
     private let lock = NSLock()
-    private var last: (CVPixelBuffer, CMTime)?
+    /// A captured picture waiting to be encoded (or the last one encoded).
+    private struct Picture {
+        let pb: CVPixelBuffer
+        let pts: CMTime
+        let capture: Int64
+        let arrived: Int64
+        var echo: UInt32  // the input this picture is the first reply to
+    }
+    private var last: Picture?
     private var skipped = false
     private var stopped = false
     private var inFlight = 0
+    /// Input posted to the Mac whose effect hasn't been captured yet: the
+    /// next picture composited after `after` is tagged with it.
+    private var pendingEcho: (id: UInt32, after: Int64)?
+    private var statsTimer: DispatchSourceTimer?
     /// Frames already queued for the network; beyond this, or with two frames
     /// already in the encoder, new frames are skipped (before encoding, so no
     /// reference frame goes missing) and the newest picture is sent once
@@ -93,23 +117,63 @@ final class Session {
         self.codec = codec
         self.reconnectKey = reconnectKey
         encoder = Encoder(codec: codec, fps: fps, bitsPerPixel: bitsPerPixel)
+        controller = RateController(maxFps: fps)
         maxPending = codec == .jpeg ? 3 << 20 : 1 << 20
+    }
+
+    /// Frames come faster than the current tier's frame rate: this one waits,
+    /// and goes when its turn comes (unless a newer one replaces it).
+    /// Call with `lock` held.
+    private func paced(now: Int64) -> Bool {
+        let fps = controller.fps
+        guard fps < controller.maxFps, lastSubmit > 0 else { return false }
+        let interval = Int64(1_000_000 / fps), due = lastSubmit + interval * 9 / 10
+        guard now < due else { return false }
+        if !paceScheduled {
+            paceScheduled = true
+            encodeQueue.asyncAfter(deadline: .now() + .microseconds(Int(due - now))) { [weak self] in
+                guard let self else { return }
+                self.lock.lock(); self.paceScheduled = false; self.lock.unlock()
+                self.resendIfRoom()
+            }
+        }
+        return true
     }
 
     /// Encodes `pb` unless the link or the encoder is busy, in which case it
     /// becomes the picture to send next.
-    private func offer(_ pb: CVPixelBuffer, pts: CMTime) {
+    private func offer(_ pb: CVPixelBuffer, pts: CMTime, capture shown: Int64) {
+        let arrived = nowUs()
+        stats.withLock { stats.captured += 1 }
+        controller.captured(at: arrived)
         lock.lock()
-        last = (pb, pts)
+        // A reply to input stays with whichever picture ends up being sent.
+        var echo = skipped ? last?.echo ?? 0 : 0
+        if let p = pendingEcho, shown >= p.after {
+            echo = p.id
+            pendingEcho = nil
+        }
+        let picture = Picture(pb: pb, pts: pts, capture: shown, arrived: arrived, echo: echo)
+        last = picture
         let busy = stopped || ws.pendingBytes > maxPending || inFlight >= Session.maxInFlight
-        if busy { skipped = true } else { inFlight += 1 }
+            || paced(now: arrived) || !controller.maySend(now: arrived)
+        if busy { skipped = true } else { inFlight += 1; last?.echo = 0; lastSubmit = arrived }
         lock.unlock()
-        if !busy { submit(pb, pts: pts) }
+        if busy { stats.withLock { stats.skipped += 1 } } else { submit(picture) }
     }
 
-    private func submit(_ pb: CVPixelBuffer, pts: CMTime) {
+    private func submit(_ p: Picture) {
         encodeQueue.async {
-            if !self.encoder.encode(pb, pts: pts) { self.finished() }
+            var r = FrameRecord()
+            r.capture = p.capture
+            r.arrived = p.arrived
+            r.echo = p.echo
+            r.bitrate = self.encoder.bitrate
+            r.tier = self.controller.tier
+            r.encodeStart = nowUs()
+            let seq = self.stats.newFrame(r)
+            if p.echo != 0 { self.stats.updateInput(p.echo) { $0.frame = seq; $0.capture = p.capture } }
+            if !self.encoder.encode(p.pb, pts: p.pts, seq: seq) { self.finished() }
         }
     }
 
@@ -124,28 +188,61 @@ final class Session {
 
     private func resendIfRoom() {
         lock.lock()
-        var next: (CVPixelBuffer, CMTime)?
-        if !stopped, skipped, ws.pendingBytes <= maxPending / 2, inFlight < Session.maxInFlight, let l = last {
+        var next: Picture?
+        let now = nowUs()
+        if !stopped, skipped, ws.pendingBytes <= maxPending / 2, inFlight < Session.maxInFlight, let l = last,
+           !paced(now: now), controller.maySend(now: now, counts: false) {
             next = l
             skipped = false
             inFlight += 1
+            last?.echo = 0
+            lastSubmit = now
         }
         lock.unlock()
-        if let (pb, _) = next { submit(pb, pts: CMClockGetTime(CMClockGetHostTimeClock())) }
+        // Stamped now: VideoToolbox needs increasing times, and the capture
+        // time stays in the record, so the wait counts as latency.
+        if let p = next {
+            submit(Picture(pb: p.pb, pts: CMClockGetTime(CMClockGetHostTimeClock()), capture: p.capture,
+                           arrived: p.arrived, echo: p.echo))
+        }
     }
 
     func start(maxLong: Int, fps: Int) {
-        encoder.onFrame = { [weak self] data, key, pts in
+        encoder.onFrame = { [weak self] data, key, pts, seq in
             guard let self else { return }
-            var msg = Data([key ? 1 : 0])
+            let t = nowUs()
+            // The quality setting's bitrate, at full size, is the most it gets.
+            if self.appliedScale == 1 {
+                self.controller.setCeiling(self.encoder.defaultBitrate(width: self.encoder.width, height: self.encoder.height))
+            }
+            self.controller.sent(seq: seq, bytes: data.count + 17, at: t)
+            var echo: UInt32 = 0
+            let (w, h) = (self.encoder.width, self.encoder.height)
+            self.stats.update(seq) {
+                $0.encodeEnd = t
+                $0.sent = t
+                $0.bytes = data.count
+                $0.key = key
+                $0.width = w
+                $0.height = h
+                echo = $0.echo
+            }
+            // Header: flags (1 = keyframe), pts µs, sequence number, and the
+            // input this frame is the first reply to; all big-endian.
+            var msg = Data(capacity: data.count + 17)
+            msg.append(key ? 1 : 0)
             var us = UInt64(max(0, CMTimeGetSeconds(pts)) * 1_000_000).bigEndian
             msg.append(Data(bytes: &us, count: 8))
+            var s = seq.bigEndian, e = echo.bigEndian
+            msg.append(Data(bytes: &s, count: 4))
+            msg.append(Data(bytes: &e, count: 4))
             msg.append(data)
-            self.ws.sendBinary(msg)
+            let stats = self.stats
+            self.ws.sendBinary(msg) { stats.update(seq) { $0.wire = nowUs() } }
         }
-        encoder.onDone = { [weak self] in self?.finished() }
+        encoder.onDone = { [weak self] _ in self?.finished() }
         encoder.onError = { [weak self] message in self?.ws.sendJSON(["t": "error", "message": message]) }
-        capture.onFrame = { [weak self] pb, pts in self?.offer(pb, pts: pts) }
+        capture.onFrame = { [weak self] pb, pts, shown in self?.offer(pb, pts: pts, capture: shown) }
         capture.onEnded = { [weak self] reason in
             guard let self else { return }
             self.ws.sendJSON(["t": "closed", "reason": reason])
@@ -158,13 +255,30 @@ final class Session {
         ws.start()
         // Reconnect with this (kept in the page's memory, never on a command line).
         ws.sendJSON(["t": "hello", "r": reconnectKey])
-        if let sck = capture as? SCKSource {
-            sck.onChange = { [weak self] in self?.sendInfo() }
+        capture.onChange = { [weak self] in self?.sendInfo() }
+        // The numbers, for the viewer's overlay.
+        // Adapt ten times a second; the numbers go to the viewer once a second.
+        let t = DispatchSource.makeTimerSource(queue: encodeQueue)
+        t.schedule(deadline: .now() + 0.1, repeating: 0.1)
+        var ticks = 0
+        t.setEventHandler { [weak self] in
+            guard let self, !self.isStopped else { return }
+            self.adapt(maxLong: maxLong)
+            ticks += 1
+            guard ticks % 10 == 0 else { return }
+            var s = self.stats.summary()
+            s.merge(self.controller.state()) { a, _ in a }
+            s["t"] = "stats"
+            s["bitrate"] = self.encoder.bitrate
+            s["size"] = "\(self.encoder.width)×\(self.encoder.height)"
+            self.ws.sendJSON(s)
         }
+        t.resume()
+        statsTimer = t
         capture.start(maxLong: maxLong, fps: fps) { [weak self] error in
             guard let self else { return }
             if let error {
-                if (self.capture as? SCKSource)?.gone == true {
+                if self.capture.gone {
                     // Final, like a window closing mid-stream: the viewer closes
                     // and its key is revoked, rather than retrying for ever.
                     self.ws.sendJSON(["t": "closed", "reason": error])
@@ -179,9 +293,26 @@ final class Session {
         }
     }
 
+    /// Applies the controller's bitrate and tier. On the encoding queue.
+    private func adapt(maxLong: Int) {
+        guard let bps = controller.update(now: nowUs()) else { return }
+        encoder.setBitrate(bps)
+        let scale = controller.scale
+        if scale != appliedScale {
+            appliedScale = scale
+            capture.setMaxLong(max(320, Int(Double(maxLong) * scale)))
+        }
+        resendIfRoom()  // a lower tier may let a held frame go now
+    }
+
+    /// While someone is typing or clicking, the viewer sends a tiny message this
+    /// often (ms, 0 = off), so the Frame's Wi-Fi doesn't doze between the input
+    /// and the frame that answers it (power saving is on there).
+    static let warmMs = Int(ProcessInfo.processInfo.environment["FRAME_MAC_VIEW_WARM"] ?? "") ?? 0
+
     func sendInfo() {
         ws.sendJSON(["t": "info", "src": source.key, "title": capture.title, "app": capture.app, "codec": codec.rawValue,
-                     "input": source == .test || Input.allowed,
+                     "input": source == .test || Input.allowed, "warm": Session.warmMs,
                      "aspect": Double(capture.frameRect.width / max(capture.frameRect.height, 1))])
     }
 
@@ -194,6 +325,7 @@ final class Session {
         last = nil
         lock.unlock()
         guard !was else { return }
+        statsTimer?.cancel()
         capture.stop()
         encodeQueue.async { self.encoder.invalidate() }
         let owner = id
@@ -208,9 +340,55 @@ final class Session {
         return CGPoint(x: r.minX + min(max(x, 0), 1) * r.width, y: r.minY + min(max(y, 0), 1) * r.height)
     }
 
+    /// Input with an id (from the viewer) has been posted: the next picture
+    /// the Mac composites is its first chance to show.
+    private func injected(_ m: [String: Any], kind: String) {
+        guard let iid = (m["i"] as? NSNumber)?.uint32Value, iid != 0 else { return }
+        let now = nowUs()
+        stats.addInput(InputRecord(id: iid, kind: kind, viewer: Int64(num(m["tv"]) ?? 0), injected: now))
+        lock.lock(); pendingEcho = (iid, now); lock.unlock()
+    }
+
+    /// Timing reports from the viewer, in the agent's clock.
+    private func report(_ t: String, _ m: [String: Any]) -> Bool {
+        switch t {
+        case "ping":
+            ws.sendJSON(["t": "pong", "c": m["c"] ?? 0, "a": nowUs()])
+        case "rx":
+            guard let s = (m["s"] as? NSNumber)?.uint32Value else { break }
+            if let r = num(m["r"]) { stats.update(s) { $0.received = Int64(r) } }
+            if controller.acked(seq: s, at: nowUs()) { resendIfRoom() }
+        case "fd":
+            for f in m["f"] as? [[NSNumber]] ?? [] where f.count >= 4 {
+                stats.update(f[0].uint32Value) {
+                    $0.decoded = f[1].int64Value
+                    $0.drawn = f[2].int64Value
+                    $0.vsync = f[3].int64Value
+                }
+            }
+            let dropped = Int(num(m["drop"]) ?? 0)
+            stats.withLock { stats.viewerDropped += dropped }
+        case "w":
+            break  // keep-warm filler, see sendInfo
+        case "clock":
+            stats.withLock {
+                stats.rtt = num(m["rtt"]) ?? 0
+                stats.clockSynced = true
+                if let d = m["dec"] as? String { stats.decoder = d }
+            }
+        default:
+            return false
+        }
+        return true
+    }
+
+    /// Asks the viewer to do something for a benchmark (type, click, show its overlay).
+    func bench(_ m: [String: Any]) { ws.sendJSON(m.merging(["t": "bench"]) { a, _ in a }) }
+
     private func handle(_ text: String) {
         guard !isStopped, let d = text.data(using: .utf8),
               let m = try? JSONSerialization.jsonObject(with: d) as? [String: Any], let t = m["t"] as? String else { return }
+        if report(t, m) { return }
         let x = m["x"] as? Double ?? -1, y = m["y"] as? Double ?? -1
         if t == "ack" {
             onAck?()
@@ -233,6 +411,7 @@ final class Session {
             default: desc = nil
             }
             capture.pointer(x: x, y: y, text: desc)
+            if desc != nil { injected(m, kind: t) }
             return
         }
         DispatchQueue.main.async { [self] in
@@ -245,13 +424,17 @@ final class Session {
                     Input.focus(window: wid, pid: pid)
                 }
                 Input.mouse(kind, button: b, at: p, owner: id)
+                if kind == "down" { injected(m, kind: "click") }
             case "wheel":
                 Input.scroll(dx: m["dx"] as? Double ?? 0, dy: m["dy"] as? Double ?? 0, at: point(x, y), owner: id)
+                injected(m, kind: "wheel")
             case "k":
+                let down = (m["e"] as? String) == "down"
                 Input.key(code: m["code"] as? String ?? "", key: m["key"] as? String ?? "",
-                          down: (m["e"] as? String) == "down", mods: m["mods"] as? [String] ?? [], owner: id)
+                          down: down, mods: m["mods"] as? [String] ?? [], owner: id)
+                if down { injected(m, kind: "key") }
             case "text":
-                if let s = m["s"] as? String, s.count <= 4096 { Input.text(s) }
+                if let s = m["s"] as? String, s.count <= 4096 { Input.text(s); injected(m, kind: "text") }
             case "release":
                 Input.releaseAll(owner: id)
             case "focus":
@@ -291,6 +474,21 @@ final class Agent {
     private var reconnectKeys: [String: String] = [:]
     /// Sources that ended for good (the window closed), for Frame Control.
     private var finished = Set<String>()
+
+    /// Ends every stream, then exits once separated windows are back on the
+    /// Mac's own screens (they're moved back, then their displays go 0.3 s later).
+    /// Idempotent: SIGTERM and the parent going away can both call it, and a
+    /// session already ended by /close may still be putting its window back.
+    private var quitting = false
+    func quit() {
+        lock.lock()
+        let all = Array(sessions.values), again = quitting
+        quitting = true
+        lock.unlock()
+        guard !again else { return }
+        for s in all { s.ws.sendJSON(["t": "close"]); s.end() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { exit(0) }
+    }
 
     /// While anyone watches, keep the Mac's display on: a sleeping display
     /// stops being drawn, so there'd be nothing to capture (and it would lock).
@@ -355,7 +553,13 @@ final class Agent {
         switch (req.method, req.path) {
         case ("GET", "/status"):
             lock.lock()
-            let list = sessions.values.map { ["id": $0.id, "src": $0.source.key, "title": $0.capture.title, "app": $0.capture.app] }
+            let list = sessions.values.map { s -> [String: Any] in
+                var e: [String: Any] = ["id": s.id, "src": s.source.key, "title": s.capture.title, "app": s.capture.app,
+                                        "stats": s.stats.summary(), "bitrate": s.encoder.bitrate,
+                                        "controller": s.controller.state()]
+                if let d = (s.capture as? SeparateSource)?.displayID { e["display"] = d }
+                return e
+            }
             lock.unlock()
             var s = permissionsJSON()
             s["version"] = version
@@ -386,6 +590,33 @@ final class Agent {
             for s in matching { s.ws.sendJSON(["t": "close"]) }
             DispatchQueue.global().asyncAfter(deadline: .now() + 0.3) { for s in matching { s.end() } }
             c.respond(json: ["closed": matching.count])
+        case ("GET", "/stats"):
+            // Frames the viewer has had time to report on, oldest first.
+            let since = UInt32(req.query["since"] ?? "") ?? 0
+            let settle = Int64(req.query["settle"] ?? "") ?? 1_500_000
+            lock.lock()
+            let list = sessions.values.filter { req.query["id"] == nil || "\($0.id)" == req.query["id"] }
+            lock.unlock()
+            c.respond(json: ["now": nowUs(), "streams": list.map { s -> [String: Any] in
+                ["id": s.id, "src": s.source.key, "frames": s.stats.settled(since: since, settle: settle).map(\.json),
+                 "inputs": s.stats.inputList().map(\.json), "summary": s.stats.summary(),
+                 "captured": s.stats.withLock { s.stats.captured }, "controller": s.controller.state(),
+                 "events": s.controller.eventList()]
+            }])
+        case ("POST", "/bench"):
+            lock.lock()
+            let list = sessions.values.filter { $0.source.key == req.query["src"] }
+            lock.unlock()
+            var m: [String: Any] = [:]
+            for (k, v) in req.query where k != "k" && k != "src" { m[k] = Double(v) ?? v as Any }
+            for s in list { s.bench(m) }
+            c.respond(json: ["sent": list.count])
+        case ("GET", "/snapshot"):
+            // One JPEG of a display (for checks and thumbnails): ?display=ID
+            guard let id = UInt32(req.query["display"] ?? "") else { return c.respond(400, text: "display=ID") }
+            snapshot(display: id) { data, error in
+                if let data { c.respond(200, body: data, type: "image/jpeg") } else { c.respond(500, text: error ?? "failed") }
+            }
         case ("POST", "/permissions"):
             DispatchQueue.main.async { requestPermissions() }
             c.respond(json: permissionsJSON())
@@ -400,7 +631,12 @@ final class Agent {
         let fps = min(max(Int(req.query["fps"] ?? "") ?? 60, 5), 120)
         let bpp = min(max(Double(req.query["bpp"] ?? "") ?? 0.1, 0.02), 0.5)
         guard let ws = c.upgrade(req) else { return }
-        let capture: CaptureSource = src == .test ? TestSource() : SCKSource(src)
+        let capture: CaptureSource
+        switch src {
+        case .test: capture = TestSource()
+        case .separate(let id): capture = SeparateSource(windowID: id)
+        default: capture = SCKSource(src)
+        }
         lock.lock()
         // One live viewer per key: a reconnection (or a second use of an
         // unacknowledged ticket) replaces the one before.
@@ -425,6 +661,24 @@ final class Agent {
         }
         session.onAck = { [weak self] in self?.acknowledged(key: key) }
         session.start(maxLong: maxLong, fps: fps)
+    }
+}
+
+func snapshot(display id: CGDirectDisplayID, completion: @escaping (Data?, String?) -> Void) {
+    SCShareableContent.getExcludingDesktopWindows(false, onScreenWindowsOnly: true) { content, error in
+        guard let d = content?.displays.first(where: { $0.displayID == id }) else {
+            return completion(nil, error?.localizedDescription ?? "no such display")
+        }
+        let filter = SCContentFilter(display: d, excludingWindows: [])
+        let cfg = SCStreamConfiguration()
+        cfg.width = Int(Double(d.width) * Double(filter.pointPixelScale))
+        cfg.height = Int(Double(d.height) * Double(filter.pointPixelScale))
+        cfg.showsCursor = true
+        SCScreenshotManager.captureImage(contentFilter: filter, configuration: cfg) { image, error in
+            guard let image else { return completion(nil, error?.localizedDescription ?? "no image") }
+            let rep = NSBitmapImageRep(cgImage: image)
+            completion(rep.representation(using: .jpeg, properties: [.compressionFactor: 0.85]), nil)
+        }
     }
 }
 
@@ -460,13 +714,19 @@ case "serve":
     }
     let page = argument("--page", in: args).map { URL(fileURLWithPath: $0) }
     let agent = Agent(token: token, page: page)
-    // Quit when the parent goes away (it holds our stdin open).
+    // Quit when the parent goes away (it holds our stdin open), or on SIGTERM,
+    // but first end every stream, so separated windows go back where they
+    // were before their displays disappear.
     if args.contains("--exit-on-eof") {
         DispatchQueue.global().async {
             while FileHandle.standardInput.availableData.count > 0 {}
-            exit(0)
+            agent.quit()
         }
     }
+    signal(SIGTERM, SIG_IGN)
+    let sigterm = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
+    sigterm.setEventHandler { agent.quit() }
+    sigterm.resume()
     let server: Server
     do {
         server = try Server(port: port) { req, c in agent.handle(req, c) }
@@ -482,8 +742,13 @@ case "serve":
         print("frame-mac-view listening on 127.0.0.1:\(server.port ?? port)")
         fflush(stdout)
     }
-    _ = NSApplication.shared  // AppKit for NSScreen names and app activation
-    withExtendedLifetime(server) { RunLoop.main.run() }
+    // A real (background, no Dock icon) AppKit event loop, not just a run
+    // loop: without it this process never hears that displays were added or
+    // changed mode, so NSScreen and CGDisplayCopyDisplayMode stay stale for
+    // the displays Separate mode creates.
+    let app = NSApplication.shared
+    app.setActivationPolicy(.prohibited)
+    withExtendedLifetime((server, sigterm)) { app.run() }
 default:
     FileHandle.standardError.write(Data("usage: frame-mac-view serve|windows|displays|permissions|request-permissions\n".utf8))
     exit(2)

@@ -6,5 +6,6 @@ here=$(cd "$(dirname "$0")" && pwd)
 out=${1:-$here/../bin/frame-mac-view}
 mkdir -p "$(dirname "$out")"
 xcrun swiftc -O -swift-version 5 -target arm64-apple-macos14.0 \
+  -import-objc-header "$here/Sources/CGVirtualDisplay.h" \
   -o "$out" "$here"/Sources/*.swift
 echo "built $out"

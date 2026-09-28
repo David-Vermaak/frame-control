@@ -10,6 +10,7 @@ import ScreenCaptureKit
 enum Source: Equatable {
     case window(CGWindowID)
     case display(CGDirectDisplayID)
+    case separate(CGWindowID)  // the window on a display of its own
     case test
 
     init?(_ s: String) {
@@ -17,6 +18,7 @@ enum Source: Equatable {
         switch (parts.first, parts.count > 1 ? UInt32(parts[1]) : nil) {
         case ("window", let id?): self = .window(id)
         case ("display", let id?): self = .display(id)
+        case ("separate", let id?): self = .separate(id)
         case ("test", _): self = .test
         default: return nil
         }
@@ -26,6 +28,7 @@ enum Source: Equatable {
         switch self {
         case .window(let id): return "window:\(id)"
         case .display(let id): return "display:\(id)"
+        case .separate(let id): return "separate:\(id)"
         case .test: return "test"
         }
     }
@@ -76,14 +79,20 @@ struct WindowInfo {
 }
 
 protocol CaptureSource: AnyObject {
-    var onFrame: ((CVPixelBuffer, CMTime) -> Void)? { get set }
+    /// The picture, its presentation time, and when the Mac composited it (µs, host clock).
+    var onFrame: ((CVPixelBuffer, CMTime, Int64) -> Void)? { get set }
     var onEnded: ((String) -> Void)? { get set }
+    var onChange: (() -> Void)? { get set }  // title or size changed
+    /// True once the window or display is gone for good.
+    var gone: Bool { get }
     /// Points on the Mac's global display space that the picture covers.
     var frameRect: CGRect { get }
     var title: String { get }
     var app: String { get }
     var pid: pid_t? { get }
     func start(maxLong: Int, fps: Int, completion: @escaping (String?) -> Void)
+    /// A smaller or larger picture from now on (the long side, in pixels).
+    func setMaxLong(_ maxLong: Int)
     func stop()
     func pointer(x: Double, y: Double, text: String?)  // for the test pattern
 }
@@ -95,7 +104,7 @@ extension CaptureSource {
 /// ScreenCaptureKit, for a window or a display.
 final class SCKSource: NSObject, CaptureSource, SCStreamOutput, SCStreamDelegate {
     let source: Source
-    var onFrame: ((CVPixelBuffer, CMTime) -> Void)?
+    var onFrame: ((CVPixelBuffer, CMTime, Int64) -> Void)?
     var onEnded: ((String) -> Void)?
     private(set) var frameRect = CGRect.zero
     private(set) var title = ""
@@ -113,8 +122,18 @@ final class SCKSource: NSObject, CaptureSource, SCStreamOutput, SCStreamDelegate
     /// The window or display no longer exists, so retrying can't help.
     private(set) var gone = false
     var onChange: (() -> Void)?  // title or size changed
+    /// For a display: capture only this part of it (display points, top-left
+    /// origin). Set before start().
+    var crop: CGRect?
 
     init(_ source: Source) { self.source = source }
+
+    /// What's captured, in global points: the display, or the cropped part of it.
+    private func displayRect(_ id: CGDirectDisplayID) -> CGRect {
+        let b = CGDisplayBounds(id)
+        guard let c = crop else { return b }
+        return c.offsetBy(dx: b.minX, dy: b.minY).intersection(b)
+    }
 
     func start(maxLong: Int, fps: Int, completion: @escaping (String?) -> Void) {
         self.maxLong = maxLong
@@ -148,11 +167,17 @@ final class SCKSource: NSObject, CaptureSource, SCStreamOutput, SCStreamDelegate
             filter = SCContentFilter(display: d, excludingWindows: [])
             title = displayName(id)
             app = "Mac"
-            frameRect = CGDisplayBounds(id)
-        case .test:
+            frameRect = displayRect(id)
+            if crop != nil { config.sourceRect = frameRect.offsetBy(dx: -CGDisplayBounds(id).minX, dy: -CGDisplayBounds(id).minY) }
+        case .test, .separate:
             return completion("not a ScreenCaptureKit source")
         }
         scale = Double(filter.pointPixelScale)
+        // A display's own mode knows best: ScreenCaptureKit can still say 1
+        // for a virtual display that has only just switched to HiDPI.
+        if case .display(let id) = source, let mode = CGDisplayCopyDisplayMode(id), mode.width > 0 {
+            scale = max(scale, Double(mode.pixelWidth) / Double(mode.width))
+        }
         let (w, h) = fitSize(width: frameRect.width * scale, height: frameRect.height * scale, maxLong: maxLong)
         config.width = w
         config.height = h
@@ -195,8 +220,10 @@ final class SCKSource: NSObject, CaptureSource, SCStreamOutput, SCStreamDelegate
         }
     }
 
-    /// Windows move, resize, retitle and close; ScreenCaptureKit doesn't say.
+    /// Windows move, resize, retitle and close, and displays change mode;
+    /// ScreenCaptureKit doesn't say.
     private func startPolling() {
+        if case .display(let id) = source { return pollDisplay(id) }
         guard case .window(let id) = source else { return }
         let t = DispatchSource.makeTimerSource(queue: queue)
         t.schedule(deadline: .now() + 1, repeating: 1)
@@ -224,14 +251,48 @@ final class SCKSource: NSObject, CaptureSource, SCStreamOutput, SCStreamDelegate
         poll = t
     }
 
+    func setMaxLong(_ n: Int) {
+        queue.async {
+            self.maxLong = n
+            guard self.stream != nil else { return }
+            let (w, h) = fitSize(width: self.frameRect.width * self.scale, height: self.frameRect.height * self.scale, maxLong: n)
+            guard w != self.config.width || h != self.config.height else { return }
+            self.config.width = w
+            self.config.height = h
+            self.stream?.updateConfiguration(self.config) { _ in }
+        }
+    }
+
+    private func pollDisplay(_ id: CGDirectDisplayID) {
+        let t = DispatchSource.makeTimerSource(queue: queue)
+        t.schedule(deadline: .now() + 0.5, repeating: 1)
+        t.setEventHandler { [weak self] in
+            guard let self, let mode = CGDisplayCopyDisplayMode(id), mode.width > 0 else { return }
+            let bounds = self.displayRect(id), scale = Double(mode.pixelWidth) / Double(mode.width)
+            let (w, h) = fitSize(width: bounds.width * scale, height: bounds.height * scale, maxLong: self.maxLong)
+            self.frameRect = bounds
+            guard w != self.config.width || h != self.config.height else { return }
+            self.scale = scale
+            self.config.width = w
+            self.config.height = h
+            self.stream?.updateConfiguration(self.config) { _ in }
+            self.onChange?()
+        }
+        t.resume()
+        poll = t
+    }
+
     func stream(_ stream: SCStream, didOutputSampleBuffer sample: CMSampleBuffer, of type: SCStreamOutputType) {
         guard type == .screen, sample.isValid, let pb = CMSampleBufferGetImageBuffer(sample) else { return }
         // Only complete frames carry new pixels; idle and blank ones don't.
-        if let atts = CMSampleBufferGetSampleAttachmentsArray(sample, createIfNecessary: false) as? [[SCStreamFrameInfo: Any]],
-           let raw = atts.first?[.status] as? Int, let status = SCFrameStatus(rawValue: raw), status != .complete {
+        let info = (CMSampleBufferGetSampleAttachmentsArray(sample, createIfNecessary: false) as? [[SCStreamFrameInfo: Any]])?.first
+        if let raw = info?[.status] as? Int, let status = SCFrameStatus(rawValue: raw), status != .complete {
             return
         }
-        onFrame?(pb, CMSampleBufferGetPresentationTimeStamp(sample))
+        let pts = CMSampleBufferGetPresentationTimeStamp(sample)
+        // When WindowServer composited it: the moment it showed on the Mac.
+        let shown = (info?[.displayTime] as? UInt64).map(hostUs) ?? hostUs(pts)
+        onFrame?(pb, pts, shown)
     }
 
     func stream(_ stream: SCStream, didStopWithError error: Error) {
@@ -251,8 +312,10 @@ func displayName(_ id: CGDirectDisplayID) -> String {
 /// A moving test card: bars, a clock and a frame counter, plus a dot where the
 /// viewer's pointer is and the last key it sent, so input can be checked too.
 final class TestSource: CaptureSource {
-    var onFrame: ((CVPixelBuffer, CMTime) -> Void)?
+    var onFrame: ((CVPixelBuffer, CMTime, Int64) -> Void)?
     var onEnded: ((String) -> Void)?
+    var onChange: (() -> Void)?
+    let gone = false
     let frameRect = CGRect(x: 0, y: 0, width: 1280, height: 720)
     let title = "Test pattern"
     let app = "Frame Control"
@@ -267,10 +330,7 @@ final class TestSource: CaptureSource {
 
     func start(maxLong: Int, fps: Int, completion: @escaping (String?) -> Void) {
         size = fitSize(width: 1280, height: 720, maxLong: maxLong)
-        let attrs: [CFString: Any] = [kCVPixelBufferPixelFormatTypeKey: kCVPixelFormatType_32BGRA,
-                                      kCVPixelBufferWidthKey: size.0, kCVPixelBufferHeightKey: size.1,
-                                      kCVPixelBufferIOSurfacePropertiesKey: [:] as CFDictionary]
-        CVPixelBufferPoolCreate(nil, nil, attrs as CFDictionary, &pool)
+        makePool()
         let t = DispatchSource.makeTimerSource(queue: queue)
         t.schedule(deadline: .now(), repeating: 1.0 / Double(fps))
         t.setEventHandler { [weak self] in self?.draw() }
@@ -282,6 +342,21 @@ final class TestSource: CaptureSource {
     func stop() {
         timer?.cancel()
         timer = nil
+    }
+
+    func setMaxLong(_ n: Int) {
+        queue.async {
+            self.size = fitSize(width: 1280, height: 720, maxLong: n)
+            self.makePool()
+        }
+    }
+
+    private func makePool() {
+        let attrs: [CFString: Any] = [kCVPixelBufferPixelFormatTypeKey: kCVPixelFormatType_32BGRA,
+                                      kCVPixelBufferWidthKey: size.0, kCVPixelBufferHeightKey: size.1,
+                                      kCVPixelBufferIOSurfacePropertiesKey: [:] as CFDictionary]
+        pool = nil
+        CVPixelBufferPoolCreate(nil, nil, attrs as CFDictionary, &pool)
     }
 
     func pointer(x: Double, y: Double, text: String?) {
@@ -334,6 +409,6 @@ final class TestSource: CaptureSource {
             ctx.fillEllipse(in: CGRect(x: CGFloat(px) * CGFloat(w) - r, y: (1 - CGFloat(py)) * CGFloat(h) - r, width: 2 * r, height: 2 * r))
         }
         n += 1
-        onFrame?(pb, CMClockGetTime(CMClockGetHostTimeClock()))
+        onFrame?(pb, CMClockGetTime(CMClockGetHostTimeClock()), nowUs())
     }
 }

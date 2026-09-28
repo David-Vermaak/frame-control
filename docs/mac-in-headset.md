@@ -99,9 +99,10 @@ ScreenCaptureKit (one window or display)
     keyframe instead of showing old frames late.
   - It falls back to JPEG stills (**Compatible** quality) where H.264 isn't
     available.
-- **Flow control.** When the link backs up, the agent skips capture frames
-  *before* encoding, so no reference frame goes missing. Once the link drains,
-  it sends the newest picture.
+- **Flow control.** The agent never lets frames queue up anywhere on the
+  way. It skips capture frames *before* encoding, so no reference frame goes
+  missing, and it lowers the bitrate, then the frame rate, then the size, to
+  fit the link (see [Adapting to the network](#adapting-to-the-network)).
 - **Input.**
   - A click on a window's panel brings that Mac window to the front
     (Accessibility API), then clicks at the same point. Double clicks, right
@@ -132,6 +133,157 @@ may ask again after an update.
 | Balanced (default) | 1920 | 60 | H.264, ~0.1 bits/pixel | Most things |
 | Light | 1280 | 30 | H.264 | Weak Wi-Fi or Tailscale off the LAN |
 | Compatible | 1280 | 20 | JPEG | A Frame browser without H.264 |
+
+## Measuring
+
+Every frame carries a sequence number, and the agent records its journey on
+the Mac's clock (`Sources/Stats.swift`):
+
+| Stage | From → to |
+|---|---|
+| capture | the Mac composited it (ScreenCaptureKit's display time) → the agent got it |
+| queue, encode | → encoding started → the encoder finished |
+| network | → the viewer received it |
+| decode, draw | → WebCodecs decoded it → it was drawn on the page's canvas |
+| present | → the page's next animation frame |
+
+- **Clock sync.** The viewer syncs its clock to the Mac's the way NTP does:
+  it pings over the stream's own WebSocket and keeps the sample with the
+  shortest round trip. It then reports, in Mac time, when each frame arrived
+  (right away, so the agent can pace itself) and when it was decoded and
+  drawn (in batches every 250 ms).
+- **Input.** The first frame captured after a click or key carries that
+  event's id. So input latency is the viewer's event → injected on the Mac →
+  the first frame after it → drawn in the headset.
+- **Where to see it.**
+  - `GET /stats` (key required) returns every frame and input record.
+  - `/status` includes a two-second summary, which Frame Control's card
+    shows next to each live stream.
+  - In the headset, add `?stats=1` to the viewer or press
+    Ctrl+Alt+Shift+S for an overlay.
+- **The benchmark.** `scripts/macview-bench.py` runs fixed scenarios on the
+  real Frame, from the Mac, with nobody wearing the headset:
+  - **test** is the moving test pattern.
+  - **scroll** is a Chrome page on its own display scrolling at 240 pt/s,
+    which gives about 9 Mbit/s of real 1920×1290 video.
+  - **type** types into a Chrome text box, first fast and then with pauses.
+
+  It writes `bench/results/<date>-<commit>-<label>.json`, compares two
+  results, and runs interleaved A/B tests between agent settings (`ab`).
+  Wi-Fi changes from minute to minute, so single runs at different times
+  aren't comparable. Throttled links come from a shaping relay on the Mac,
+  which needs no sudo (`--net 50@0,3@8,50@16` means 50 Mbit/s, then 3 from
+  8 s, then 50 from 16 s).
+- **What's graded.** "Content" runs from when the Mac composited a frame
+  (or when ScreenCaptureKit delivered it, if that was earlier) to when it was
+  drawn in the viewer. The Frame's compositor adds its own delay after that.
+  That part is reported, but not graded: an unworn Frame throttles panels to
+  about 36 fps after a few seconds, and to 15 fps in standby, whatever they
+  draw. This was **verified** with a local canvas page that ran on the Frame
+  with no network involved (`bench/pages/present.html`). The compositor's
+  share needs a run with the headset worn.
+
+Targets: content p50 ≤ 25 ms (p95 ≤ 40), click to photon p50 ≤ 50 ms
+(p95 ≤ 70), 60 fps with ≤ 1% late frames, no stall over 100 ms, and adapting
+to a new link rate within 1 s.
+
+Baseline on 2026-09-28 (**verified**, home Wi-Fi, Tailscale, Balanced,
+`bench/results/2026-09-28-a3c6e5c-dirty-baseline-fixed.json`; ms p50/p95):
+
+| Scenario | Content | Input to drawn | fps drawn | Notes |
+|---|---|---|---|---|
+| test (1280×720) | 9.9 | 28.8 / 39.0 | 59 | encode 4.0, network 4.0, decode 1.3 |
+| scroll (1920×1290) | 14.7 | – | 50.4 | encode 6.7, decode 6.4 (software), 9.4 Mbit/s, 16% late |
+| type (1920×1290) | 16.7 | 51.2 / 73.2 | – | most of the input time is the Mac app reacting |
+
+What was learned (all **verified**, unless marked):
+
+- The biggest costs are encoding (4–7 ms), network (4–6 ms), and decoding
+  on the Frame. Chromium XR on the Frame decodes H.264 in **software**.
+- Wi-Fi alone stalls for 240–580 ms now and then, over Tailscale and over
+  the LAN alike. Over the LAN (`--host 192.168.1.237`) latency was no
+  better, but the Frame used about 8% less CPU, because tailscaled runs in
+  userspace there.
+- With no controller, a link that slows down queues without limit. In one
+  run, frames arrived 1.9 s late, and at worst 9.4 s late.
+- Tried, and no help, so not kept: VideoToolbox options (require hardware,
+  no frame delay, prioritise speed, a hard data-rate cap), Chromium flags
+  (`--disable-gpu-vsync`, `--disable-frame-rate-limit`,
+  `--use-angle=vulkan`), and a 120 Hz virtual display.
+- Inconclusive, so off by default: keeping the Frame's Wi-Fi awake during
+  typing (`FRAME_MAC_VIEW_WARM=40`, a tiny message every 40 ms for 5 s
+  after input). Over three interleaved runs each, input p50 went 44 → 47 ms
+  and p95 92 → 71 ms, and the ranges overlapped widely
+  (`…-ab-keepwarm.json`). In that run, and in the baseline's typing, the
+  harness typed spaces as "+" (a URL-encoding bug, since fixed), so they
+  went through the text path rather than as space keys.
+- Pointer moves now go out on an 8 ms timer, not on the page's next
+  animation frame, which an unworn Frame slows to 15–36 Hz. This is
+  **inferred** to help dragging; the benchmark has no drag scenario yet.
+- Kept: the encoder's timestamps never jump more than two frame intervals.
+  Before this, the first frame after a pause got a quarter of a second's
+  bit budget, and one P-frame reached 204 KB.
+
+## Adapting to the network
+
+`Sources/Controller.swift`, per stream, latency first:
+
+- **The gate.** The viewer acknowledges every frame as it arrives. A new
+  frame is sent only while the oldest unacknowledged one is younger than
+  the path's usual round trip, plus one frame interval, plus room for this
+  link's normal jitter (1.5 times its recent spread, 25–80 ms). So frames
+  never queue in SSH, TCP or the Wi-Fi driver. While the link is stuck, the
+  newest picture waits and goes out as soon as it moves.
+- **The bitrate.** The link counts as congested when, for two checks in a
+  row (100 ms apart), round trips grow by more than 40 ms while the stream
+  uses much of its budget, or the gate holds frames back, or a frame is
+  stuck for 100 ms. Then the bitrate drops to a bit under what actually got
+  through: at least a fifth off, and at most half. Once the link has been
+  clear for a second, it rises by 10% steps, never above the quality
+  setting's bitrate.
+- **The tier.** When the bitrate stays low, and the stream is really
+  limited by the link rather than having little to send, it steps down:
+  60 → 45 → 30 fps, then 75%, then 50% of the pixels. It goes straight to
+  the tier the bitrate supports after half a second, and steps back up one
+  tier at a time after two seconds with room to spare.
+- `FRAME_MAC_VIEW_ADAPT=0` turns it off, for comparison.
+
+Measured on the real Frame, 2026-09-28 (**verified**; interleaved A/B, off
+versus on, medians of the runs, ms):
+
+| Link | Scenario | Content p95, off → on | fps drawn, off → on | Result file |
+|---|---|---|---|---|
+| Clean Wi-Fi (3 runs each) | scroll | 32.3 → 33.6 | 57 → 56.2 | `…-ab-adapt-clean2.json` |
+| Clean Wi-Fi | test | 15 → 14.2 | 60 → 59.7 | same |
+| 50 → 3 → 50 Mbit/s at 8 s and 16 s (2 runs each) | scroll | **4670 → 72** | 45 → 42 | `…-ab-adapt-step3.json` |
+| 50 → 3 → 50 Mbit/s | test | 66 → 16 | 60 → 60 | same |
+
+- **Clean link.** On a clean link it costs nothing measurable. An earlier
+  version with a fixed gate slack lost 9 fps to Wi-Fi jitter while
+  scrolling (47 → 38 fps), and that's why the slack now follows the link's
+  jitter.
+- **Throttled link.** Without the controller, frames queued for up to 5.6 s
+  and never caught up while the link was slow (p95 1.8–5.6 s, second by
+  second). With it, in the two runs:
+
+  | | Run 1 | Run 2 |
+  |---|---|---|
+  | Worst second's p95 just after the drop | 219 ms | 428 ms |
+  | p95 back under 100 ms for 3 s in a row | after 1 s | after 4 s |
+  | Stepped down to 1440 px at 30 fps | 1.8 s after the drop | 3.5 s after |
+  | p95 per second after that, on the 3 Mbit/s link | 55–94 ms | 60–148 ms |
+
+  Sending one frame takes about 27 ms on that link by itself. After the
+  link recovered, the stream was back at full size and 60 fps in about
+  7.5 s. It steps up one tier every two seconds, on purpose, so it doesn't
+  bounce. The 1 s adaptation target was met in one run of two.
+- **A hiccup on a small stream.** In one clean run, a Wi-Fi hiccup made an
+  earlier version halve the test pattern's bitrate five times and drop it
+  to half size. That cut couldn't help: the stream only sends
+  0.47 Mbit/s. Now the controller estimates what a stream wants (captures
+  per second × average frame size). While a stream wants about half its
+  budget or less, no cut takes it below twice what it wants, so it doesn't change
+  tier.
 
 ## Checked so far (2026-09-28)
 
@@ -191,6 +343,9 @@ may ask again after an update.
   - Whether Flathub Chromium has H.264. Chromium XR is used when it's
     installed, as it is on this Frame.
   - Latency with real, busy windows at Sharp.
+  - A benchmark run while wearing the headset. Only then does the Frame show
+    panels at full rate, so only then can the compositor's share of the
+    latency, and the frame rate you actually see, be measured.
 
 ## Limits
 

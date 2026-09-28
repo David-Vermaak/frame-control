@@ -18,16 +18,47 @@ final class Encoder {
     private var session: VTCompressionSession?
     private var forceKey = true
     private var lastPts = CMTime.invalid
-    /// Called on VideoToolbox's thread with one access unit (or JPEG) per frame.
-    var onFrame: ((Data, Bool, CMTime) -> Void)?
+    private var lastGiven = CMTime.invalid
+    /// Bits per second to aim for; nil means from the size, frame rate and
+    /// bits per pixel. Changing it takes effect on the next frame.
+    private var target: Int?
+    private(set) var bitrate = 0
+    /// Called on VideoToolbox's thread with one access unit (or JPEG) per
+    /// frame, and the sequence number it was submitted with.
+    var onFrame: ((Data, Bool, CMTime, UInt32) -> Void)?
     var onError: ((String) -> Void)?
     /// Called once per frame handed to VideoToolbox, however it went.
-    var onDone: (() -> Void)?
+    var onDone: ((UInt32) -> Void)?
+    /// Experiment switches (FRAME_MAC_VIEW_ENCODER, comma-separated), so a
+    /// benchmark can compare them without a rebuild.
+    static let options = Set((ProcessInfo.processInfo.environment["FRAME_MAC_VIEW_ENCODER"] ?? "")
+        .split(separator: ",").map(String.init))
 
     init(codec: Codec, fps: Int, bitsPerPixel: Double) {
         self.codec = codec
         self.fps = fps
         self.bitsPerPixel = bitsPerPixel
+    }
+
+    /// The bitrate the size and quality setting would give.
+    func defaultBitrate(width w: Int, height h: Int) -> Int {
+        Int(min(max(Double(w * h * fps) * bitsPerPixel, 2_000_000), 60_000_000))
+    }
+
+    /// Live, without a new keyframe. Call on the encoding queue.
+    func setBitrate(_ bps: Int?) {
+        target = bps
+        guard codec == .h264, let s = session else { return }
+        let b = bps ?? defaultBitrate(width: width, height: height)
+        guard b != bitrate else { return }
+        bitrate = b
+        VTSessionSetProperty(s, key: kVTCompressionPropertyKey_AverageBitRate, value: b as CFTypeRef)
+        // A hard ceiling too: no more than 200 ms' worth of bits in any 200 ms,
+        // so a keyframe can't hold the link for long.
+        if Encoder.options.contains("cap") {
+            VTSessionSetProperty(s, key: kVTCompressionPropertyKey_DataRateLimits,
+                                 value: [b / 8 / 5, 0.2] as CFArray)
+        }
     }
 
     deinit { invalidate() }
@@ -46,6 +77,7 @@ final class Encoder {
         invalidate()
         var spec: [CFString: Any] = [:]
         if codec == .h264 { spec[kVTVideoEncoderSpecification_EnableLowLatencyRateControl] = true }
+        if Encoder.options.contains("hw") { spec[kVTVideoEncoderSpecification_RequireHardwareAcceleratedVideoEncoder] = true }
         var s: VTCompressionSession?
         let type = codec == .h264 ? kCMVideoCodecType_H264 : kCMVideoCodecType_JPEG
         func create(_ spec: [CFString: Any]) -> OSStatus {
@@ -68,11 +100,11 @@ final class Encoder {
         set(kVTCompressionPropertyKey_TransferFunction, kCVImageBufferTransferFunction_ITU_R_709_2)
         set(kVTCompressionPropertyKey_YCbCrMatrix, kCVImageBufferYCbCrMatrix_ITU_R_709_2)
         if codec == .h264 {
-            let bps = min(max(Double(w * h * fps) * bitsPerPixel, 2_000_000), 60_000_000)
             set(kVTCompressionPropertyKey_ProfileLevel, kVTProfileLevel_H264_ConstrainedHigh_AutoLevel)
             set(kVTCompressionPropertyKey_AllowFrameReordering, false)
-            set(kVTCompressionPropertyKey_AverageBitRate, Int(bps))
             set(kVTCompressionPropertyKey_ExpectedFrameRate, fps)
+            if Encoder.options.contains("nodelay") { set(kVTCompressionPropertyKey_MaxFrameDelayCount, 0) }
+            if Encoder.options.contains("speed") { set(kVTCompressionPropertyKey_PrioritizeEncodingSpeedOverQuality, true) }
             // A keyframe every 10 s at most, so a viewer that lost one recovers
             // even if it never asks. Viewers ask for one when they start.
             set(kVTCompressionPropertyKey_MaxKeyFrameIntervalDuration, 10)
@@ -82,24 +114,37 @@ final class Encoder {
         VTCompressionSessionPrepareToEncodeFrames(s)
         session = s
         lastPts = .invalid
+        lastGiven = .invalid
         width = w
         height = h
         forceKey = true
+        bitrate = 0
+        setBitrate(target)
         return true
     }
 
     /// False if the frame never reached VideoToolbox (then onDone won't come).
     @discardableResult
-    func encode(_ pb: CVPixelBuffer, pts given: CMTime) -> Bool {
-        // VideoToolbox needs strictly increasing timestamps; a resent picture
-        // stamped "now" can be followed by a capture stamped a moment earlier.
-        var pts = given
-        if lastPts.isValid, CMTimeCompare(pts, lastPts) <= 0 { pts = CMTimeAdd(lastPts, CMTime(value: 1, timescale: 1_000_000)) }
+    func encode(_ pb: CVPixelBuffer, pts given: CMTime, seq: UInt32) -> Bool {
+        // The encoder's own timeline: strictly increasing (a resent picture
+        // stamped "now" can be followed by a capture stamped a moment earlier),
+        // and never more than two frames on from the last one. Rate control
+        // budgets bits by elapsed time, so after a pause (the link held frames
+        // back, or nothing changed) one frame would otherwise get a quarter
+        // second's worth of bits: 200 KB that then hold a slow link for half a second.
         let w = CVPixelBufferGetWidth(pb), h = CVPixelBufferGetHeight(pb)
         if session == nil || w != width || h != height {
-            guard makeSession(width: w, height: h) else { return false }
+            guard makeSession(width: w, height: h) else { return false }  // a new timeline too
         }
         guard let s = session else { return false }
+        var pts = given
+        if lastPts.isValid, lastGiven.isValid {
+            let gap = CMTimeSubtract(given, lastGiven)
+            let most = CMTime(value: 2, timescale: CMTimeScale(fps))
+            let step = CMTimeCompare(gap, most) > 0 ? most : gap
+            pts = CMTimeAdd(lastPts, CMTimeMaximum(step, CMTime(value: 1, timescale: 1_000_000)))
+        }
+        lastGiven = given
         var props: CFDictionary?
         if forceKey {
             props = [kVTEncodeFrameOptionKey_ForceKeyFrame: true] as CFDictionary
@@ -110,12 +155,12 @@ final class Encoder {
         let status = VTCompressionSessionEncodeFrame(s, imageBuffer: pb, presentationTimeStamp: pts, duration: .invalid,
                                                      frameProperties: props, infoFlagsOut: nil) { [weak self] status, _, sample in
             guard let self else { return }
-            defer { self.onDone?() }
+            defer { self.onDone?(seq) }
             guard status == noErr, let sample else { return }
             if codec == .jpeg {
-                if let data = Self.bytes(sample) { self.onFrame?(data, true, pts) }
+                if let data = Self.bytes(sample) { self.onFrame?(data, true, pts, seq) }
             } else if let (data, key) = Self.annexB(sample) {
-                self.onFrame?(data, key, pts)
+                self.onFrame?(data, key, pts, seq)
             }
         }
         if status != noErr { forceKey = true }

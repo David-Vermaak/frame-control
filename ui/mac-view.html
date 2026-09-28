@@ -16,11 +16,14 @@
           font: 15px/1.4 system-ui, sans-serif; color: #eee; background: rgba(20,22,26,.88);
           padding: 8px 14px; border-radius: 10px; pointer-events: none; transition: opacity .4s; }
   #note[hidden] { display: block; opacity: 0; }
+  #hud { position: fixed; left: 8px; top: 8px; font: 12px/1.35 ui-monospace, monospace; color: #dfe;
+         background: rgba(0,0,0,.72); padding: 6px 9px; border-radius: 6px; pointer-events: none; white-space: pre; }
 </style>
 </head>
 <body>
 <canvas id="c" width="16" height="9"></canvas>
 <div id="note">Connecting to the Mac…</div>
+<div id="hud" hidden></div>
 <script>
 "use strict";
 const q = new URLSearchParams(location.search);
@@ -32,6 +35,85 @@ const c = document.getElementById("c"), ctx = c.getContext("2d", { alpha: false,
 const note = document.getElementById("note");
 // Counters for Frame Control's tests (read over DevTools).
 const stats = window.stats = { frames: 0, keyFrames: 0, bytes: 0, dropped: 0, codec: "", errors: [], info: null };
+
+// ---- timing: the Mac measures each frame's journey on its own clock ----
+// Clock sync, NTP-style: the Mac's time minus ours, from the ping with the
+// shortest round trip lately (the least queueing, so the least error).
+const clock = { off: null, rtt: 0, samples: [], reported: 0 };
+function toMac(ms) { return clock.off === null ? null : Math.round(ms * 1000 + clock.off); }
+function onPong(m) {
+  const now = performance.now(), rtt = now - m.c;
+  clock.samples.push({ rtt, off: m.a - (m.c + now) / 2 * 1000 });
+  if (clock.samples.length > 16) clock.samples.shift();
+  const best = clock.samples.reduce((a, b) => (b.rtt < a.rtt ? b : a));
+  clock.off = best.off;
+  clock.rtt = best.rtt;
+  if (now - clock.reported > 1000) {
+    clock.reported = now;
+    send({ t: "clock", rtt: +best.rtt.toFixed(2), dec: `${decoderInfo}; ${glInfo}; raf ${rafHz} Hz` });
+  }
+}
+let pingTimer = 0;
+function startPings() {
+  clearInterval(pingTimer);
+  clock.samples = [];
+  for (let i = 0; i < 10; i++) setTimeout(() => send({ t: "ping", c: performance.now() }), i * 40);
+  pingTimer = setInterval(() => send({ t: "ping", c: performance.now() }), 1000);
+}
+// Decoded, drawn and next-animation-frame times go back in batches.
+let reports = [], dropsToReport = 0, shownPending = null, rafQueued = false;
+setInterval(() => {
+  if (!reports.length && !dropsToReport) return;
+  send({ t: "fd", f: reports, drop: dropsToReport });
+  reports = [];
+  dropsToReport = 0;
+}, 250);
+function dropped() { stats.dropped++; dropsToReport++; }
+// A drawn frame is on screen from the next animation frame, unless another
+// replaces it first (then it was never seen).
+function shown(seq, decodedAt, drawnAt) {
+  if (shownPending) reports.push([shownPending.seq, toMac(shownPending.dec), toMac(shownPending.drawn), 0]);
+  shownPending = { seq, dec: decodedAt, drawn: drawnAt };
+  if (rafQueued) return;
+  rafQueued = true;
+  requestAnimationFrame(() => {
+    rafQueued = false;
+    const p = shownPending, now = performance.now();
+    shownPending = null;
+    if (p && clock.off !== null) reports.push([p.seq, toMac(p.dec), toMac(p.drawn), toMac(now)]);
+  });
+}
+let decoderInfo = "";
+// What this browser draws with, and how often it gives an animation frame
+// when nothing else is going on (both only for the numbers).
+let glInfo = "", rafHz = 0;
+try {
+  const gl = document.createElement("canvas").getContext("webgl");
+  const ext = gl && gl.getExtension("WEBGL_debug_renderer_info");
+  glInfo = ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl ? "webgl" : "no webgl";
+} catch (e) { glInfo = "?"; }
+(function measureRaf() {
+  let n = 0, t0 = 0;
+  const tick = t => {
+    if (!t0) t0 = t;
+    if (t - t0 < 1000) { n++; return requestAnimationFrame(tick); }
+    rafHz = Math.round(n * 1000 / (t - t0));
+  };
+  requestAnimationFrame(tick);
+})();
+const hud = document.getElementById("hud");
+function showHud(on) { hud.hidden = !on; }
+function ms(o) { return o && o.p50 !== undefined ? `${o.p50}/${o.p95}` : "–"; }
+function onStats(m) {
+  if (hud.hidden) return;
+  hud.textContent = `${m.size}  ${m.fps} fps shown (${m.sentFps} sent)  ${m.mbps} Mbit/s` +
+    (m.bitrate ? ` of ${(m.bitrate / 1e6).toFixed(1)}` : "") + (m.tier !== undefined ? `  tier ${m.tier}` : "") +
+    `\nlatency p50/p95 ms  total ${ms(m.total)}\n  capture ${ms(m.capture)}  queue ${ms(m.queue)}  encode ${ms(m.encode)}` +
+    `\n  network ${ms(m.network)}  decode ${ms(m.decode)}  draw ${ms(m.draw)}` +
+    `\ninput→shown p50 ${m.input ? m.input.p50.toFixed(0) + " ms" : "–"}  rtt ${m.rtt} ms` +
+    `\nskipped ${m.skipped}/${m.captured}  dropped ${m.dropped}  ${decoderInfo}`;
+}
+showHud(q.get("stats") === "1");
 // Frame Control finds this window on the Frame by the tag in its title.
 document.title = tag ? `Mac [${tag}]` : "Mac";
 let failedStarts = 0;
@@ -54,9 +136,10 @@ function askKeyFrame() {
 }
 
 let hideNoteOnFrame = true;  // "Connecting…"/"Reconnecting…" go once video flows again
-function drawFrame(img, w, h) {
+function drawFrame(img, w, h, seq, decodedAt) {
   if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
   ctx.drawImage(img, 0, 0);
+  shown(seq, decodedAt, performance.now());
   stats.frames++;
   if (hideNoteOnFrame) { hideNoteOnFrame = false; note.hidden = true; }
 }
@@ -76,7 +159,8 @@ function makeDecoder() {
   if (dec) try { dec.close(); } catch (e) {}
   codecString = "";
   dec = new VideoDecoder({
-    output: frame => { drawFrame(frame, frame.displayWidth, frame.displayHeight); frame.close(); },
+    // The chunk's timestamp is the Mac's sequence number, to match reports up.
+    output: frame => { drawFrame(frame, frame.displayWidth, frame.displayHeight, frame.timestamp, performance.now()); frame.close(); },
     error: e => {
       stats.errors.push(String(e.message || e));
       needKey = true;
@@ -85,7 +169,7 @@ function makeDecoder() {
     },
   });
 }
-function onH264(isKey, ts, au) {
+function onH264(isKey, seq, au) {
   if (isKey) {
     const cs = spsCodec(au);
     if (cs && (cs !== codecString || dec.state !== "configured")) {
@@ -95,20 +179,22 @@ function onH264(isKey, ts, au) {
     }
     stats.keyFrames++;
   }
-  if (dec.state !== "configured" || (needKey && !isKey)) { stats.dropped++; askKeyFrame(); return; }
-  // Behind: skip to the next keyframe rather than show old pictures late.
-  if (!isKey && dec.decodeQueueSize > 2) { needKey = true; stats.dropped++; askKeyFrame(); return; }
+  if (dec.state !== "configured" || (needKey && !isKey)) { dropped(); askKeyFrame(); return; }
+  // Far behind: skip to the next keyframe rather than show old pictures late.
+  // A few queued frames are fine: decoding catches up faster than a keyframe
+  // crosses a slow link, and only the newest decoded frame gets drawn.
+  if (!isKey && dec.decodeQueueSize > 10) { needKey = true; dropped(); askKeyFrame(); return; }
   needKey = false;
-  dec.decode(new EncodedVideoChunk({ type: isKey ? "key" : "delta", timestamp: ts, data: au }));
+  dec.decode(new EncodedVideoChunk({ type: isKey ? "key" : "delta", timestamp: seq, data: au }));
 }
 
 // ---- JPEG ----
 let jpegBusy = false;
-function onJPEG(data) {
-  if (jpegBusy) { stats.dropped++; return; }
+function onJPEG(seq, data) {
+  if (jpegBusy) { dropped(); return; }
   jpegBusy = true;
   createImageBitmap(new Blob([data], { type: "image/jpeg" })).then(bmp => {
-    drawFrame(bmp, bmp.width, bmp.height);
+    drawFrame(bmp, bmp.width, bmp.height, seq, performance.now());
     bmp.close();
   }).catch(e => stats.errors.push(String(e))).finally(() => { jpegBusy = false; });
 }
@@ -119,7 +205,12 @@ async function pickCodec() {
   if (!("VideoDecoder" in window)) return "jpeg";
   try {
     const r = await VideoDecoder.isConfigSupported({ codec: "avc1.640028", optimizeForLatency: true });
-    return r.supported ? "h264" : "jpeg";
+    if (!r.supported) return "jpeg";
+    // Whether this browser has a hardware H.264 decoder (for the numbers).
+    const hw = await VideoDecoder.isConfigSupported({ codec: "avc1.640028", hardwareAcceleration: "prefer-hardware" })
+      .catch(() => ({ supported: false }));
+    decoderInfo = hw.supported ? "h264 hardware" : "h264 software";
+    return "h264";
   } catch (e) { return "jpeg"; }
 }
 
@@ -133,19 +224,21 @@ async function connect() {
   if (q.get("bpp")) p.set("bpp", q.get("bpp"));
   ws = new WebSocket(`ws://${location.host}/stream?${p}`);
   ws.binaryType = "arraybuffer";
-  ws.onopen = () => { retry = 0; lastError = ""; };
+  ws.onopen = () => { retry = 0; lastError = ""; startPings(); };
   ws.onmessage = ev => {
     if (typeof ev.data === "string") return control(JSON.parse(ev.data));
-    const b = new Uint8Array(ev.data);
+    const now = performance.now(), b = new Uint8Array(ev.data);
     stats.bytes += b.length;
-    if (b.length < 10) return;
-    const isKey = b[0] === 1;
-    const ts = Number(new DataView(ev.data).getBigUint64(1));
-    const payload = b.subarray(9);
-    if (codec === "h264") onH264(isKey, ts, payload); else onJPEG(payload);
+    if (b.length < 18) return;
+    // flags (1 = keyframe), pts µs, sequence number, input echoed; big-endian.
+    const v = new DataView(ev.data), isKey = (b[0] & 1) === 1, seq = v.getUint32(9);
+    send({ t: "rx", s: seq, r: toMac(now) });
+    const payload = b.subarray(17);
+    if (codec === "h264") onH264(isKey, seq, payload); else onJPEG(seq, payload);
   };
   ws.onclose = () => {
     ws = null;
+    clearInterval(pingTimer);
     if (closing) return;
     // Refused before ever getting a key: the ticket expired or was revoked,
     // and retrying can't help.
@@ -163,11 +256,15 @@ async function connect() {
 }
 
 function control(m) {
+  if (m.t === "pong") return onPong(m);
+  if (m.t === "stats") return onStats(m);
+  if (m.t === "bench") return bench(m);
   if (m.t === "hello") {
     reconnectKey = m.r;
     send({ t: "ack" });  // the ticket is spent only now
   } else if (m.t === "info") {
     stats.info = m;
+    warmMs = Math.max(0, +m.warm || 0);
     const name = m.title && m.app && m.title !== m.app ? `${m.title} — ${m.app}` : (m.title || m.app || "Mac");
     document.title = tag ? `${name} [${tag}]` : name;
     if (!m.input) {
@@ -194,22 +291,51 @@ function toPicture(e) {
   const x = (e.clientX - left) / w, y = (e.clientY - top) / h;
   return { x, y, inside: x >= 0 && x <= 1 && y >= 0 && y <= 1 };
 }
-let pendingMove = null, moveQueued = false;
+// Discrete input carries an id and when it happened (the Mac's clock), so
+// the Mac can tag the first frame that could show its effect.
+let inputId = 0;
+// Keep the Frame's Wi-Fi awake for a few seconds after input, when the agent asks.
+let warmMs = 0, warmUntil = 0, warmTimer = 0;
+function keepWarm() {
+  if (!warmMs) return;
+  warmUntil = performance.now() + 5000;
+  if (warmTimer) return;
+  warmTimer = setInterval(() => {
+    if (performance.now() > warmUntil) { clearInterval(warmTimer); warmTimer = 0; return; }
+    send({ t: "w" });
+  }, warmMs);
+}
+function stamp(m, e) {
+  keepWarm();
+  m.i = ++inputId;
+  m.tv = toMac(e && e.timeStamp ? e.timeStamp : performance.now());
+  return m;
+}
+// Moves go at most every 8 ms, on a timer rather than the next animation frame:
+// the Frame throttles a panel's animation frames to 15-36 Hz when it thinks
+// nobody is looking, which would hold a move back by up to 60 ms.
+let pendingMove = null, moveQueued = false, lastMove = 0;
+function flushMove() {
+  moveQueued = false;
+  if (pendingMove) { send(pendingMove); lastMove = performance.now(); }
+  pendingMove = null;
+}
 addEventListener("pointermove", e => {
   const p = toPicture(e);
   if (!p.inside && !e.buttons) return;
   pendingMove = { t: "m", e: "move", x: p.x, y: p.y };
-  if (!moveQueued) {
-    moveQueued = true;
-    requestAnimationFrame(() => { moveQueued = false; if (pendingMove) send(pendingMove); pendingMove = null; });
-  }
+  if (moveQueued) return;
+  const wait = lastMove + 8 - performance.now();
+  if (wait <= 0) return flushMove();
+  moveQueued = true;
+  setTimeout(flushMove, wait);
 });
 addEventListener("pointerdown", e => {
   const p = toPicture(e);
   if (!p.inside) return;
   if (e.pointerId !== undefined) try { c.setPointerCapture(e.pointerId); } catch (err) {}
   pendingMove = null;
-  send({ t: "m", e: "down", b: e.button < 0 ? 0 : e.button, x: p.x, y: p.y });
+  send(stamp({ t: "m", e: "down", b: e.button < 0 ? 0 : e.button, x: p.x, y: p.y }, e));
   e.preventDefault();
 });
 addEventListener("pointerup", e => {
@@ -221,15 +347,45 @@ addEventListener("pointercancel", () => send({ t: "release" }));
 addEventListener("contextmenu", e => e.preventDefault());
 addEventListener("wheel", e => {
   const p = toPicture(e), unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? innerHeight : 1;
-  send({ t: "wheel", dx: e.deltaX * unit, dy: e.deltaY * unit, x: p.x, y: p.y });
+  send(stamp({ t: "wheel", dx: e.deltaX * unit, dy: e.deltaY * unit, x: p.x, y: p.y }, e));
   e.preventDefault();
 }, { passive: false });
 function mods(e) {
   return ["shift", "ctrl", "alt", "meta"].filter(m => e[m + "Key"]);
 }
 function onKey(e, down) {
-  send({ t: "k", e: down ? "down" : "up", code: e.code, key: e.key, mods: mods(e) });
+  // Ctrl+Alt+Shift+S shows the numbers; it isn't sent to the Mac.
+  if (e.code === "KeyS" && e.ctrlKey && e.altKey && e.shiftKey) {
+    if (down) showHud(hud.hidden);
+    return e.preventDefault();
+  }
+  const m = { t: "k", e: down ? "down" : "up", code: e.code, key: e.key, mods: mods(e) };
+  send(down ? stamp(m, e) : m);
   e.preventDefault();
+}
+
+// ---- benchmarks: the Mac asks the viewer to act as if someone did ----
+function keyCode(ch) {
+  if (/[a-z]/i.test(ch)) return "Key" + ch.toUpperCase();
+  if (/[0-9]/.test(ch)) return "Digit" + ch;
+  return { " ": "Space", "\n": "Enter", ".": "Period", ",": "Comma" }[ch] || "";
+}
+function bench(m) {
+  if (m.action === "overlay") return showHud(m.on !== 0 && m.on !== "0");
+  if (m.action === "click") {
+    const at = { x: +m.x || 0.5, y: +m.y || 0.5 };
+    send(stamp({ t: "m", e: "down", b: 0, ...at }));
+    setTimeout(() => send({ t: "m", e: "up", b: 0, ...at }), 40);
+  } else if (m.action === "type") {
+    const text = String(m.text || ""), gap = +m.interval || 150;
+    [...text].forEach((ch, n) => setTimeout(() => {
+      const code = keyCode(ch);
+      if (!code) return send(stamp({ t: "text", s: ch }));
+      const mods = ch !== ch.toLowerCase() ? ["shift"] : [];
+      send(stamp({ t: "k", e: "down", code, key: ch, mods }));
+      setTimeout(() => send({ t: "k", e: "up", code, key: ch, mods }), 30);
+    }, n * gap));
+  }
 }
 addEventListener("keydown", e => onKey(e, true));
 addEventListener("keyup", e => onKey(e, false));

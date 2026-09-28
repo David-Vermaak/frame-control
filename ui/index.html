@@ -314,6 +314,8 @@
   .mv-perm { background: rgba(255,190,60,.08); border: 1px solid rgba(255,190,60,.25); border-radius: 4px; padding: 10px 12px; margin-bottom: 12px; font-size: 13px; }
   .mv-perm .row { margin-top: 8px; }
   .mv-live { color: var(--green, #7fd67f); font-size: 12px; }
+  .mv-opt { display: block; font-size: 13px; margin: 0 0 12px; }
+  .mv-opt .sub { display: block; margin-left: 22px; font-size: 12px; }
   .disp select { width: 100%; background: rgba(0,0,0,.28); color: var(--text); border: 1px solid transparent; border-radius: 3px;
                  padding: 8px 10px; font: inherit; font-size: 13px; }
   .disp select:focus { outline: none; border-color: var(--blue); }
@@ -655,6 +657,8 @@
           <option value="light">Light</option><option value="compatible">Compatible (JPEG)</option>
         </select>
         <button class="small" id="mvRefresh">Refresh</button></div>
+      <label class="mv-opt"><input type="checkbox" id="mvSeparate" checked> Give each window its own display
+        <span class="sub">its menus and sheets come along, nothing covers it, and it goes back when you stop</span></label>
       <div class="mv-perm" id="mvPerm" hidden></div>
       <div class="list" id="mvDisplays"></div>
       <div class="shelf-head" style="margin-top:16px"><h2>Windows</h2><span class="count" id="mvWinCount"></span></div>
@@ -2132,11 +2136,23 @@ $("shotsSaveNew").onclick = e => saveShots(shots.list.filter(s => !s.saved), e.c
 $("shotsFolder").onclick = e => act($("shotsFolder").textContent, () => api("/api/open", { what: "shots" }), e.currentTarget);
 
 // ---- Mac in the headset: windows and displays as panels (ui/frame_macview.py) ----
-let mvSeq = 0;
-function mvRow(src, title, sub, w, h, streaming) {
+let mvSeq = 0, mvTimer = 0;
+// streaming: the src it's shown as (a window may be "separate:<id>"), or "".
+// How a live stream is doing: frames shown, Mac-to-headset delay, bitrate, and
+// whether the network made it step down (fewer frames, then fewer pixels).
+function mvHealth(st) {
+  if (!st) return "";
+  const x = st.stats || {}, c = st.controller || {}, bits = [];
+  if (x.fps) bits.push(`${Math.round(x.fps)} fps`);
+  if (x.total && x.total.p50 != null) bits.push(`${Math.round(x.total.p50)} ms`);
+  if (x.mbps) bits.push(`${x.mbps} Mbit/s`);
+  if (c.tier > 0) bits.push(`weak link: ${c.fps} fps${c.scale < 1 ? `, ${Math.round(c.scale * 100)}% size` : ""}`);
+  return bits.length ? " · " + esc(bits.join(" · ")) : "";
+}
+function mvRow(src, title, sub, w, h, streaming, st) {
   return `<div class="item"><div class="grow"><div class="t">${esc(title)}</div>
-      <div class="s">${esc(sub)}${streaming ? ' · <span class="mv-live">in the headset</span>' : ""}</div></div>
-    ${streaming ? `<button class="small" data-mv="stop" data-src="${esc(src)}">Stop</button>`
+      <div class="s">${esc(sub)}${streaming ? ' · <span class="mv-live">in the headset</span>' + mvHealth(st) : ""}</div></div>
+    ${streaming ? `<button class="small" data-mv="stop" data-src="${esc(streaming)}">Stop</button>`
                 : `<button class="small action" data-mv="show" data-src="${esc(src)}" data-title="${esc(title)}" data-w="${w}" data-h="${h}">Show</button>`}
   </div>`;
 }
@@ -2150,6 +2166,7 @@ async function loadMacView(restart) {
   if (!s.available) { box.hidden = true; return; }
   box.hidden = false;
   const live = new Set((s.streams || []).map(x => x.src));
+  const byStream = src => (s.streams || []).find(x => x.src === src);
   $("mvCount").textContent = live.size ? `${live.size} showing` : "";
   const perm = [];
   if (!s.screen) perm.push(`Frame Control needs <b>Screen Recording</b> permission to show your windows.`);
@@ -2157,21 +2174,29 @@ async function loadMacView(restart) {
   $("mvPerm").hidden = !perm.length;
   $("mvPerm").innerHTML = perm.join(" ") + `<div class="row"><button class="small action" data-mv="perm">Allow…</button>
     <span class="sub">Then press Refresh. macOS may ask you to reopen Frame Control.</span></div>`;
+  const liveAs = src => live.has(src) ? src : src.startsWith("window:") && live.has("separate:" + src.slice(7)) ? "separate:" + src.slice(7) : "";
   $("mvDisplays").innerHTML = (s.displays || []).map(d =>
-    mvRow(d.src, `Whole screen: ${d.name}`, `${d.w}×${d.h}${d.main ? " · main display" : ""}`, d.w, d.h, live.has(d.src))).join("");
+    mvRow(d.src, `Whole screen: ${d.name}`, `${d.w}×${d.h}${d.main ? " · main display" : ""}`, d.w, d.h, liveAs(d.src), byStream(liveAs(d.src)))).join("");
   const wins = s.windows || [];
   $("mvWinCount").textContent = wins.length ? `${wins.length}` : "";
   $("mvWindows").innerHTML = !s.screen ? `<div class="sub">Windows appear here once Screen Recording is allowed.</div>`
-    : wins.length ? wins.map(w => mvRow(w.src, w.title || w.app, `${w.title ? w.app + " · " : ""}${w.w}×${w.h}`, w.w, w.h, live.has(w.src))).join("")
+    : wins.length ? wins.map(w => mvRow(w.src, w.title || w.app, `${w.title ? w.app + " · " : ""}${w.w}×${w.h}`, w.w, w.h, liveAs(w.src), byStream(liveAs(w.src)))).join("")
     : `<div class="sub">No windows open on this Mac's current desktop.</div>`;
+  // Keep the numbers fresh while something is in the headset and the card is on screen.
+  clearTimeout(mvTimer);
+  const tick = () => { mvTimer = document.hidden || !box.offsetParent ? setTimeout(tick, 3000) : (loadMacView(), 0); };
+  if (live.size) mvTimer = setTimeout(tick, 3000);
 }
 $("mvRefresh").onclick = () => loadMacView(true);
+$("mvSeparate").checked = localStorage.getItem("mvSeparate") !== "0";
+$("mvSeparate").onchange = e => localStorage.setItem("mvSeparate", e.target.checked ? "1" : "0");
 $("macview").onclick = async e => {
   const b = e.target.closest("[data-mv]"); if (!b) return;
   const src = b.dataset.src;
   if (b.dataset.mv === "show") {
+    const as = $("mvSeparate").checked && src.startsWith("window:") ? "separate:" + src.slice(7) : src;
     await act(`Show ${b.dataset.title} in the headset`, async () => {
-      const r = await api("/api/macview", { action: "show", src, quality: $("mvQuality").value,
+      const r = await api("/api/macview", { action: "show", src: as, quality: $("mvQuality").value,
                                             w: +b.dataset.w || undefined, h: +b.dataset.h || undefined });
       return { message: `${b.dataset.title} is a panel in the headset now. Float it with the SteamVR dashboard.`, ...r };
     }, b);

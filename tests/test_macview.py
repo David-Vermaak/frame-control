@@ -68,6 +68,13 @@ class Helpers(unittest.TestCase):
         self.assertIn("Chromium", str(cm.exception))
         self.assertTrue(calls[0].startswith("bash -s -- "))
 
+    def test_separate_windows_need_accessibility(self):
+        mv = frame_macview.MacView(["ssh"], lambda *a, **k: self.fail("no ssh"), "frame")
+        mv.call = lambda path, **kw: {"screen": True, "accessibility": False}
+        with self.assertRaises(frame_macview.MacViewError) as cm:
+            mv.show("separate:42")
+        self.assertIn("Accessibility", str(cm.exception))
+
     def test_screen_permission_is_checked_before_the_headset(self):
         mv = frame_macview.MacView(["ssh"], lambda *a, **k: self.fail("no ssh"), "frame")
         mv.call = lambda path, **kw: {"screen": False}
@@ -162,6 +169,22 @@ class Agent(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertIn(b"VideoDecoder", body)
 
+    def test_snapshot_needs_the_key(self):
+        self.assertEqual(self.get("/snapshot?display=1")[0], 403)
+
+    def test_separate_without_accessibility_explains(self):
+        if json.loads(self.get(f"/status?k={self.token}")[1])["accessibility"]:
+            self.skipTest("this Mac allows Accessibility here")
+        ws = WS(self.port, f"/stream?k={self.token}&src=separate:1")
+        self.assertEqual(ws.status, 101)
+        for _ in range(5):
+            op, data = ws.recv()
+            msg = json.loads(data) if op == 1 else {}
+            if msg.get("t") in ("error", "closed"):
+                break
+        self.assertIn("Accessibility", msg.get("message", msg.get("reason", "")))
+        ws.close()
+
     def test_lists_displays(self):
         status, body = self.get(f"/displays?k={self.token}")
         self.assertEqual(status, 200)
@@ -242,9 +265,10 @@ class Agent(unittest.TestCase):
                 break
         self.assertEqual(info["src"], "test")
         self.assertTrue(info["input"])
-        # A keyframe: flags, 8-byte timestamp, then Annex B with the SPS first.
-        self.assertEqual(key[9:13], b"\x00\x00\x00\x01")
-        self.assertEqual(key[13] & 0x1F, 7)  # NAL type 7, SPS
+        # A keyframe: flags, 8-byte timestamp, sequence number, input echoed,
+        # then Annex B with the SPS first.
+        self.assertEqual(key[17:21], b"\x00\x00\x00\x01")
+        self.assertEqual(key[21] & 0x1F, 7)  # NAL type 7, SPS
         ws.send_text(json.dumps({"t": "m", "e": "down", "b": 0, "x": 0.5, "y": 0.5}))
         ws.send_text(json.dumps({"t": "key-frame"}))
         got_key = False
@@ -260,13 +284,61 @@ class Agent(unittest.TestCase):
         self.assertEqual(json.loads(body)["closed"], 1)
         for _ in range(400):
             op, data = ws.recv()
-            if op == 1:
+            if op == 1 and json.loads(data)["t"] == "close":
                 break
         self.assertEqual(json.loads(data)["t"], "close")
         # Without the viewer doing anything, the agent ends the stream itself.
         time.sleep(1)
         _, body = self.get(f"/status?k={self.token}")
         self.assertEqual(json.loads(body)["streams"], [])
+        ws.close()
+
+    def test_timing_reports_and_input_echo(self):
+        # What a viewer does: sync clocks, report each frame, stamp input.
+        ws = WS(self.port, f"/stream?k={self.token}&src=test&codec=h264&fps=30&max=640")
+        self.assertEqual(ws.status, 101)
+        ws.send_text(json.dumps({"t": "w"}))  # keep-warm filler: ignored
+        ws.send_text(json.dumps({"t": "ping", "c": 1.5}))
+        pong, echoed, seqs, info = None, None, [], None
+        clicked = False
+        deadline = time.time() + 10
+        while time.time() < deadline and not (pong and echoed):
+            op, data = ws.recv()
+            if op == 1:
+                msg = json.loads(data)
+                if msg["t"] == "error":
+                    self.skipTest("no H.264 encoder here: " + msg["message"])
+                if msg["t"] == "pong":
+                    pong = msg
+                if msg["t"] == "info":
+                    info = msg
+            elif op == 2:
+                seq, echo = struct.unpack(">II", data[9:17])
+                seqs.append(seq)
+                now = pong["a"] if pong else 0
+                ws.send_text(json.dumps({"t": "rx", "s": seq, "r": now}))
+                ws.send_text(json.dumps({"t": "fd", "f": [[seq, now + 1, now + 2, now + 3]], "drop": 0}))
+                if echo == 7:
+                    echoed = seq
+                if len(seqs) == 3 and not clicked:
+                    ws.send_text(json.dumps({"t": "m", "e": "down", "b": 0, "x": 0.5, "y": 0.5, "i": 7, "tv": now}))
+                    clicked = True
+        self.assertEqual(pong["c"], 1.5)
+        self.assertGreater(pong["a"], 0)
+        self.assertEqual(seqs[:3], sorted(seqs[:3]))
+        self.assertIsNotNone(echoed, "no frame was tagged as the first reply to the click")
+        time.sleep(1.7)  # frames are reported once the viewer has had time
+        stream = json.loads(self.get(f"/stats?k={self.token}")[1])["streams"][0]
+        first = stream["frames"][0]
+        self.assertGreater(first["e1"], first["e0"])
+        self.assertGreaterEqual(first["e0"], first["cap"])
+        self.assertEqual(first["vs"] - first["rx"], 3)
+        self.assertEqual([i["frame"] for i in stream["inputs"] if i["id"] == 7], [echoed])
+        self.assertIn("total", stream["summary"])
+        self.assertEqual(info["warm"], 0)  # off unless FRAME_MAC_VIEW_WARM is set
+        live = json.loads(self.get(f"/status?k={self.token}")[1])["streams"][0]
+        self.assertEqual(live["controller"]["tier"], 0)
+        self.assertIn("fps", live["stats"])
         ws.close()
 
 

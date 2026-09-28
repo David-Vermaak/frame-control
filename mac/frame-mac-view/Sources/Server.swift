@@ -165,9 +165,10 @@ final class WebSocket {
     func sendJSON(_ obj: Any) {
         if let d = try? JSONSerialization.data(withJSONObject: obj), let s = String(data: d, encoding: .utf8) { sendText(s) }
     }
-    func sendBinary(_ d: Data) { send(opcode: 2, d) }
+    /// `taken` runs once the network stack has taken the whole frame.
+    func sendBinary(_ d: Data, taken: (() -> Void)? = nil) { send(opcode: 2, d, taken: taken) }
 
-    func send(opcode: UInt8, _ payload: Data) {
+    func send(opcode: UInt8, _ payload: Data, taken: (() -> Void)? = nil) {
         var frame = Data([0x80 | opcode])
         let n = payload.count
         if n < 126 {
@@ -185,6 +186,7 @@ final class WebSocket {
         conn.send(content: frame, completion: .contentProcessed { [weak self] _ in
             guard let self else { return }
             self.lock.lock(); self._pending -= size; self.lock.unlock()
+            taken?()
             self.onDrain?()
         })
     }

@@ -30,7 +30,7 @@ import urllib.error
 import urllib.request
 import zlib
 from pathlib import Path
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode  # %20, not +: the agent's URLComponents keeps +
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
@@ -48,16 +48,19 @@ QUALITY = {
     "light": {"max": 1280, "fps": 30, "bpp": 0.08, "codec": "h264"},
     "compatible": {"max": 1280, "fps": 20, "bpp": 0.1, "codec": "jpeg"},
 }
+# Extra Chromium flags for viewers (see docs/mac-in-headset.md, "Measuring").
+BROWSER_FLAGS = []
 # Viewer windows are fitted inside a panel's size. gamescope made a 1280x720
 # request 1920x1080 anyway (verified 2026-09-28, build 20260925.6191901).
 PANEL_BOX = (1920, 1080)
 
 # Opens one viewer on gamescope's X display and gives its window its own panel
-# id. Args: appid url width height tag. The page puts "[tag]" in its title at
+# id. Args: appid url width height tag [browser flags...]. The page puts "[tag]" in its title at
 # once, which is how its X window is found (Chromium may hand the URL to an
 # instance that's already running, so there's no process to follow).
 LAUNCH = r"""set -u
 appid=$1 url=$2 w=$3 h=$4 tag=$5
+shift 5
 export DISPLAY=:0 LC_ALL=C.UTF-8
 unset WAYLAND_DISPLAY
 if ! xprop -root GAMESCOPE_FOCUSABLE_WINDOWS >/dev/null 2>&1; then
@@ -67,7 +70,7 @@ fi
 common=(--ozone-platform=x11 --force-device-scale-factor=1 --no-first-run --no-default-browser-check
   --password-store=basic --disable-session-crashed-bubble --noerrdialogs --disable-infobars
   --disable-features=Translate,MediaRouter --autoplay-policy=no-user-gesture-required
-  "--window-size=$w,$h" "--app=$url")
+  "--window-size=$w,$h" "$@" "--app=$url")
 if [ -x "$HOME/chromium-xr/chrome" ]; then
   cmd=("$HOME/chromium-xr/chrome" "--user-data-dir=$HOME/.local/share/frame-control/mac-view" "${common[@]}")
 elif flatpak info org.chromium.Chromium >/dev/null 2>&1; then
@@ -126,6 +129,7 @@ class MacView:
         self.supervisor = None
         self.closing = False
         self.shown = set()  # sources with a viewer out there, connected or retrying
+        self.browser_flags = list(BROWSER_FLAGS)
 
     # ---- the agent on this Mac ----
 
@@ -187,7 +191,7 @@ class MacView:
     def call(self, path, method="GET", **query):
         """A request to the agent; starts it if needed."""
         self.ensure_agent()
-        url = f"http://127.0.0.1:{self.port}{path}?{urlencode({**query, 'k': self.token})}"
+        url = f"http://127.0.0.1:{self.port}{path}?{urlencode({**query, 'k': self.token}, quote_via=quote)}"
         req = urllib.request.Request(url, method=method, data=b"" if method == "POST" else None)
         try:
             with urllib.request.urlopen(req, timeout=10) as r:
@@ -275,12 +279,15 @@ class MacView:
     # ---- viewers on the Frame ----
 
     def show(self, src, quality="balanced", width=None, height=None):
-        if src != "test" and not (src.startswith("window:") or src.startswith("display:")):
+        if src != "test" and not src.startswith(("window:", "display:", "separate:")):
             raise MacViewError("Pick a window or display to show.")
         q = QUALITY.get(quality) or QUALITY["balanced"]
         state = self.call("/status")
         if src != "test" and not state.get("screen"):
             raise MacViewError("Frame Control needs Screen Recording permission first (Allow… under Mac in the headset).")
+        if src.startswith("separate:") and not state.get("accessibility"):
+            raise MacViewError("A window on its own display needs the Accessibility permission too, to move it "
+                               "(Allow… under Mac in the headset).")
         self.shown -= set(state.get("finished", []))  # their Mac windows closed
         if src in self.shown or any(st.get("src") == src for st in state.get("streams", [])):
             # Showing it again replaces the old viewer, connected or not: this
@@ -300,7 +307,7 @@ class MacView:
                   "bpp": q["bpp"]}
         url = f"http://127.0.0.1:{self.remote_port}/view?{urlencode(params)}"
         w, h = fit(width or 1280, height or 720)
-        args = " ".join(_quote(str(a)) for a in (appid, url, w, h, tag))
+        args = " ".join(_quote(str(a)) for a in (appid, url, w, h, tag, *self.browser_flags))
         try:
             out = self.run("bash -s -- " + args, stdin=LAUNCH, timeout=60)
         except Exception as e:  # noqa: BLE001 - the server's Failure carries the Frame's words
@@ -355,6 +362,12 @@ class MacView:
         for proc in (self.tunnel, self.agent):
             if proc and proc.poll() is None:
                 proc.terminate()
+        # The helper puts separated windows back before it exits (about 1 s).
+        if self.agent:
+            try:
+                self.agent.wait(3)
+            except subprocess.TimeoutExpired:
+                self.agent.kill()
 
 
 def _quote(s):
