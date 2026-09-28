@@ -30,7 +30,7 @@ import subprocess
 import sys
 import time
 
-SOCKET = f"/run/user/{os.getuid()}/gamescope-0-ei"
+SOCKET = "/run/user/{uid}/gamescope-0-ei"  # filled in on the Frame (Windows has no getuid; the tests import this)
 BUTTONS = {"left": 0x110, "right": 0x111, "middle": 0x112}  # BTN_LEFT, BTN_RIGHT, BTN_MIDDLE
 SHIFT = 42  # KEY_LEFTSHIFT
 # Printable ASCII on a US layout: character -> (evdev key code, shifted).
@@ -225,7 +225,7 @@ class Gamescope:
         self.L = L = libei()
         self.ei = L.ei_new_sender(None)
         L.ei_configure_name(self.ei, b"Frame Control")
-        if L.ei_setup_backend_socket(self.ei, SOCKET.encode()) != 0:
+        if L.ei_setup_backend_socket(self.ei, SOCKET.format(uid=os.getuid()).encode()) != 0:
             raise RuntimeError("Couldn't reach gamescope's input socket. Is the headset on?")
         self.fd = L.ei_get_fd(self.ei)
         self.device, self.sequence, self.held, self.keys, self.alive = None, 0, set(), set(), True
