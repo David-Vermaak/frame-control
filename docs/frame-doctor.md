@@ -36,8 +36,8 @@ from. Dates are when a fact was seen. BUILD_IDs were 20260922.6101926 until
 
 | Path | How | Works when |
 |---|---|---|
-| Tailscale | `ssh frame` (`frame.tail4e5636.ts.net`) | Wi-Fi up, and Tailscale on the Mac and the Frame |
-| LAN | `ssh -o HostName=192.168.1.237 -o HostKeyAlias=frame.tail4e5636.ts.net frame`, or `frame.local` | Wi-Fi up. The alias avoids "Host key verification failed" |
+| Tailscale | `ssh frame` (`frame.<tailnet>.ts.net`) | Wi-Fi up, and Tailscale on the Mac and the Frame |
+| LAN | `ssh -o HostName=192.168.1.237 -o HostKeyAlias=frame.<tailnet>.ts.net frame`, or `frame.local` | Wi-Fi up. The alias avoids "Host key verification failed" |
 | USB-C | Same, with `HostName=10.86.200.233` | Cable to the Mac, even with Wi-Fi dead. The Mac gets `en9` "Steam Frame" 10.86.200.234/29 (`networksetup -listallhardwareports`) |
 | ADB over USB-C | `adb -s frame shell` | SSH refused, for example after Developer Mode was lost ([how-the-frame-works.md](how-the-frame-works.md), boot-loop row) |
 
@@ -304,7 +304,7 @@ Fixes:
   start Steam. The log should
   show `Nothing to do`, then `Verification complete`, then webhelpers.
 - **Heavy repair (ask).** `steam-health-check --repair-now`, or the boot
-  menu's `Repair Steam Installation` (section 11).
+  menu's `Repair Steam Installation` (section 12).
 - **Dead ends (don't repeat).**
   - `STEAM_EXTRA_ARGS=-no-child-update-ui` still draws GLX in-process and
     blocks.
