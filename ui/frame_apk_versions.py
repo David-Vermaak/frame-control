@@ -11,7 +11,8 @@ ANDROID = dict(enumerate([
     '12L', '13', '14', '15', '16',
 ], 1))
 REPOS = (('F-Droid', 'https://f-droid.org/repo/'),
-         ('F-Droid archive', 'https://f-droid.org/archive/'))
+         ('F-Droid archive', 'https://f-droid.org/archive/'),
+         ('IzzyOnDroid', 'https://apt.izzysoft.de/fdroid/repo/'))
 NOTE = ('Pick a version whose minimum is Android 11 or lower and that has an '
         'arm64-v8a build (or no native code). Installable does not mean every feature works.')
 

@@ -1,7 +1,6 @@
 .DS_Store
 __pycache__/
 apk-catalog/data/cache/
-apk-catalog/data/index-v2.json*
+apk-catalog/data/index-v2*.json*
 compat-db/.env.lakebed.server
 compat-db/.lakebed/
-apk-catalog/data/index-v2.archive.json*

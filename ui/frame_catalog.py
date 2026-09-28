@@ -17,7 +17,11 @@ import frame_compat_db as compat_db  # noqa: E402
 # the per-user cache (FRAME_CONTROL_APP is set by app/main.js).
 CACHE = (str(frame_host.cache_dir('apk')) if os.environ.get('FRAME_CONTROL_APP') or '.app/Contents/Resources' in CATALOG
          else os.path.join(CATALOG, 'data', 'cache'))
-APK_HOSTS = ('https://f-droid.org/repo/', 'https://f-droid.org/archive/')
+# Repo base URL -> local name of its index; every APK download must come from one of these.
+INDEX_FILES = {'https://f-droid.org/repo/': 'index-v2.json',
+               'https://f-droid.org/archive/': 'index-v2.archive.json',
+               'https://apt.izzysoft.de/fdroid/repo/': 'index-v2.izzy.json'}
+APK_HOSTS = tuple(INDEX_FILES)
 _lock = threading.Lock()
 _cache = {'mtime': None, 'sig': None, 'apps': None, 'by_pkg': None}
 _env = {}
@@ -112,7 +116,7 @@ def load_index(repo, cached_only=False):
     if repo not in APK_HOSTS:
         raise ValueError('unexpected index URL')
     directory = CACHE if os.environ.get('FRAME_CONTROL_APP') or '.app/Contents/Resources' in CATALOG else os.path.join(CATALOG, 'data')
-    filename = 'index-v2.json' if repo == APK_HOSTS[0] else 'index-v2.archive.json'
+    filename = INDEX_FILES[repo]
     raw = os.path.join(directory, filename)
     path = raw + '.installable-v1'
     with _index_lock:
@@ -143,8 +147,6 @@ def load_index(repo, cached_only=False):
             os.utime(tmp, ns=(refreshed, refreshed))
             os.replace(tmp, path)
             _indexes[path] = (os.stat(path).st_mtime_ns, index)
-            if os.path.exists(raw):
-                os.remove(raw)
             return index
         finally:
             if os.path.exists(tmp):

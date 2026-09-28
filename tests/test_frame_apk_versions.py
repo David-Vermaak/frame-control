@@ -28,7 +28,8 @@ class VersionsTest(unittest.TestCase):
         os.mkdir(data)
         for name, builds in [('index-v2.json', [build(5, 33), build(4, abis=['x86_64']),
                                                build(3, abis=['arm64-v8a', 'x86_64']), build(2)]),
-                             ('index-v2.archive.json', [build(1, 21), build(2)])]:
+                             ('index-v2.archive.json', [build(1, 21), build(2)]),
+                             ('index-v2.izzy.json', [])]:
             with open(os.path.join(data, name), 'w') as f:
                 json.dump({'packages': {'org.example.app': {'versions': {str(i): b for i, b in enumerate(builds)}}}}, f)
         self.enter_patch(patch.object(frame_catalog, 'CATALOG', self.tmp.name))
@@ -63,7 +64,7 @@ class VersionsTest(unittest.TestCase):
     def test_failed_indexes_keep_search_links(self):
         with patch.object(frame_catalog, 'load_index', side_effect=OSError('offline')):
             result = versions.alternatives('org.example.app')
-        self.assertEqual(len(result['errors']), 2)
+        self.assertEqual(len(result['errors']), 3)
         self.assertEqual(len(result['links']), 5)
 
     def test_no_compatible_versions(self):
@@ -79,7 +80,8 @@ class VersionsTest(unittest.TestCase):
         self.assertEqual(set(index['org.example.app'][0]),
                          {'version', 'version_code', 'min_sdk', 'abis', 'name', 'sha256'})
         raw = os.path.join(self.tmp.name, 'data', 'index-v2.json')
-        self.assertFalse(os.path.exists(raw))
+        self.assertTrue(os.path.exists(raw))  # the catalogue build reads it
+        os.utime(raw, ns=(1, 1))
         with patch.object(frame_catalog.json, 'load', side_effect=AssertionError('reparsed')):
             self.assertIs(frame_catalog.load_index(repo), index)
         path = raw + '.installable-v1'
@@ -91,7 +93,7 @@ class VersionsTest(unittest.TestCase):
         with patch.object(frame_catalog.urllib.request, 'urlopen', return_value=io.BytesIO(payload)) as fetch:
             self.assertEqual(frame_catalog.load_index(repo)['org.example.app'][0]['version_code'], 9)
             fetch.assert_called_once()
-        self.assertFalse(os.path.exists(raw))
+        self.assertTrue(os.path.exists(raw))
 
     def test_concurrent_requests_share_download(self):
         raw = os.path.join(self.tmp.name, 'data', 'index-v2.json')
@@ -108,6 +110,7 @@ class VersionsTest(unittest.TestCase):
         index = frame_catalog.load_index(repo)
         path = os.path.join(self.tmp.name, 'data', 'index-v2.json.installable-v1')
         os.utime(path, ns=(1, 1))
+        os.utime(os.path.join(self.tmp.name, 'data', 'index-v2.json'), ns=(1, 1))
         with patch.object(frame_catalog.urllib.request, 'urlopen', return_value=io.BytesIO(b'{')):
             with self.assertRaises(ValueError):
                 frame_catalog.load_index(repo)
