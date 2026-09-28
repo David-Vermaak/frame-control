@@ -10,6 +10,7 @@ const net = require("net");
 const os = require("os");
 const path = require("path");
 const { SCHEME, parseInstallLink, linkFromArgv } = require("./install-link");
+const updater = require("./updater");
 
 const run = promisify(execFile);
 
@@ -114,7 +115,11 @@ function ping(target) {
 }
 
 async function startServer() {
+  // The version and whether this is a built app go to ui/frame_telemetry.py, which
+  // sends nothing from a source checkout.
   const env = { ...process.env, PATH: await loginPath(), FRAME_CONTROL_APP: "1",
+                FRAME_CONTROL_VERSION: app.getVersion(), FRAME_CONTROL_LOG: LOG,
+                ...(app.isPackaged ? { FRAME_CONTROL_PACKAGED: "1" } : {}),
                 ...(fs.existsSync(TOOLS) ? { FRAME_CONTROL_TOOLS: TOOLS } : {}) };
   python = await findPython(env);
   if (!python) throw new Error(`Frame Control needs Python 3.8 or later. ${PYTHON_HELP}`);
@@ -243,6 +248,9 @@ function fromUi(e) {
 }
 
 ipcMain.handle("clipboard:read", (e) => fromUi(e) ? clipboard.readText() : "");
+ipcMain.handle("update:get", (e) => fromUi(e) ? publicUpdate() : null);
+ipcMain.handle("update:check", (e) => fromUi(e) ? checkForUpdate({ manual: true }).then(publicUpdate) : null);
+ipcMain.handle("update:install", (e) => { if (fromUi(e)) installUpdate(); });
 
 // frame-control://install links from websites (docs/web-install.md). They can
 // arrive before the window or server exists (macOS open-url on a cold launch),
@@ -274,6 +282,81 @@ ipcMain.on("install-link:ready", (e) => {
   linkPage = e.sender;
   deliverLinks();
 });
+
+// ---- updates (app/updater.js, docs/releasing.md) ----
+// Checked shortly after launch and every few hours; the page shows a banner and
+// the Update button calls installUpdate.
+const UPDATE_EVERY = 6 * 3600 * 1000;
+const update = { status: "idle", current: app.getVersion(), latest: null, error: null, progress: 0, how: null };
+
+function publicUpdate() {
+  const r = update.latest;
+  return { status: update.status, current: update.current, error: update.error, progress: update.progress,
+           latest: r && { version: r.version, notes: r.notes, page: r.page },
+           canInstall: !!update.how && update.how.method !== "manual", why: update.how && update.how.why };
+}
+
+function setUpdate(fields) {
+  Object.assign(update, fields);
+  if (win && linkPage === win.webContents) win.webContents.send("update:state", publicUpdate());
+}
+
+async function checkForUpdate({ manual = false } = {}) {
+  if (["checking", "downloading", "ready"].includes(update.status)) return;
+  setUpdate({ status: "checking", error: null });
+  try {
+    const latest = await updater.latestRelease();
+    const how = updater.updateMethod({ platform: process.platform, isPackaged: app.isPackaged,
+                                       execPath: process.execPath, env: process.env,
+                                       exists: fs.existsSync, writable: updater.writable });
+    if (updater.isNewer(latest.version, update.current)) {
+      setUpdate({ status: "available", latest, how });
+      if (manual) offerUpdateDialog();
+    } else {
+      setUpdate({ status: "none", latest, how });
+      if (manual) dialog.showMessageBox(win, { type: "info", message: "Frame Control is up to date",
+                                               detail: `You have ${update.current}, the newest version.` });
+    }
+  } catch (e) {
+    // A failed check: nothing to install, and never an older release kept from before.
+    setUpdate({ status: "check-failed", error: e.message, latest: null });
+    if (manual) dialog.showMessageBox(win, { type: "warning", message: "Couldn't check for updates", detail: e.message });
+  }
+}
+
+async function offerUpdateDialog() {
+  const r = update.latest;
+  const { response } = await dialog.showMessageBox(win, {
+    type: "info", message: `Frame Control ${r.version} is available`,
+    detail: `You have ${update.current}.` + (update.how.method === "manual" ? ` Download it from the release page (${update.how.why}).` : ""),
+    buttons: [update.how.method === "manual" ? "Open Release Page" : "Update and Restart", "Later"], defaultId: 0, cancelId: 1,
+  });
+  if (response === 0) installUpdate();
+}
+
+async function installUpdate() {
+  // "error" here only ever means an install failed, so trying again is safe.
+  if (update.status !== "available" && update.status !== "error") return;
+  if (!update.latest || !updater.isNewer(update.latest.version, update.current)) return;
+  if (!update.how || update.how.method === "manual") { shell.openExternal(update.latest.page); return; }
+  setUpdate({ status: "downloading", progress: 0, error: null });
+  try {
+    const start = await updater.prepare(update.latest, update.how,
+      (done, total) => { if (total) setUpdate({ progress: done / total }); }, update.current);
+    setUpdate({ status: "ready", progress: 1 });
+    start();
+    quitting = true;
+    app.quit();
+  } catch (e) {
+    setUpdate({ status: "error", error: e.message });
+  }
+}
+
+function scheduleUpdateChecks() {
+  if (process.env.FRAME_CONTROL_NO_UPDATE_CHECK === "1") return;
+  setTimeout(checkForUpdate, 8000);
+  setInterval(checkForUpdate, UPDATE_EVERY).unref();
+}
 
 function registerScheme() {
   // A checkout runs as `electron .`, so the OS must be told the script too.
@@ -336,7 +419,11 @@ async function setUpConnection() {
 
 function buildMenu() {
   const template = [
-    ...(IS_MAC ? [{ role: "appMenu" }] : []),
+    ...(IS_MAC ? [{ label: app.name, submenu: [
+      { role: "about" }, { label: "Check for Updates…", click: () => checkForUpdate({ manual: true }) },
+      { type: "separator" }, { role: "services" }, { type: "separator" },
+      { role: "hide" }, { role: "hideOthers" }, { role: "unhide" }, { type: "separator" }, { role: "quit" },
+    ] }] : []),
     { role: "fileMenu" },
     { role: "editMenu" },
     {
@@ -363,7 +450,15 @@ function buildMenu() {
     ...(IS_MAC ? [{ role: "windowMenu" }] : []),
     {
       role: "help",
-      submenu: [{ label: "Project on GitHub", click: () => shell.openExternal("https://github.com/saphid/steam-frame") }],
+      submenu: [
+        ...(IS_MAC ? [] : [{ label: "Check for Updates…", click: () => checkForUpdate({ manual: true }) }]),
+        { label: "Report a Problem…", click: () => {
+          if (win && url && linkPage === win.webContents) win.webContents.send("report:open");
+          else shell.openExternal("https://frame-control.pages.dev/feedback/");  // the page isn't up
+        } },
+        { label: "Release Notes", click: () => shell.openExternal(updater.RELEASES) },
+        { label: "Project on GitHub", click: () => shell.openExternal("https://github.com/saphid/steam-frame") },
+      ],
     },
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
@@ -386,6 +481,7 @@ if (!app.requestSingleInstanceLock()) {
     registerScheme();
     buildMenu();
     createWindow();
+    scheduleUpdateChecks();
   });
   app.on("activate", () => { if (!win) createWindow(); });
   app.on("window-all-closed", () => app.quit());

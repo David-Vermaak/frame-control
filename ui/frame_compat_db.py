@@ -8,12 +8,18 @@ New reports go to a local outbox first and are sent from there, so nothing is
 lost offline. A mirror of every report is kept for offline reads. Both live in
 frame_host.data_dir('compat-db'). Python stdlib only.
 
-CLI: python3 ui/frame_compat_db.py {count|export FILE|import FILE|flush}
+Everyone else can opt in to sharing (the Privacy panel): their reports then
+also go to PostHog as compat_report events (frame_telemetry.py), and the
+maintainer's `sync` pulls them into the database, at most SYNC_DAILY_CAP per
+reporter per day, marked via=community[-probe|-install].
+
+CLI: python3 ui/frame_compat_db.py {count|export FILE|import FILE|flush|sync}
 (import restores a backup; reports already in the database are skipped.)
 """
 import json, os, subprocess, sys, threading, time, urllib.error, urllib.parse, urllib.request, uuid
 
 import frame_host
+import frame_telemetry
 
 URL = os.environ.get('FRAME_COMPAT_DB_URL', 'https://frame-compat.lakebed.app')
 KEYCHAIN = ('frame-control-compat-db', 'app-key')
@@ -216,9 +222,145 @@ def add(report):
         if shared():
             flush()
             _mem['at'] = 0  # refetch on next load
+        else:
+            frame_telemetry.compat_report(r)  # only if this person opted in to sharing
     except Exception:
         pass  # stays queued; load() shows it and a later call sends it
     return r
+
+
+# ---- community reports: PostHog -> the database (maintainer only) ---------------
+
+POSTHOG_KEYCHAIN = ('frame-control-posthog', 'personal-api-key')
+SYNC_STATE = os.path.join(STATE, 'posthog-sync.json')
+SYNC_DAILY_CAP = 30
+COMMUNITY_VIA = {'user': 'community', 'probe': 'community-probe', 'install': 'community-install'}
+
+
+def posthog_personal_key():
+    k = os.environ.get('POSTHOG_PERSONAL_API_KEY')
+    if k:
+        return k
+    if frame_host.MAC:
+        p = subprocess.run(['security', 'find-generic-password', '-s', POSTHOG_KEYCHAIN[0], '-a',
+                            POSTHOG_KEYCHAIN[1], '-w'], capture_output=True, text=True)
+        if p.returncode == 0 and p.stdout.strip():
+            return p.stdout.strip()
+    raise DBError('No PostHog personal API key (set POSTHOG_PERSONAL_API_KEY, or on macOS the Keychain '
+                  f'item service {POSTHOG_KEYCHAIN[0]}, account {POSTHOG_KEYCHAIN[1]})')
+
+
+def _posthog_query(sql):
+    cfg = frame_telemetry.config()
+    project = os.environ.get('FRAME_CONTROL_POSTHOG_PROJECT') or cfg.get('project')
+    if not project:
+        raise DBError('No PostHog project id (ui/telemetry.json "project", or FRAME_CONTROL_POSTHOG_PROJECT)')
+    # The query API lives on the app host (eu.posthog.com), not the ingestion host (eu.i.posthog.com).
+    host = cfg['host'].replace('.i.posthog.com', '.posthog.com')
+    req = urllib.request.Request(f'{host}/api/projects/{urllib.parse.quote(str(project))}/query/', method='POST',
+                                 data=json.dumps({'query': {'kind': 'HogQLQuery', 'query': sql}}).encode(),
+                                 headers={'authorization': 'Bearer ' + posthog_personal_key(),
+                                          'content-type': 'application/json'})
+    try:
+        with _opener.open(req, timeout=60) as r:
+            return json.loads(r.read())
+    except urllib.error.HTTPError as e:
+        raise DBError(f'PostHog said HTTP {e.code}: {e.read()[:300]!r}')
+    except (urllib.error.URLError, TimeoutError, OSError, ValueError) as e:
+        raise DBError(f"can't reach PostHog: {e}")
+
+
+SYNC_OVERLAP_DAYS = 30  # re-read this far back: offline copies send late, with their original time
+SYNC_PAGE = 5000
+
+
+def community_rows(events, state, cap=SYNC_DAILY_CAP):
+    """(reports, skipped): compat_report events as database rows. `state` ({"seen": {id: day},
+    "counts": {"reporter|day": n}}) persists between syncs, so an event read twice is handled
+    once and each reporter gets at most `cap` reports a day in total."""
+    seen, counts = state.setdefault('seen', {}), state.setdefault('counts', {})
+    out, skipped = [], []
+    for props, reporter, ts in events:
+        if isinstance(props, str):
+            try:
+                props = json.loads(props)
+            except ValueError:
+                props = None
+        if not isinstance(props, dict):
+            skipped.append((None, 'unreadable properties'))
+            continue
+        bad = [k for k in (*FIELDS, 'id') if props.get(k) is not None and not isinstance(props[k], (str, int, float))]
+        if bad:
+            skipped.append((str(props.get('id'))[:60], f'bad field {bad[0]}'))
+            continue
+        r = {k: (str(props[k]) if props.get(k) is not None else None) for k in FIELDS}
+        r['id'] = str(props['id']) if props.get('id') is not None else None
+        if r['id'] in seen:
+            continue  # handled in an earlier sync (or earlier in this one)
+        r['via'] = COMMUNITY_VIA.get(r.get('via') or 'user', 'community')
+        why = problem(r)
+        if why:
+            skipped.append((r.get('id'), why))
+            continue
+        day = str(ts)[:10]
+        seen[r['id']] = day
+        key_ = f'{reporter}|{day}'
+        if counts.get(key_, 0) >= cap:
+            skipped.append((r['id'], 'over the daily limit for one reporter'))
+            continue
+        counts[key_] = counts.get(key_, 0) + 1
+        out.append(r)
+    return out, skipped
+
+
+def _sync_state():
+    try:
+        with open(SYNC_STATE) as f:
+            s = json.load(f)
+        return s if isinstance(s, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _save_sync_state(s):
+    """Forget ids and counts older than the overlap window (plus a margin)."""
+    cutoff = time.strftime('%Y-%m-%d', time.gmtime(time.time() - (SYNC_OVERLAP_DAYS + 15) * 86400))
+    s['seen'] = {k: d for k, d in s.get('seen', {}).items() if d >= cutoff}
+    s['counts'] = {k: n for k, n in s.get('counts', {}).items() if k.rsplit('|', 1)[-1] >= cutoff}
+    os.makedirs(STATE, exist_ok=True)
+    with open(SYNC_STATE + '.tmp', 'w') as f:
+        json.dump(s, f)
+    os.replace(SYNC_STATE + '.tmp', SYNC_STATE)
+
+
+def sync(dry_run=False):
+    """Pull community reports from PostHog into the database. Returns (added, skipped).
+    Reads the last SYNC_OVERLAP_DAYS each time, since events carry the time they were
+    made, not when they arrived; the saved state keeps that from adding anything twice."""
+    key()  # the maintainer's copy only
+    state = _sync_state()
+    since = time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(time.time() - SYNC_OVERLAP_DAYS * 86400))
+    events = []
+    for page in range(40):
+        res = _posthog_query("SELECT properties, distinct_id, timestamp FROM events "
+                             f"WHERE event = 'compat_report' AND timestamp >= toDateTime('{since}') "
+                             f"ORDER BY timestamp, uuid LIMIT {SYNC_PAGE} OFFSET {page * SYNC_PAGE}")
+        rows = res.get('results') or []
+        events += rows
+        if len(rows) < SYNC_PAGE:
+            break
+    rows, skipped = community_rows(events, state)
+    if dry_run:
+        return rows, skipped
+    if rows:
+        os.makedirs(STATE, exist_ok=True)
+        with _lock, open(OUTBOX, 'a') as f:
+            f.writelines(json.dumps(r, ensure_ascii=False) + '\n' for r in rows)
+    # Saved before sending: the rows are in the outbox now, and flush retries them if sending fails.
+    _save_sync_state(state)
+    flush()  # also retries rows a failed earlier sync left in the outbox
+    _mem['at'] = 0
+    return rows, skipped
 
 
 def main():
@@ -248,6 +390,12 @@ def main():
                   'reports already in the database were not duplicated')
         elif cmd == 'flush':
             print(f'{flush()} still queued')
+        elif cmd == 'sync':
+            rows, skipped = sync(dry_run='--dry-run' in args)
+            for rid, why in skipped:
+                print(f'skipped {rid!r}: {why}', file=sys.stderr)
+            print(f"{len(rows)} community reports {'found' if '--dry-run' in args else 'added'}, "
+                  f'{len(skipped)} skipped')
         else:
             sys.exit(__doc__)
     except DBError as e:

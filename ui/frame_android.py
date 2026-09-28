@@ -106,16 +106,36 @@ def _write_meta(d, meta):
     ssh(f'cat > {d}/meta.json.tmp && mv {d}/meta.json.tmp {d}/meta.json', input=json.dumps(meta, indent=1))
 
 
+# Called after every install, worked or not, as fn(info, meta, error, seconds):
+# info is None if the APK couldn't be read, meta None and error set if it failed.
+install_hooks = []
+
+
 def install(apk_path, flatscreen=True, name=None, source=None, icon_png=None):
-    info = apk_info(apk_path)
-    if icon_png:
-        info['icon_png'] = icon_png
-    check_installable(info)
-    pkg = info['package']
-    if not PKG_RE.match(pkg):
-        raise FrameError(f'unexpected package name {pkg!r}')
-    with _install_lock:
-        return _install(apk_path, info, pkg, flatscreen, name, source)
+    start, info = time.time(), None
+    try:
+        info = apk_info(apk_path)
+        if icon_png:
+            info['icon_png'] = icon_png
+        check_installable(info)
+        pkg = info['package']
+        if not PKG_RE.match(pkg):
+            raise FrameError(f'unexpected package name {pkg!r}')
+        with _install_lock:
+            meta = _install(apk_path, info, pkg, flatscreen, name, source)
+    except FrameError as e:
+        _after_install(info, None, e, start)
+        raise
+    _after_install(info, meta, None, start)
+    return meta
+
+
+def _after_install(info, meta, error, start):
+    for hook in install_hooks:
+        try:
+            hook(info, meta, error, time.time() - start)
+        except Exception:
+            pass  # reporting must never change an install's outcome
 
 
 def _install(apk_path, info, pkg, flatscreen, name, source):
