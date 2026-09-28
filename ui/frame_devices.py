@@ -672,6 +672,7 @@ class Registry:
         blocks = parse_blocks(read_config(self.config))
         changed = False
         with self.lock:
+            first = not self.data["devices"] and not self.data.get("active")
             for b in blocks:
                 host = b["hostname"] if b["hostname"] and HOST_RE.fullmatch(b["hostname"]) else None
                 user = b["user"] if b["user"] and NAME_RE.fullmatch(b["user"]) else DEFAULT_USER
@@ -714,6 +715,13 @@ class Registry:
             aliases = {b["alias"] for b in blocks}
             for d in self.data["devices"]:
                 d["managed"] = d["alias"] in aliases
+            if first:
+                # First import: the headset the app used before is `frame`, even if Set Up
+                # Connection put another block above it.
+                frame = next((d for d in self.data["devices"] if d["alias"] == "frame"), None)
+                if frame and self.data.get("active") != frame["id"]:
+                    self.data["active"] = frame["id"]
+                    changed = True
             if changed:
                 self.save()
         return changed

@@ -113,6 +113,17 @@ class Migration(Base):
         self.assertEqual(len(data["devices"]), 2)
         self.assertEqual(fd.Registry(self.dir / "devices.json").devices(), self.reg.devices())
 
+    def test_first_import_keeps_using_frame(self):
+        # Set Up Connection puts each new block first; the app used `frame` before.
+        blocks = CONFIG.split("# >>> steam-frame (frame-2) >>>")
+        head, first = blocks[0].split("# >>> steam-frame (frame) >>>")
+        second, tail = blocks[1].split("# <<< steam-frame (frame-2) <<<")
+        (self.ssh / "config").write_text(head + "# >>> steam-frame (frame-2) >>>" + second + "# <<< steam-frame (frame-2) <<<\n"
+                                         + "# >>> steam-frame (frame) >>>" + first + tail)
+        self.reg.sync_from_config(seed=False)
+        self.assertEqual([d["alias"] for d in self.reg.devices()], ["frame-2", "frame"])
+        self.assertEqual(self.reg.active(), self.reg.by_alias("frame")["id"])
+
     def test_setup_finding_a_new_address_adds_it(self):
         self.reg.sync_from_config(seed=False)
         (self.ssh / "config").write_text(CONFIG.replace("HostName frame.tail1234.ts.net", "HostName 192.168.1.237"))

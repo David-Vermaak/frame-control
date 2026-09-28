@@ -325,8 +325,12 @@ class Link:
     def route_key(device):
         return device["id"], device.get("user"), device.get("port"), tuple(device.get("frozen") or ())
 
-    def lost(self, message):
-        """A command couldn't reach the headset (Windows has no master to watch)."""
+    def lost(self, message, gen=None):
+        """A command couldn't reach the headset (Windows has no master to watch). `gen`:
+        the route it was sent on; one to a headset since switched away from says nothing
+        about this one."""
+        if gen is not None and gen != self.gen:
+            return
         if self.state["phase"] == "connected":
             self.kick(f"lost: {message}")
 

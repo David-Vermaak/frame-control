@@ -304,6 +304,14 @@ class Connecting(unittest.TestCase):
         self.assertIn("User deck", cfg.read_text())  # changed meanwhile: left as it is
         self.assertIn("left as it is", out["message"])
 
+    def test_a_late_failure_from_the_last_headset_is_ignored(self):
+        self.link.state["phase"] = "connected"
+        self.link.gen = 3
+        self.link.lost("ssh: connect to host a port 22: Operation timed out", 2)  # sent before the switch
+        self.assertEqual(self.link.kicks, [])
+        self.link.lost("ssh: connect to host b port 22: Operation timed out", 3)
+        self.assertEqual(len(self.link.kicks), 1)
+
     def test_probes_from_an_earlier_attempt_leave_the_new_rows_alone(self):
         self.link.state.update(attempt=2, probes=[{"host": "b", "state": "waiting"}])
         self.link.probe_update(0, 1, state="answered", ip="10.0.0.2")

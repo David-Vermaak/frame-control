@@ -254,6 +254,7 @@ def ensure_master():
 
 
 def ssh(remote, *, stdin=None, timeout=30, text=True):
+    route_gen = LINK.gen if LINK else None  # which headset this command is for
     try:
         ensure_master()
         # Never let ssh inherit our stdin: under the app it's the pipe held open for
@@ -266,7 +267,7 @@ def ssh(remote, *, stdin=None, timeout=30, text=True):
     if r.returncode != 0:
         err = (r.stderr or r.stdout) if text else (r.stderr or r.stdout).decode(errors="replace")
         if r.returncode == 255 and LINK and unreachable(err):
-            LINK.lost(err)  # ssh itself failed: the connector reconnects
+            LINK.lost(err, route_gen)  # ssh itself failed: the connector reconnects
         failure = Failure(strip_ansi(err).strip() or f"ssh exited {r.returncode}")
         failure.stdout = r.stdout if text else r.stdout.decode(errors="replace")
         raise failure
