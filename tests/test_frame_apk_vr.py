@@ -18,11 +18,11 @@ import frame_android
 from test_frame_apk import pool
 
 
-def manifest(utf8=False, launcher=False, category=None, samsung=False, split=False):
+def manifest(utf8=False, launcher=False, category=None, samsung=False, split=False, alias=False):
     strings = ['manifest', 'package', 'org.test.vr', 'application', 'activity', 'intent-filter',
                'action', 'category', 'name', vr.MAIN, category or next(iter(sorted(vr.VR))),
                vr.LAUNCHER, 'http://schemas.android.com/apk/res/android', 'meta-data', 'value',
-               'com.samsung.android.vr.application.mode', 'vr_only']
+               'com.samsung.android.vr.application.mode', 'vr_only', 'activity-alias']
     def start(tag, attrs=()):
         body = struct.pack('<IIHHHHHH', 0xffffffff, strings.index(tag), 20, 20, len(attrs), 0, 0, 0)
         for name, value in attrs:
@@ -42,7 +42,12 @@ def manifest(utf8=False, launcher=False, category=None, samsung=False, split=Fal
         b += end('intent-filter') + start('intent-filter')
     if launcher:
         b += leaf('category', [('name', vr.LAUNCHER)])
-    b += end('intent-filter') + end('activity') + end('application') + end('manifest')
+    b += end('intent-filter') + end('activity')
+    if alias:  # Godot 4: LAUNCHER only on an alias of the VR activity
+        b += start('activity-alias') + start('intent-filter') + leaf('action', [('name', vr.MAIN)])
+        b += leaf('category', [('name', strings[10])]) + leaf('category', [('name', vr.LAUNCHER)])
+        b += end('intent-filter') + end('activity-alias')
+    b += end('application') + end('manifest')
     return struct.pack('<HHI', 3, 8, len(b) + 8) + b
 
 
@@ -73,6 +78,17 @@ class VRTests(unittest.TestCase):
     def test_filter_boundaries(self):
         self.assertFalse(vr.inspect(manifest(launcher=True, split=True))[0]['launchable'])
         self.assertTrue(vr.inspect(vr.add_launcher_category(manifest(launcher=True, split=True)))[0]['launchable'])
+
+    def test_alias_launcher_is_not_enough(self):
+        original = manifest(alias=True)
+        info, filters = vr.inspect(original)
+        self.assertFalse(info['launchable'])
+        self.assertTrue(info['vr_activity'])
+        self.assertEqual(len(filters), 1)
+        result = vr.add_launcher_category(original)
+        info, filters = vr.inspect(result)
+        self.assertTrue(info['launchable'])
+        self.assertIn(vr.LAUNCHER, filters[0]['categories'])
 
     def test_styled_pool(self):
         for utf8 in (False, True):

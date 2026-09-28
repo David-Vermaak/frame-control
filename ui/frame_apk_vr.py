@@ -16,7 +16,7 @@ def inspect(data):
             tag, attrs = next(elements)
             value = attrs.get('name', (None, None, None))[2]
             if tag == 'intent-filter' and stack and stack[-1] in ('activity', 'activity-alias'):
-                current = {'actions': set(), 'categories': set(), 'templates': []}
+                current = {'actions': set(), 'categories': set(), 'templates': [], 'alias': stack[-1] == 'activity-alias'}
             if current is not None and stack and stack[-1] == 'intent-filter':
                 if tag == 'action':
                     current['actions'].add(value)
@@ -34,8 +34,10 @@ def inspect(data):
                 current = None
     mains = [f for f in filters if MAIN in f['actions']]
     vr_filters = [f for f in mains if VR & f['categories']]
-    return {'launchable': any(LAUNCHER in f['categories'] for f in mains),
-            'vr_activity': bool(vr_filters), 'vr': bool(vr_filters) or samsung}, vr_filters
+    # Lepton's apk-info-extractor ignores <activity-alias>; Godot 4 puts LAUNCHER only there.
+    return {'launchable': any(LAUNCHER in f['categories'] for f in mains if not f['alias']),
+            'vr_activity': bool(vr_filters), 'vr': bool(vr_filters) or samsung}, \
+        [f for f in vr_filters if not f['alias']]
 
 
 def _append_string(chunk, text):
