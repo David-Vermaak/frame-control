@@ -914,7 +914,11 @@ class Link:
             self.fail("identity", "This address answered as a different headset (its SSH identity doesn't match). "
                       "If SteamOS was reinstalled, use Forget Identity on the Devices tab.", text)
             return "next"
-        if step == "login" or re.search(r"Permission denied", text):
+        # A refused key is the same at every address: stop. (Judged by ssh's own words, not
+        # the step: a jump host's progress lines look like the headset's.) A forward that
+        # a jump host couldn't open is about this address only: try the next.
+        forward = re.search(r"open failed|forwarding failed|Connection refused|Connection closed|timed out", text)
+        if re.search(r"Permission denied", text) and not forward:
             self.fail("login", self.explain(text) or "The headset didn't accept this computer's key.", text)
             return "stop"
         if step == "connected":
@@ -1141,8 +1145,15 @@ def devices_action(link, body, open_setup, busy=lambda: 0):
 
 
 def next_alias(link):
-    taken = {d["alias"] for d in link.reg.devices()} | {b["alias"] for b in frame_devices.parse_blocks(
-        frame_devices.read_config())}
+    """A free alias for a new headset: not one Frame Control knows, nor any `Host` name
+    already in ~/.ssh/config (Set Up Connection's block would shadow it)."""
+    text = frame_devices.read_config()
+    taken = {d["alias"] for d in link.reg.devices()} | {b["alias"] for b in frame_devices.parse_blocks(text)}
+    taken |= {a for a in (link.session_alias, link.override, link.active_device().get("alias")) if a}
+    for line in text.splitlines():
+        f = line.split()
+        if f and f[0].lower() == "host":
+            taken |= {name for name in f[1:] if not any(c in name for c in "*?!")}
     if "frame" not in taken:
         return "frame"
     n = 2

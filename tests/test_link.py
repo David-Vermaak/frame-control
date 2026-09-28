@@ -317,6 +317,15 @@ class Connecting(unittest.TestCase):
         self.assertFalse(fl.Link.is_target('Authenticated to bastion ([1.2.3.4]:22) using "publickey".', opts, "frame"))
         self.assertTrue(fl.Link.is_target('Authenticated to 10.0.0.5 ([10.0.0.5]:22) using "publickey".', opts, "frame"))
 
+    def test_a_forward_the_jump_host_couldnt_open_tries_the_next_address(self):
+        said = ["Authenticated to bastion ([1.2.3.4]:22) using \"publickey\".",
+                "channel 0: open failed: connect failed: Connection refused", "stdio forwarding failed"]
+        self.link.state["stages"] = [{"id": i, "state": "pending", "started": None, "ended": None, "detail": ""}
+                                     for i, _ in fl.STAGES]
+        self.assertEqual(self.link.failed("login", said, False, "frame"), "next")
+        self.assertEqual(self.link.failed("login", ["steamos@frame: Permission denied (publickey)."], False, "frame"),
+                         "stop")
+
     def test_probes_from_an_earlier_attempt_leave_the_new_rows_alone(self):
         self.link.state.update(attempt=2, probes=[{"host": "b", "state": "waiting"}])
         self.link.probe_update(0, 1, state="answered", ip="10.0.0.2")
@@ -528,6 +537,8 @@ class Connecting(unittest.TestCase):
         self.assertIn("frame-9", out["message"])
         self.assertEqual(out["active"], d["id"])
         self.assertEqual(fl.next_alias(self.link), "frame")
+        (self.dir / "ssh" / "config").write_text("Host frame lab-*\n  HostName 10.0.0.7\n")  # someone's own `frame`
+        self.assertEqual(fl.next_alias(self.link), "frame-2")
 
 
 @unittest.skipIf(os.name == "nt", "the stand-in ssh is a POSIX script")
