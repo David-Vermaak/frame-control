@@ -311,7 +311,11 @@ def install(source_id, entry_id, version_code=None, progress=None):
     kwargs = {'name': entry.get('name'), 'icon_png': downloaded.get('icon_png') or entry.get('icon_png'),
               'source': source['name']}
     if 'artwork' in inspect.signature(frame_android.install).parameters:
-        kwargs['artwork'] = downloaded.get('artwork') or entry.get('artwork')
+        # The source's own image URLs (not the UI's /source-image/ proxy paths) become Steam library art.
+        images = entry.get('images') if isinstance(entry.get('images'), dict) else {}
+        art = {'icon': images.get('icon') or entry.get('icon'), 'banner': images.get('banner'),
+               'screenshots': [u for u in images.get('screenshots') or [] if u][:4]}
+        kwargs['artwork'] = downloaded.get('artwork') or {k: v for k, v in art.items() if v} or None
     if progress:
         progress('Installing', None)
     from apk_sources import _web

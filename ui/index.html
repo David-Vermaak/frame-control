@@ -784,6 +784,19 @@
     </section>
 
 
+    <section class="panel" id="artworkSettings">
+      <div class="shelf-head"><h2>Library artwork settings</h2></div>
+      <p class="sub">SteamGridDB supplies community artwork for sideloaded games. Without a key, Frame Control uses source images and creates the remaining art.</p>
+      <label for="steamGridKey">SteamGridDB API key</label>
+      <input type="password" id="steamGridKey" autocomplete="off" spellcheck="false" placeholder="Optional API key">
+      <div class="row" style="margin-top:8px">
+        <button id="saveSteamGridKey" class="action small">Save key</button>
+        <button id="clearSteamGridKey" class="small">Remove saved key</button>
+        <a href="https://www.steamgriddb.com/profile/preferences/api" target="_blank" rel="noreferrer">Get a free key</a>
+      </div>
+      <div id="steamGridStatus" class="hint" role="status"></div>
+      <button id="refreshAndroidArt" class="small" style="margin-top:12px">Refresh installed Android artwork</button>
+    </section>
     <section class="panel" id="power">
       <div class="shelf-head"><h2>Remote &amp; power</h2></div>
       <div class="actions">
@@ -2625,5 +2638,6 @@ setView("headset");
 refresh().then(loadShots);  // after status, so app names resolve
 document.addEventListener("visibilitychange", () => { if (!document.hidden && online === false) refresh(); });
 </script>
+<script src="/artwork-settings.js"></script>
 </body>
 </html>

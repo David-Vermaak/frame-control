@@ -46,7 +46,8 @@
         "to": "ui",
         "filter": [
           "*.py",
-          "*.html"
+          "*.html",
+          "*.js"
         ]
       },
       {
@@ -69,7 +70,8 @@
         "to": "frame/android",
         "filter": [
           "*.sh",
-          "*.py"
+          "*.py",
+          "*.js"
         ]
       },
       {

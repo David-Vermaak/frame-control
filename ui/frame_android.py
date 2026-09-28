@@ -9,11 +9,12 @@ Lepton Development, which wipes its apps on exit. See docs/apks.md.
 Python stdlib only. CLI: python3 ui/frame_android.py
   install APK [--vr|--flat] [--no-xr-compat] | info APK | versions APK-or-PKG
   install-obb PKG OBB [OBB ...] | backup-data PKG ARCHIVE | restore-data PKG ARCHIVE
-  patch SRC DST [--add NAME=PATH ...] | list | launch PKG | stop PKG | remove PKG | probe PKG
+  refresh-art PKG|--all | patch SRC DST [--add NAME=PATH ...] | list | launch PKG | stop PKG | remove PKG | probe PKG
 """
 import json, os, re, shlex, shutil, struct, subprocess, sys, threading, time, zlib
 
 import frame_apk
+import frame_artwork
 import frame_host
 import tempfile
 import zipfile
@@ -57,8 +58,12 @@ def ssh(cmd, input=None, timeout=120):
 
 def shortcut_tool(*args, timeout=60):
     with open(SHORTCUTS) as f:
-        return ssh('python3 - ' + ' '.join(shlex.quote(a) for a in args), input=f.read(),
-                   timeout=timeout).strip()
+        script = f.read()
+    if args and args[0] == 'render':
+        with open(os.path.join(ROOT, 'frame/android/library_artwork.js')) as f:
+            script = 'ART_RENDERER = ' + repr(f.read()) + '\n' + script
+    return ssh('python3 - ' + ' '.join(shlex.quote(a) for a in args), input=script,
+               timeout=timeout).strip()
 
 
 def instance_id(pkg):
@@ -136,7 +141,7 @@ def _write_meta(d, meta):
     ssh(f'cat > {d}/meta.json.tmp && mv {d}/meta.json.tmp {d}/meta.json', input=json.dumps(meta, indent=1))
 
 
-def install(apk_path, flatscreen=None, name=None, source=None, icon_png=None, xr_compat=None):
+def install(apk_path, flatscreen=None, name=None, source=None, icon_png=None, xr_compat=None, artwork=None):
     info = apk_info(apk_path)
     if icon_png:
         info['icon_png'] = icon_png
@@ -155,43 +160,57 @@ def install(apk_path, flatscreen=None, name=None, source=None, icon_png=None, xr
                 patched = os.path.join(tmp, 'app.apk')
                 info['patched'] = patch(apk_path, patched, add)['patched']
                 info['launchable'] = True
-                return _install(patched, info, pkg, flatscreen, name, source or os.path.basename(apk_path))
-        return _install(apk_path, info, pkg, flatscreen, name, source)
+                return _install(patched, info, pkg, flatscreen, name, source or os.path.basename(apk_path), artwork)
+        return _install(apk_path, info, pkg, flatscreen, name, source, artwork)
 
 
-def _install(apk_path, info, pkg, flatscreen, name, source):
+def _install(apk_path, info, pkg, flatscreen, name, source, artwork=None):
+    try:
+        images, art_warnings = frame_artwork.prepare(name or info['label'], info.get('icon_png'), artwork)
+    except (ValueError, OSError) as e:
+        raise FrameError(f'could not prepare artwork: {e}') from e
     iid = instance_id(pkg)
     d = f'{APPS_DIR}/{pkg}'
     existing = read_meta(pkg)
-    ok = False
+    ok, created = False, None
     try:
         ssh(f'mkdir -p {d}')
         _copy(apk_path, f'{d}/app.apk.part')
         _copy(LAUNCHER, f'{d}/launch.sh', executable=True, timeout=120)
-        icon = ''
-        if info['icon_png']:
-            ssh(f'cat > {d}/icon.png', input=info['icon_png'])
-            icon = f'$HOME/{d}/icon.png'
         marker = f'touch {d}/lepton-show-flatscreen' if flatscreen else f'rm -f {d}/lepton-show-flatscreen'
         ssh(f'mv {d}/app.apk.part {d}/app.apk && echo {iid} > {d}/instance.id && {marker}')
         home = ssh('echo $HOME').strip()
         shortcut = _int((existing or {}).get('shortcut'))
         if not shortcut or shortcut not in _shortcut_ids():
             reply = shortcut_tool('add', name or info['label'], f'{home}/{d}/launch.sh', f'{home}/{d}',
-                                  icon.replace('$HOME', home))
+                                  '')
             shortcut = _int(reply.strip().splitlines()[-1] if reply.strip() else None)
             if not shortcut:
                 raise FrameError(f'Steam did not return a shortcut id (got {reply[:80]!r})')
+            created = shortcut
+        presentation = apply_library(shortcut, name or info['label'], d, images,
+                                     vr=not flatscreen, home=home,
+                                     exe=f'{home}/{d}/launch.sh', start_dir=f'{home}/{d}',
+                                     details={'package': pkg, 'version': info['version'],
+                                              'source': source or os.path.basename(apk_path)})
+        presentation['warnings'] = art_warnings + presentation.get('warnings', [])
         meta = {'package': pkg, 'label': name or info['label'], 'version': info['version'],
                 'instance': iid, 'shortcut': shortcut, 'game_id': game_id(shortcut),
                 'vr': info.get('vr', False), 'vr_issues': info.get('vr_issues', []),
                 'launchable': info.get('launchable', False), 'patched': info.get('patched', []),
                 'flatscreen': flatscreen, 'installed': time.strftime('%Y-%m-%dT%H:%M:%S'),
-                'source': source or os.path.basename(apk_path)}
+                'source': source or os.path.basename(apk_path),
+                'library_warnings': presentation.get('warnings', []),
+                'artwork': presentation.get('artwork', {}), 'library_version': 2}
         _write_meta(d, meta)
         ok = True
         return meta
     finally:
+        if not ok and created:
+            try:
+                shortcut_tool('remove', str(created))
+            except FrameError:
+                pass
         if not ok and not existing:
             # A first install that failed part-way: don't leave an orphan folder behind.
             try:
@@ -199,6 +218,101 @@ def _install(apk_path, info, pkg, flatscreen, name, source):
             except FrameError:
                 pass
 
+
+
+def apply_library(shortcut, label, directory, images, vr=False, home=None, exe='', start_dir='', details=None,
+                  category='Android'):
+    """Mandatory for every sideload: render all five slots before reporting success."""
+    home = home or ssh('echo $HOME').strip()
+    d = directory
+    ssh(f'mkdir -p {shlex.quote(d)}/artwork')
+    paths = {}
+    for slot, (ext, data) in images.items():
+        path = f'{d}/artwork/source-{slot}.{ext}'
+        ssh(f'cat > {shlex.quote(path)}', input=data)
+        paths[slot] = f'{home}/{path}' if not path.startswith('/') else path
+    manifest = {'label': label, 'images': paths}
+    plan = f'{d}/artwork/input.json'
+    ssh(f'cat > {shlex.quote(plan)}', input=json.dumps(manifest))
+    absolute = f'{home}/{plan}' if not plan.startswith('/') else plan
+    rendered = json.loads(shortcut_tool('render', absolute, timeout=120))
+    art = rendered['paths']
+    if set(art) != set(frame_artwork.SLOTS):
+        raise FrameError('Steam artwork renderer did not produce every slot')
+    result = json.loads(shortcut_tool('configure', str(shortcut), label, exe, start_dir, art['icon'],
+                                     '1' if vr else '0', json.dumps(art),
+                                     json.dumps({'category': category, 'details': details or {}}), timeout=120))
+    result['warnings'] = rendered.get('warnings', []) + result.get('warnings', [])
+    result['artwork'] = art
+    if category == 'Android':
+        ssh(f'cat > {shlex.quote(d)}/shortcut.id', input=str(int(shortcut)))
+    return result
+
+
+def refresh_art(pkg=None, artwork=None):
+    """Refresh existing APK library entries without reinstalling or stopping them."""
+    if pkg is None:
+        results = []
+        for app in list_apps():
+            try:
+                results.append(refresh_art(app['package'], artwork))
+            except (FrameError, OSError, ValueError) as e:
+                results.append({'package': app['package'], 'error': str(e)})
+        return results
+    with _install_lock:
+        m = _meta_or_fail(pkg)
+        d = f'{APPS_DIR}/{pkg}'
+        # Parse the APK on the Frame, transferring only its icon/label, not the APK.
+        modules = {}
+        for module in ('frame_apk', 'frame_apk_vr'):
+            with open(os.path.join(ROOT, 'ui', module + '.py')) as f:
+                modules[module] = f.read()
+        script = 'import sys, types, json, base64\n'
+        for module, source in modules.items():
+            script += f'm = types.ModuleType({module!r}); sys.modules[{module!r}] = m; exec({source!r}, m.__dict__)\n'
+        script += f"info = sys.modules['frame_apk'].apk_info({(d + '/app.apk')!r})\n"
+        script += "info['icon_png'] = base64.b64encode(info.get('icon_png') or b'').decode()\n"
+        script += "import os\ninfo['artwork'] = {}\n"
+        script += f"directory = os.path.realpath({d!r})\n"
+        script += """try:
+    with open(os.path.join(directory, 'artwork/input.json')) as f:
+        cached = json.load(f)
+    for slot, path in cached.get('images', {}).items():
+        if os.path.commonpath([os.path.realpath(path), directory]) != directory:
+            continue
+        with open(path, 'rb') as f:
+            data = f.read(12 * 1024 * 1024 + 1)
+        if len(data) <= 12 * 1024 * 1024:
+            info['artwork'][slot] = base64.b64encode(data).decode()
+except (OSError, ValueError, TypeError):
+    pass
+print(json.dumps(info))
+"""
+        info = json.loads(ssh('python3 -', input=script))
+        import base64
+        icon = base64.b64decode(info['icon_png'])
+        cached = {k: base64.b64decode(v) for k, v in info.get('artwork', {}).items()}
+        images, warnings = frame_artwork.prepare(m['label'], icon, artwork if artwork is not None else cached)
+        home = ssh('echo $HOME').strip()
+        created = False
+        if not m['shortcut'] or m['shortcut'] not in _shortcut_ids():
+            m['shortcut'] = _int(shortcut_tool('add', m['label'], f'{home}/{d}/launch.sh', f'{home}/{d}'))
+            if not m['shortcut']:
+                raise FrameError('Steam did not create the missing shortcut')
+            m['game_id'] = game_id(m['shortcut'])
+            created = True
+        try:
+            result = apply_library(m['shortcut'], m['label'], d, images, vr=not m.get('flatscreen', True),
+                                   home=home, exe=f'{home}/{d}/launch.sh', start_dir=f'{home}/{d}', details=m)
+        except Exception:
+            if created:
+                shortcut_tool('remove', str(m['shortcut']))
+            raise
+        m.update(artwork=result.get('artwork', {}), library_version=2)
+        m['library_warnings'] = warnings + result.get('warnings', [])
+        m['artwork_refreshed'] = time.strftime('%Y-%m-%dT%H:%M:%S')
+        _write_meta(d, m)
+        return m
 
 def _int(v):
     try:
@@ -271,6 +385,11 @@ def launch(pkg):
 
 def stop(pkg):
     m = _meta_or_fail(pkg)
+    if m['shortcut']:
+        try:
+            shortcut_tool('stop', str(int(m['shortcut'])))
+        except FrameError:
+            pass  # Steam unavailable: the container stop also ends its waiting launcher.
     ssh(f"podman stop -t 5 lepton-steamlaunch-{int(m['instance'])} >/dev/null 2>&1 || true", timeout=60)
     return m
 
@@ -279,10 +398,8 @@ def remove(pkg, keep_data=False):
     m = _meta_or_fail(pkg)
     stop(pkg)
     if m['shortcut']:
-        try:
-            shortcut_tool('remove', str(int(m['shortcut'])))
-        except FrameError:
-            pass  # already gone from Steam
+        result = json.loads(shortcut_tool('remove', str(int(m['shortcut']))) or '{}')
+        m['library_warnings'] = result.get('warnings', [])
     iid = int(m['instance'])
     extra = '' if keep_data else f' {COMPAT}/{iid} {SHADERS}/{iid}'
     ssh(f'rm -rf {APPS_DIR}/{pkg}{extra}')
@@ -369,6 +486,13 @@ def main():
         elif cmd == 'install':
             r = install(args[0], flatscreen=False if '--vr' in args else True if '--flat' in args else None,
                         xr_compat=False if '--no-xr-compat' in args else None)
+        elif cmd == 'refresh-art':
+            if len(args) != 1:
+                raise FrameError('usage: refresh-art PACKAGE or refresh-art --all')
+            r = refresh_art(None if args[0] == '--all' else args[0])
+            if isinstance(r, list) and any('error' in item for item in r):
+                print(json.dumps(r, indent=1))
+                raise SystemExit(1)
         elif cmd == 'patch':
             import argparse
             parser = argparse.ArgumentParser(description='Patch and v2-sign an APK locally')

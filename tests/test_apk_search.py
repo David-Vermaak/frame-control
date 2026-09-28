@@ -181,6 +181,23 @@ class SearchTests(SettingsTest):
                 search.add_game_data('org.brush')
             mod.download.assert_called_once_with(mod.sources()[0] | {'status': 'not searched'}, 'brush', version_code=1)
 
+    def test_install_uses_source_image_urls_as_steam_artwork(self):
+        mod = fake()
+        plain = mod.details
+        mod.details = lambda source, entry_id: dict(plain(source, entry_id), images={
+            'icon': 'https://img.example/icon.png', 'banner': 'https://img.example/banner.png',
+            'screenshots': ['https://img.example/1.png', None]})
+        seen = {}
+        def install(apk, name=None, icon_png=None, source=None, artwork=None):
+            seen['artwork'] = artwork
+            return {'package': 'org.brush'}
+        with patch.object(search, 'modules', return_value=([mod], [])), \
+             patch.object(server.frame_android, 'install', install):
+            search.install('one', 'brush')
+        self.assertEqual(seen['artwork'], {'icon': 'https://img.example/icon.png',
+                                           'banner': 'https://img.example/banner.png',
+                                           'screenshots': ['https://img.example/1.png']})
+
     def test_discovery_and_demo_are_opt_in(self):
         module = fake()
         with patch.object(search.pkgutil, 'iter_modules', return_value=[types.SimpleNamespace(name='example')]), \
