@@ -50,6 +50,29 @@ def build(destination):
             target = plugins_out / source.name
             shutil.copy2(source, target)
             pending.append(source)
+    if not win:
+        # PipeWire dynamically loads support and protocol modules. ldd cannot
+        # discover those; bundle them with a private client-only config instead
+        # of accidentally loading a different distro's client modules/config.
+        libdir = plugin_dir.parent
+        for relative in ('pipewire-0.3/libpipewire-module-protocol-native.so',
+                         'pipewire-0.3/libpipewire-module-client-node.so',
+                         'spa-0.2/support/libspa-support.so'):
+            source = libdir / relative
+            if not source.is_file():
+                raise SystemExit('Missing PipeWire runtime library: ' + str(source))
+            target = destination / 'lib' / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, target)
+            pending.append(source)
+        config = destination / 'share' / 'pipewire'
+        config.mkdir(parents=True, exist_ok=True)
+        (config / 'client.conf').write_text(
+            'context.spa-libs = { support.* = support/libspa-support }\n'
+            'context.modules = [\n'
+            '  { name = libpipewire-module-protocol-native }\n'
+            '  { name = libpipewire-module-client-node }\n'
+            ']\n')
     copied = set()
     while pending:
         binary = pending.pop()

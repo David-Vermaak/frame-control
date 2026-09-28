@@ -15,7 +15,7 @@ jobs:
       - name: Native libraries
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libglib2.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly gstreamer1.0-pipewire
+          sudo apt-get install -y libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libglib2.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly gstreamer1.0-pipewire libpipewire-0.3-modules libspa-0.2-modules
           python3 desktop/build.py
       - name: Tests (real x264, fake capture consent/input)
         env:

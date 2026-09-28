@@ -173,6 +173,36 @@ class NativeTests(unittest.TestCase):
     def tearDown(self):
         self.request('/close?k='+self.token, 'POST')
 
+    @unittest.skipUnless(sys.platform.startswith('linux'), 'Linux PipeWire client libraries')
+    def test_bundled_pipewire_context_needs_no_system_modules(self):
+        # No portal request, remote connection or desktop capture: create and
+        # destroy a private client context to test the dynamically loaded SPA
+        # and protocol modules that ldd cannot discover.
+        code = """
+import ctypes as C, os
+lib = C.CDLL(os.path.join(os.environ['FRAME_PC_NATIVE'], 'lib', 'libpipewire-0.3.so.0'))
+for name, ret, args in [
+    ('pw_init', None, [C.c_void_p, C.c_void_p]),
+    ('pw_main_loop_new', C.c_void_p, [C.c_void_p]),
+    ('pw_main_loop_get_loop', C.c_void_p, [C.c_void_p]),
+    ('pw_context_new', C.c_void_p, [C.c_void_p, C.c_void_p, C.c_size_t]),
+    ('pw_context_destroy', None, [C.c_void_p]),
+    ('pw_main_loop_destroy', None, [C.c_void_p])]:
+    fn = getattr(lib, name)
+    fn.restype, fn.argtypes = ret, args
+lib.pw_init(None, None)
+loop = lib.pw_main_loop_new(None)
+assert loop, 'bundled SPA loop support did not load'
+context = lib.pw_context_new(lib.pw_main_loop_get_loop(loop), None, 0)
+assert context, 'bundled PipeWire client modules did not load'
+lib.pw_context_destroy(context)
+lib.pw_main_loop_destroy(loop)
+"""
+        env = frame_pcview.PCView([], lambda *a: None, 'frame').agent_environment()
+        env['FRAME_PC_NATIVE'] = str(capture.NATIVE)
+        result = subprocess.run([sys.executable, '-c', code], env=env, capture_output=True, text=True, timeout=15)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_auth_and_real_h264_stats(self):
         self.assertEqual(self.request('/status')[0], 403)
         status, body = self.request('/ticket?src=test&k='+self.token, 'POST')

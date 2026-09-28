@@ -18,7 +18,9 @@ protocol, panel launcher and adaptation. It does not launch or require
 Sunshine, OBS or another desktop-streaming app. GStreamer and its codec
 plugins are ordinary libraries bundled with the Windows and Linux app;
 users do not install a GStreamer application. The shared library build keeps
-license texts and package provenance alongside the libraries.
+license texts and package provenance alongside the libraries. Linux also
+bundles the PipeWire client’s dynamically loaded SPA/protocol modules and a
+private client configuration; it does not change the desktop’s configuration.
 
 First-party alternatives considered (**documented**): Valve Remote Play
 streams a game/desktop, rather than providing this per-window panel protocol;
@@ -144,6 +146,13 @@ same bounded shaping relay, without administrator privileges.
 - **Verified, Mac:** all 600 states in a 60-second congestion/recovery trace
   matched the original Swift controller. `tests/test_pc_controller.py` retains
   the original trace digest as a regression check.
+- **Verified, real Frame, current agent at `cd20243`:** the repeated synthetic
+  probe drew 400 frames at 39.3 fps, content p50/p95 15.1/28.6 ms, and synthetic
+  input-to-drawn p50 76.6 ms. Test clicks now change the pattern color before
+  injection is timestamped. The frame-rate/late-frame targets still failed;
+  this remains a Frame-hosted x264 test through a Mac relay, not a desktop or
+  physical-laser measurement. Helper exit 0 and cleanup succeeded.
+  [Current probe result](../bench/results/2026-09-28-cd20243-pc-agent-frame-arm64-final.json).
 - **Untested:** real Windows WGC → Media Foundation → Frame; real Linux
   portal → PipeWire → VA-API/x264 → Frame; physical laser input on either.
   No benchmark numbers for those desktop paths are claimed.

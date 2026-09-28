@@ -585,4 +585,7 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    except (OSError, RuntimeError, AttributeError) as e:
+        raise SystemExit('PC streaming helper: ' + str(e))

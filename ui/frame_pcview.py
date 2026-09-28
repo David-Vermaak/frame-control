@@ -49,6 +49,10 @@ class PCView(MacView):
             env['PATH'] = str(NATIVE / 'bin') + os.pathsep + env.get('PATH', '')
         else:
             env['LD_LIBRARY_PATH'] = str(NATIVE / 'lib') + os.pathsep + env.get('LD_LIBRARY_PATH', '')
+            env['PIPEWIRE_MODULE_DIR'] = str(NATIVE / 'lib' / 'pipewire-0.3')
+            env['SPA_PLUGIN_DIR'] = str(NATIVE / 'lib' / 'spa-0.2')
+            env['PIPEWIRE_CONFIG_DIR'] = str(NATIVE / 'share' / 'pipewire')
+            env['PIPEWIRE_CONFIG_NAME'] = 'client.conf'
         return env
 
     def shutdown(self):
