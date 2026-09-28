@@ -347,17 +347,43 @@ def main():
 
 
 def tidy_incoming(folder):
-    """Remove this start's copy of the packages, and any a cancelled start left over an hour ago."""
+    """Remove this start's copy of the packages, and others nobody is using.
+
+    Another copy goes only if no agent holds its .in-use lock and it's over an
+    hour old (so not one a server is still copying, before its agent starts).
+    """
     incoming = BASE / "incoming"
     if folder.startswith(str(incoming) + "/"):
         shutil.rmtree(folder, ignore_errors=True)
     try:
-        for old in incoming.iterdir():
-            if time.time() - old.stat().st_mtime > 3600:
-                shutil.rmtree(old, ignore_errors=True)
+        others = list(incoming.iterdir())
+    except OSError:
+        return
+    for other in others:
+        try:
+            if time.time() - other.stat().st_mtime < 3600:
+                continue
+            with open(other / ".in-use", "a") as lock:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                shutil.rmtree(other, ignore_errors=True)
+        except OSError:
+            pass  # in use, or already gone
+    try:
         incoming.rmdir()
     except OSError:
-        pass  # none, or another start's copy is still there
+        pass  # another start's copy is still there
+
+
+def hold_incoming(folder):
+    """Mark this start's copy as in use (tidy_incoming leaves it alone); the lock lasts as long as the file."""
+    if not folder.startswith(str(BASE / "incoming") + "/"):
+        return None
+    try:
+        lock = open(Path(folder) / ".in-use", "a")
+        fcntl.flock(lock, fcntl.LOCK_SH)
+        return lock
+    except OSError:
+        return None
 
 
 class daemon_lock:
@@ -372,6 +398,18 @@ class daemon_lock:
 
 
 def run(client, name, folder, packages):
+    """Set up, pair and forward events. This start's copy of the packages stays
+    until it ends, however it ends: restarting KDE Connect may need to unpack it."""
+    held = hold_incoming(folder)
+    try:
+        return serve(client, name, folder, packages)
+    finally:
+        if held:
+            held.close()
+        tidy_incoming(folder)
+
+
+def serve(client, name, folder, packages):
     try:
         with daemon_lock():
             ensure_daemon(folder, packages)
@@ -398,7 +436,6 @@ def run(client, name, folder, packages):
     except (OSError, RuntimeError, subprocess.SubprocessError) as e:
         say("error", message=str(e))
         return 1
-    tidy_incoming(folder)  # unpacked or not needed: the copy has done its job
     say("ready", keyboard=link.keyboard is not False)
     stdin, pending = sys.stdin.fileno(), b""
     sel = selectors.DefaultSelector()

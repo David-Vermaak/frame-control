@@ -638,15 +638,22 @@ class InputAgent:
         # A folder of its own: a cancelled start's agent may still be cleaning up another.
         folder = f"{KDECONNECT_HOME}/incoming/{secrets.token_hex(8)}"
         ssh(f"mkdir -p {folder}", timeout=20)
-        for name, sha in self.packages:
-            path = KDECONNECT / "packages" / name
-            if not path.is_file() or file_sha256(path) != sha:
-                raise Failure(f"{name} is missing or damaged in this copy of Frame Control"
-                              " (a build runs app/build/fetch-deps.js to add it)", 500)
-            report(f"Copying KDE Connect to the Frame ({name.rsplit('-', 3)[0]})")
-            quoted = shlex.quote(name)
-            ssh(f"cd {folder} && cat > {quoted}.part && mv {quoted}.part {quoted}",
-                stdin=path.read_bytes(), text=False, timeout=600)
+        try:
+            for name, sha in self.packages:
+                path = KDECONNECT / "packages" / name
+                if not path.is_file() or file_sha256(path) != sha:
+                    raise Failure(f"{name} is missing or damaged in this copy of Frame Control"
+                                  " (a build runs app/build/fetch-deps.js to add it)", 500)
+                report(f"Copying KDE Connect to the Frame ({name.rsplit('-', 3)[0]})")
+                quoted = shlex.quote(name)
+                ssh(f"cd {folder} && cat > {quoted}.part && mv {quoted}.part {quoted}",
+                    stdin=path.read_bytes(), text=False, timeout=600)
+        except Failure:
+            try:
+                ssh(f"rm -rf {folder}", timeout=20)  # a partial copy is no use to anyone
+            except Failure:
+                pass  # the agent tidies it later
+            raise
         return f"~/{folder}"
 
     def start(self):

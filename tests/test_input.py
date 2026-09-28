@@ -220,7 +220,16 @@ class Bundled(unittest.TestCase):
         self.server.ensure_master, self.server.subprocess.Popen = lambda: None, popen
         self.addCleanup(lambda: (setattr(self.server, "ensure_master", old[0]),
                                  setattr(self.server.subprocess, "Popen", old[1])))
-        return Agent(packages=[("a.pkg.tar.zst", "0" * 64)]), launches, procs
+        agent = Agent(packages=[("a.pkg.tar.zst", "0" * 64)])
+
+        def settle():  # nothing of this test may still be launching when the next one starts
+            agent.stop()
+            for _ in range(250):
+                if agent.launching is None and all(p.ended.is_set() for p in procs):
+                    return
+                time.sleep(0.02)
+        self.addCleanup(settle)
+        return agent, launches, procs
 
     def wait_for(self, check):
         for _ in range(250):
@@ -258,6 +267,26 @@ class Bundled(unittest.TestCase):
         # The stopped launch's agent was ended; the new one is the one in use.
         self.wait_for(lambda: sum(p.ended.is_set() for p in procs) == 1)
         self.assertFalse(agent.proc.ended.is_set())
+        agent.stop()
+        self.wait_for(lambda: all(p.ended.is_set() for p in procs))
+
+    def test_retry_and_a_new_start_never_run_two_agents(self):
+        # A start() landing just as an agent that asked for the packages exits: exactly one
+        # of it and the retry launches, and stop() ends everything.
+        agent, launches, procs = self.lifecycle([[b'{"state": "need-packages"}\n'], [b'{"state": "ready"}\n']])
+        watch, raced = agent._watch, []
+
+        def racing_watch(proc, errors, retry=False):
+            wanted = watch(proc, errors, retry)
+            if wanted and not raced:
+                raced.append(True)
+                agent.start()  # lands between the agent exiting and the retry
+            return wanted
+        agent._watch = racing_watch
+        agent.start()
+        self.wait_for(lambda: agent.status == {"state": "ready"})
+        time.sleep(0.2)
+        self.assertEqual(sum(not p.ended.is_set() for p in procs), 1, launches)
         agent.stop()
         self.wait_for(lambda: all(p.ended.is_set() for p in procs))
 
@@ -335,6 +364,31 @@ class AgentInstall(unittest.TestCase):
                     self.agent.ensure_daemon(folder, [("new.pkg.tar.zst", "1" * 64)])
         finally:
             self.agent.listening = old
+
+    def test_restart_can_still_unpack_its_copy_then_tidies_it(self):
+        folder = self.agent.BASE / "incoming/abc"
+        folder.mkdir(parents=True)
+        seen = []
+        stubs = {"ensure_daemon": lambda f, p: seen.append(Path(f).is_dir()),
+                 "identity": lambda c: ("id", "cert", "key"), "our_daemons": lambda: [123],
+                 "connect": lambda *a: (_ for _ in ()).throw(OSError("no answer"))}
+        saved = {k: getattr(self.agent, k) for k in stubs}
+        self.addCleanup(lambda: [setattr(self.agent, k, v) for k, v in saved.items()])
+        for k, v in stubs.items():
+            setattr(self.agent, k, v)
+        self.assertEqual(self.agent.run("c", "n", str(folder), []), 1)
+        self.assertEqual(seen, [True, True])  # there for the first start and the restart
+        self.assertFalse(folder.exists())
+
+    def test_tidy_keeps_copies_in_use(self):
+        incoming = self.agent.BASE / "incoming"
+        held_dir = incoming / "held"
+        held_dir.mkdir(parents=True)
+        held = self.agent.hold_incoming(str(held_dir))
+        self.addCleanup(held.close)
+        os.utime(held_dir, (time.time() - 7200,) * 2)
+        self.agent.tidy_incoming("")
+        self.assertTrue(held_dir.is_dir())
 
     def test_tidy_keeps_other_starts_copies(self):
         incoming = self.agent.BASE / "incoming"
