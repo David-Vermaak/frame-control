@@ -22,6 +22,7 @@ import os
 import re
 import secrets
 import shutil
+import socket
 import subprocess
 import sys
 import threading
@@ -133,6 +134,10 @@ class MacView:
         # Held by a Show while it counts itself in, and by the cleanup for its
         # check and its pkill together, so a Show can't start in between.
         self.viewer_lock = threading.Lock()
+        # Use the Frame's USB-C network when it's plugged into this Mac (see
+        # _usb_route); FRAME_MACVIEW_USB=0 turns that off.
+        self.prefer_usb = os.environ.get("FRAME_MACVIEW_USB") != "0"
+        self.route = "network"
         self.shown = set()  # sources with a viewer out there, connected or retrying
         self.browser_flags = list(BROWSER_FLAGS)
 
@@ -224,8 +229,10 @@ class MacView:
             ports = [self.remote_port] if self.remote_port else list(REMOTE_PORTS)
             if self.remote_port and allow_new_port:
                 ports += [p for p in REMOTE_PORTS if p != self.remote_port]
+            via = self._usb_route()
+            self.route = "usb" if via else "network"
             for port in ports:
-                proc = subprocess.Popen([*self.tunnel_ssh, "-o", "ExitOnForwardFailure=yes",
+                proc = subprocess.Popen([*self.tunnel_ssh, *via, "-o", "ExitOnForwardFailure=yes",
                                          "-o", "ServerAliveInterval=5", "-o", "ServerAliveCountMax=3", "-N",
                                          "-R", f"127.0.0.1:{port}:127.0.0.1:{self.port}", self.frame],
                                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
@@ -252,6 +259,36 @@ class MacView:
                 if "forward" not in last.lower():
                     break  # not a port clash: the Frame is unreachable
             raise MacViewError(f"Couldn't open a tunnel from {self.frame} to this Mac: {last or 'no answer through it'}")
+
+    def _usb_route(self):
+        """ssh options to reach the Frame over its USB-C network, or [].
+
+        Plugged into a Mac, the Frame is a USB network device (macOS lists it
+        as "Steam Frame"): the Frame's usb0 answers at about 1 ms, with none
+        of Wi-Fi's stalls. Measured 2026-09-28: content latency 7 ms instead
+        of 10, click to screen 17 ms instead of 27 (docs/mac-in-headset.md).
+        The host key is the same, so it's checked against the usual name."""
+        if not self.prefer_usb:
+            return []
+        try:
+            out = self.run("ip -4 -o addr show usb0 2>/dev/null", timeout=8)
+        except Exception:
+            return []
+        m = re.search(r"inet (\d+\.\d+\.\d+\.\d+)/", out or "")
+        if not m:
+            return []
+        ip = m.group(1)
+        try:
+            socket.create_connection((ip, 22), timeout=1).close()
+        except OSError:
+            return []  # not plugged into this Mac
+        alias = self.frame
+        try:
+            cfg = subprocess.run(["ssh", "-G", self.frame], capture_output=True, text=True, timeout=5).stdout
+            alias = next((line.split()[1] for line in cfg.splitlines() if line.startswith("hostname ")), alias)
+        except (OSError, subprocess.SubprocessError):
+            pass
+        return ["-o", f"HostName={ip}", "-o", f"HostKeyAlias={alias}"]
 
     def _supervise(self):
         """Reopen the tunnel on the same port after the headset sleeps or the
@@ -367,7 +404,8 @@ class MacView:
         displays = self.call("/displays").get("displays", [])
         return {"available": True, "screen": status.get("screen", False),
                 "accessibility": status.get("accessibility", False), "streams": status.get("streams", []),
-                "windows": windows, "displays": displays, "tunnel": self.tunnel_up()}
+                "windows": windows, "displays": displays, "tunnel": self.tunnel_up(),
+                "route": self.route}
 
     def restart_agent(self):
         """Only if it's missing a permission: a running stream would stop."""

@@ -377,6 +377,7 @@ def run_scenario(args, scenario, agent_port, token, frame_ssh):
         tunnel_port = relay.port
     tunnel_ssh = list(frame_ssh[:-1]) + args.ssh_opt
     mv = LabView(tunnel_ssh, ssh_runner(frame_ssh), frame_ssh[-1], agent_port, token, tunnel_port)
+    mv.prefer_usb = args.usb  # otherwise the path is --host's (or ssh's default)
     if args.browser_flag is not None:
         mv.browser_flags = [f for f in args.browser_flag if f]
     chrome = None
@@ -456,6 +457,7 @@ def run_scenario(args, scenario, agent_port, token, frame_ssh):
         result["show_s"] = show_s
         result["panel"] = shown.get("panel")
         result["src"] = src
+        result["route"] = mv.route
         return result
     finally:
         try:
@@ -677,6 +679,7 @@ def add_run_args(r):
     r.add_argument("--buffer", type=float, default=250, help="bottleneck queue, ms at the current rate")
     r.add_argument("--frame", default="frame", help="ssh host of the Frame")
     r.add_argument("--host", default="", help="connect to this address instead (e.g. the Frame's LAN IP)")
+    r.add_argument("--usb", action="store_true", help="use the Frame's USB-C network when plugged in, as Frame Control does")
     r.add_argument("--ssh-opt", action="append", default=[], help="extra ssh option for the tunnel, e.g. -oIPQoS=ef")
     r.add_argument("--browser-flag", action="append", default=None,
                    help="Chromium flag for the viewer (replaces Frame Control's defaults; '' for none)")
@@ -742,7 +745,7 @@ def document(args, frame_ssh, results, **extra):
     return {
         "label": args.label or args.cmd, "date": datetime.datetime.now().isoformat(timespec="seconds"), "commit": commit,
         "config": {"quality": args.quality, "mode": args.mode, "net": args.net or "none", "delay_ms": args.delay,
-                   "buffer_ms": args.buffer, "host": args.host or args.frame, "ssh_opts": args.ssh_opt,
+                   "buffer_ms": args.buffer, "host": args.host or args.frame, "usb": args.usb, "ssh_opts": args.ssh_opt,
                    "encoder": os.environ.get("FRAME_MAC_VIEW_ENCODER", ""), "duration_s": args.duration,
                    "browser_flags": args.browser_flag if args.browser_flag is not None else frame_macview.BROWSER_FLAGS},
         "frame_build": build.strip().partition("=")[2], "mac": platform.mac_ver()[0], "headset": standby[-40:],

@@ -2222,7 +2222,7 @@ async function loadMacView(restart) {
   box.hidden = false;
   const live = new Set((s.streams || []).map(x => x.src));
   const byStream = src => (s.streams || []).find(x => x.src === src);
-  $("mvCount").textContent = live.size ? `${live.size} showing` : "";
+  $("mvCount").textContent = live.size ? `${live.size} showing${s.route === "usb" ? " · over USB-C" : ""}` : "";
   const perm = [];
   if (!s.screen) perm.push(`Frame Control needs <b>Screen Recording</b> permission to show your windows.`);
   if (!s.accessibility) perm.push(`Allow <b>Accessibility</b> too, so clicks and keys from the headset reach the Mac.`);

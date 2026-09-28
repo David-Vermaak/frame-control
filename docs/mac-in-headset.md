@@ -18,7 +18,7 @@ Checked 2026-09-28.
 | Goal | First-party option | Chosen? | Why |
 |---|---|---|---|
 | One Mac screen in the headset | **Apple Screen Sharing** (VNC) → Remmina (Remmina 1.4.43 is already installed on this Frame) | Kept as the fallback (`panel-on-frame.sh mac-screen`) | It's the closest to first-party and needs nothing new. But VNC sends compressed tiles rather than video, so moving content is slow: noticeable lag even on a good 5 GHz link (**verified** 2026-09-27, see [streaming.md](streaming.md)), and the Mac's pointer isn't in the picture without a helper. It shows only whole screens |
-| One Mac screen | **Steam Remote Play**, Mac as host (Valve) | No | macOS isn't a SteamVR host, and Mac-hosted Remote Play is reported broken ([Steam forum](https://steamcommunity.com/groups/homestream/discussions/1/574921459914429988/)). It streams games, not the desktop. **Not tested here**; one real try is still worth doing |
+| One Mac screen | **Steam Remote Play**, Mac as host (Valve) | For Mac games only; see [Steam's own streaming](#steams-own-streaming) | The Mac's and the Frame's Steam clients already find each other (**verified**), but Remote Play streams a game, not the desktop or a window, and a Mac can't host the Frame's VR streaming |
 | One Mac screen | **AirPlay** (Apple) | No | Apple licenses AirPlay receivers only to TV and speaker makers, and nothing official runs on Linux. UxPlay is an unofficial receiver, and it mirrors a whole screen, not single windows |
 | One Mac screen | **Sidecar / Mac Virtual Display** (Apple) | No | These work only with an iPad or Apple Vision Pro |
 | **Each Mac window as its own panel** | None | – | No first-party way does this: Apple's per-app streaming is only for Vision Pro, and Valve's desktop streaming needs a Windows SteamVR host. So Frame Control does it itself |
@@ -43,6 +43,49 @@ To type into VR surfaces other than these panels (SteamVR's dashboard,
 games), the Frame supports a uinput keyboard and mouse without sudo
 (verified 2026-09-27: `steamos` is in `input`, and `/dev/uinput` is
 `root:input 660`). That's a separate feature, not part of this one.
+
+## Steam's own streaming
+
+The Frame is built around Steam streaming, so this was checked first
+(2026-09-28). It fits Mac games, not Mac windows.
+
+- **VR streaming from the Mac: no.** The Frame streams VR from a PC running
+  SteamVR ("Steam Link" with foveated streaming). SteamVR dropped macOS in
+  2020, and Valve lists PCs, laptops, Steam Deck and Steam Machine as
+  hosts, never a Mac (**documented**:
+  [UploadVR](https://www.uploadvr.com/steamvr-drops-mac-support/),
+  [Road to VR](https://roadtovr.com/steam-frame-game-certification-specs/)).
+- **Flat Remote Play from the Mac: probably, for Steam games.**
+  - Steam on this Mac has streaming on, and the two Steam clients already
+    see each other. The Frame's `remote_connections.txt` shows it
+    connecting directly to "Alexs-MacBook-Pro-7" at 192.168.1.211:27036,
+    and the Mac's shows the Frame connecting over Wi-Fi and over the USB-C
+    link (**verified** in both clients' logs).
+  - Whether a stream then starts, and how a flat game looks in the headset
+    (reviews describe a theater screen), is **not tested yet**. The Frame's
+    Steam was crash-looping during this session (below).
+  - Mac-hosted Remote Play has a long-standing report of the stream
+    closing as the game loads
+    ([Steam forum](https://steamcommunity.com/groups/homestream/discussions/1/574921459914429988/),
+    **reported**).
+- **The Mac desktop or single windows through Steam: no known way.** Remote
+  Play streams a running game. The desktop trick people use on Windows (a
+  non-Steam shortcut to `explorer.exe`) has no known Mac equivalent
+  (**reported**; nothing found for macOS). So Frame Control's own stream
+  stays the way to see Mac windows.
+- **What Steam's work did give us: the USB-C link.** Plugged into the Mac,
+  the Frame appears as a network port called "Steam Frame". Steam's Remote
+  Play discovery uses it, and so does Frame Control's stream now (see
+  "USB-C, when it's plugged in" below).
+
+Next steps, once Steam on the Frame is healthy:
+
+1. Stream the one Mac game installed here (Fortune Mill) from the Frame's
+   library, over Wi-Fi and over USB-C.
+2. Record whether it starts, how it's shown, and its latency. Steam's
+   streaming overlay shows this; our benchmark can't measure it.
+3. If it works, Frame Control's Games page could offer "Stream from the
+   Mac" for Mac-installed games.
 
 ## How it works
 
@@ -73,6 +116,22 @@ ScreenCaptureKit (one window or display)
   changes on the Mac. If the headset sleeps or the network drops, Frame
   Control reopens the tunnel on the same port, and open viewers reconnect by
   themselves.
+- **USB-C, when it's plugged in.** Connected to the Mac by cable, the Frame
+  is also a USB network device: macOS lists a network port called "Steam
+  Frame", and the Frame's `usb0` answers in under 1 ms. Frame Control
+  checks for it each time it opens the tunnel and uses it when it's there,
+  with the Frame's usual SSH host key. Otherwise it uses the normal path.
+  `FRAME_MACVIEW_USB=0` turns this off. **Verified** 2026-09-28, in two
+  interleaved pairs of runs:
+
+  | | USB-C | Wi-Fi (Tailscale) |
+  |---|---|---|
+  | test: content p50 / p95 | 6.9–7.3 / 8.4–8.8 ms | 9.8–10.1 / 12.1–12.3 ms |
+  | test: click to drawn p50 | 16.6–16.9 ms | 26.4–27.8 ms |
+  | scroll: content p95 | 23.0–23.5 ms | 31.4–36.9 ms |
+  | scroll: late frames | 3.2–3.3% | 4.7–7.0% |
+
+  (`bench/results/2026-09-28-*-usb1.json`, `-usb2`, `-wifi1`, `-wifi2`.)
 - **Access.**
   - Frame Control's own key never leaves the Mac.
   - Each viewer is opened with a **single-use ticket**. It's tied to one

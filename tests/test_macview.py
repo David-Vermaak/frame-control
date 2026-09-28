@@ -120,6 +120,21 @@ class Helpers(unittest.TestCase):
             self.assertTrue(calls[-1].startswith("after "))
             t.join()
 
+    def test_tunnel_prefers_the_usb_c_network_when_plugged_in(self):
+        mv = frame_macview.MacView(["ssh"], lambda remote, **kw: "13: usb0 inet 10.86.200.233/29 scope global", "frame")
+        ssh_g = mock.Mock(stdout="user steamos\nhostname frame.example.ts.net\n")
+        with mock.patch.object(frame_macview.socket, "create_connection") as conn, \
+                mock.patch.object(frame_macview.subprocess, "run", return_value=ssh_g):
+            self.assertEqual(mv._usb_route(), ["-o", "HostName=10.86.200.233", "-o", "HostKeyAlias=frame.example.ts.net"])
+            conn.assert_called_once_with(("10.86.200.233", 22), timeout=1)
+            conn.side_effect = OSError("unplugged")
+            self.assertEqual(mv._usb_route(), [])
+        mv.run = lambda remote, **kw: ""  # no usb0
+        self.assertEqual(mv._usb_route(), [])
+        mv.prefer_usb = False
+        mv.run = lambda remote, **kw: self.fail("no ssh when USB is off")
+        self.assertEqual(mv._usb_route(), [])
+
 
 class WS:
     """A minimal WebSocket client (masked frames out, plain frames in)."""
