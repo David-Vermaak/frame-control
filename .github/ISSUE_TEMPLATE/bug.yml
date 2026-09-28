@@ -1,0 +1,51 @@
+name: Bug report
+description: Report something that's broken
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Before you start:** read [CONTRIBUTING.md](https://github.com/saphid/frame-control/blob/main/CONTRIBUTING.md).
+
+        Issues from new contributors are auto-closed by default. A maintainer reviews them and reopens worthwhile ones. The [website feedback form](https://frame-control.pages.dev/feedback/) skips that queue.
+
+        Keep this short. If it doesn't fit on one screen, it's too long. Write in your own voice.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Be specific. Include error messages and the last lines of the server log (Frame → Show Server Log).
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Minimal steps to trigger the bug.
+    validations:
+      required: false
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: false
+
+  - type: input
+    id: version
+    attributes:
+      label: Frame Control version
+      description: e.g. v0.3.1
+    validations:
+      required: false
+
+  - type: input
+    id: os
+    attributes:
+      label: Computer and SteamOS build
+      description: e.g. Windows 11, SteamOS 20260922.6101926 (Steam Settings → System)
+    validations:
+      required: false

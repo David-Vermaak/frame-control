@@ -34,8 +34,8 @@ flat 2D desktop streaming into a window on the Frame's Linux desktop.
 
 | Option | Setup | Confidence | Verdict |
 |---|---|---|---|
-| **Frame Control → Tools → Mac in the headset** | Nothing to install. Allow Screen Recording and Accessibility for Frame Control, then press **Show** next to any window or screen | **Verified** on the Mac and in an aarch64 Linux stand-in; **not yet tried in the headset** (2026-09-28) | **Recommended.** Hardware H.264 over an SSH tunnel. Each window becomes its own panel you can place anywhere. Laser clicks and scrolls, and the Mac's keyboard types. See [mac-in-headset.md](mac-in-headset.md) |
-| **macOS Screen Sharing (VNC) → Remmina on the Frame** | **Mac:** System Settings → General → Sharing → Screen Sharing on → (i) → enable "VNC viewers may control screen with password". **Frame:** `./scripts/install-apps.sh remmina` from the Mac, then open Remmina in the headset and connect to `vnc://<mac>.local` | **Inferred.** Remmina is on Flathub for **aarch64** with VNC and RDP ([Flathub](https://flathub.org/apps/org.remmina.Remmina)). The Frame desktop runs Flatpaks ([UploadVR](https://www.uploadvr.com/flatpaks-open-source-steam-frame/)). macOS VNC is built in. | **Fallback.** Nothing to install on the Mac, and it's easy to set up. Latency is fine for productivity but not for games. You'll type the Mac's hostname once in Remmina on the headset, then save the profile. To avoid even that, the script can pre-seed a Remmina profile over SSH (see below). |
+| **Frame Control → Tools → Mac in the headset** | Nothing to install. Allow Screen Recording and Accessibility for Frame Control, then press **Show** next to any window or screen | **Verified 2026-09-28** on the Frame (panel in 1.5 s, measured with `scripts/macview-bench.py`: about 10–20 ms from the Mac drawing a frame to the viewer drawing it); laser input not yet tried while wearing it | **Recommended.** Hardware H.264 over an SSH tunnel, adapting to the link. Each window becomes its own panel you can place anywhere. Laser clicks and scrolls, and the Mac's keyboard types. See [mac-in-headset.md](mac-in-headset.md) |
+| **macOS Screen Sharing (VNC) → Remmina on the Frame** | **Mac:** System Settings → General → Sharing → Screen Sharing on → (i) → enable "VNC viewers may control screen with password". **Frame:** `./scripts/install-apps.sh remmina` from the Mac, then open Remmina in the headset and connect to `vnc://<mac>.local` | **Verified 2026-09-27** (Frame BUILD_ID 20260925.6191901, macOS 27.0), in its own panel via `panel-on-frame.sh mac-screen`. Remmina is on Flathub for **aarch64** with VNC and RDP ([Flathub](https://flathub.org/apps/org.remmina.Remmina)). The Frame desktop runs Flatpaks ([UploadVR](https://www.uploadvr.com/flatpaks-open-source-steam-frame/)). macOS VNC is built in. | **Fallback** (whole screens only). Nothing to install on the Mac, and it's easy to set up. Noticeable lag, even at lower Remmina quality settings on a good 5 GHz link, where neither Wi-Fi nor the Frame's CPU was the bottleneck. Usable for reading and coding, but not for games. You'll type the Mac's hostname once in Remmina on the headset, then save the profile. To avoid even that, the script can pre-seed a Remmina profile over SSH (see below). |
 | Sunshine (Mac) → Moonlight (Frame Flatpak) | `brew install` Sunshine on the Mac, then `./scripts/install-apps.sh moonlight` | Moonlight Flatpak supports **aarch64** ([Flathub](https://flathub.org/apps/com.moonlight_stream.Moonlight)). **Sunshine on macOS is poorly supported**: install problems on Apple Silicon/Sequoia, and no virtual gamepads ([LizardByte discussion #777](https://github.com/orgs/LizardByte/discussions/777)). | Try it if VNC is too laggy. Expect some friction. |
 | Steam Remote Play with the Mac as host | Steam on the Mac, Steam Link/Remote Play on the Frame | macOS-hosted Remote Play is reported broken or flaky in 2024–2026 ([Steam discussion](https://steamcommunity.com/groups/homestream/discussions/1/574921459914429988/)) | Not recommended. It's only for games, if it works at all. |
 | Immersed / Virtual Desktop | Vendor apps | Immersed has a Mac agent but no known Frame client. Virtual Desktop's developer said he'd "try" to port it ([NewsBreak](https://www.newsbreak.com/news/4892834783961-virtual-desktop-dev-says-he-ll-try-to-bring-the-app-to-steam-frame)). | Not available as of 2026-09-25. Check again later. |
@@ -48,11 +48,38 @@ them on the Frame in DeoVR instead: see [vr-video.md](vr-video.md).
 
 `scripts/install-apps.sh remmina --vnc-host <your-mac>.local` writes
 `~/.var/app/org.remmina.Remmina/data/remmina/mac-screen-sharing.remmina` on the Frame over
-SSH. The profile then appears in Remmina's list, and you just click it. You'll
-still be asked for the VNC password in the headset the first time, unless you
-choose to save it. Remmina stores passwords encrypted with a per-install key,
-so the script doesn't try to write the password. (The Remmina file format is
-standard; the Flatpak data path is inferred.)
+SSH. The profile then appears in Remmina's list, and you just click it. It
+scales the Mac's desktop to fit the window (`scale=1`, `viewmode=1`). Without
+that, Remmina shows a Retina Mac's native pixels 1:1, so you see a zoomed-in
+corner. (Verified 2026-09-27.)
+
+**Expect a Mac login prompt, not the VNC password.** macOS offers Apple's own
+authentication (RFB security type 30) ahead of plain VNC auth (type 2), and
+Remmina picks it. So Remmina asks for your **Mac account name and login
+password**; the "VNC viewers may control screen" password isn't used. To store
+the password without typing it in the headset, run on the Frame:
+
+```sh
+printf '%s' "$PASSWORD" | flatpak run org.remmina.Remmina \
+  --update-profile ~/.var/app/org.remmina.Remmina/data/remmina/mac-screen-sharing.remmina \
+  --set-option password
+```
+
+Remmina encrypts it into the profile with its own key, because there's no
+secret service in the SSH session. (Verified 2026-09-27.)
+
+### The Mac's cursor
+
+The mirror doesn't show the Mac's pointer, with either `showcursor` value.
+macOS keeps the pointer out of the picture it sends, and Remmina's cursor mode
+draws the cursor shape only at the Frame's own pointer, which doesn't follow
+the Mac trackpad. `scripts/mac-cursor-ring.lua` works around this: a
+[Hammerspoon](https://www.hammerspoon.org/) script that draws a ring around the
+Mac pointer as a real window, so it's part of the mirrored picture. Setup is in
+its header. (Verified 2026-09-27.)
+
+Going the other way, pointing a controller at the panel moves the Mac's mouse,
+because Remmina forwards input (`viewonly=0`).
 
 ## First-party options, and why they do or don't fit
 

@@ -1,0 +1,36 @@
+name: Idea or contribution proposal
+description: Propose a change or feature (required for new contributors before opening a PR)
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Before you start:** read [CONTRIBUTING.md](https://github.com/saphid/frame-control/blob/main/CONTRIBUTING.md).
+
+        Issues from new contributors are auto-closed by default. A maintainer reviews them and reopens worthwhile ones.
+
+        Keep this short. If it doesn't fit on one screen, it's too long. Write in your own voice.
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What do you want to change?
+      description: Be specific and concise.
+    validations:
+      required: true
+
+  - type: textarea
+    id: why
+    attributes:
+      label: Why?
+      description: What problem does this solve?
+    validations:
+      required: true
+
+  - type: textarea
+    id: how
+    attributes:
+      label: How? (optional)
+      description: Brief technical approach, and whether you'd like to implement it yourself.
+    validations:
+      required: false

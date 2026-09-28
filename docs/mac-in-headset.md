@@ -17,7 +17,7 @@ Checked 2026-09-28.
 
 | Goal | First-party option | Chosen? | Why |
 |---|---|---|---|
-| One Mac screen in the headset | **Apple Screen Sharing** (VNC) → Remmina (Remmina 1.4.43 is already installed on this Frame) | Kept as the fallback (`panel-on-frame.sh mac-screen`) | It's the closest to first-party and needs nothing new. But VNC sends compressed tiles rather than video, so moving content is slow. It shows only whole screens |
+| One Mac screen in the headset | **Apple Screen Sharing** (VNC) → Remmina (Remmina 1.4.43 is already installed on this Frame) | Kept as the fallback (`panel-on-frame.sh mac-screen`) | It's the closest to first-party and needs nothing new. But VNC sends compressed tiles rather than video, so moving content is slow: noticeable lag even on a good 5 GHz link (**verified** 2026-09-27, see [streaming.md](streaming.md)), and the Mac's pointer isn't in the picture without a helper. It shows only whole screens |
 | One Mac screen | **Steam Remote Play**, Mac as host (Valve) | No | macOS isn't a SteamVR host, and Mac-hosted Remote Play is reported broken ([Steam forum](https://steamcommunity.com/groups/homestream/discussions/1/574921459914429988/)). It streams games, not the desktop. **Not tested here**; one real try is still worth doing |
 | One Mac screen | **AirPlay** (Apple) | No | Apple licenses AirPlay receivers only to TV and speaker makers, and nothing official runs on Linux. UxPlay is an unofficial receiver, and it mirrors a whole screen, not single windows |
 | One Mac screen | **Sidecar / Mac Virtual Display** (Apple) | No | These work only with an iPad or Apple Vision Pro |
