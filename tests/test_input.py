@@ -173,9 +173,11 @@ class Bundled(unittest.TestCase):
             self.deliver(frame_has=False, damaged=True)
 
     def lifecycle(self, agent_lines, deliver=None):
-        """An InputAgent whose ssh and agent are fakes; returns it and the folders each launch used."""
-        launches = []
-        test = self
+        """An InputAgent whose ssh and agent are fakes. Returns it, the folders each launch
+        used, and the fake agents. A fake agent reports its lines, then keeps running
+        (unless its lines end with need-packages) until the test ends."""
+        launches, procs, done = [], [], threading.Event()
+        self.addCleanup(done.set)
 
         class Agent(self.server.InputAgent):
             def deliver(self, report, force=False):
@@ -191,34 +193,60 @@ class Bundled(unittest.TestCase):
             stdin = None
 
             def __init__(self, lines):
-                self.stdout = iter(lines)
+                self.lines, self.ended = lines, threading.Event()
+                procs.append(self)
+
+            @property
+            def stdout(self):
+                yield from self.lines
+                if b"need-packages" not in self.lines[-1]:
+                    while not (done.is_set() or self.ended.is_set()):
+                        self.ended.wait(0.02)
+                self.ended.set()
 
             def wait(self):
+                self.ended.wait(5)
                 return 0
 
             def poll(self):
-                return None
+                return 0 if self.ended.is_set() else None
 
             def terminate(self):
-                pass
+                self.ended.set()
 
         def popen(*a, **k):
             return Proc(agent_lines.pop(0) if agent_lines else [b'{"state": "ready"}\n'])
         old = self.server.ensure_master, self.server.subprocess.Popen
         self.server.ensure_master, self.server.subprocess.Popen = lambda: None, popen
-        test.addCleanup(lambda: (setattr(self.server, "ensure_master", old[0]),
+        self.addCleanup(lambda: (setattr(self.server, "ensure_master", old[0]),
                                  setattr(self.server.subprocess, "Popen", old[1])))
-        return Agent(packages=[("a.pkg.tar.zst", "0" * 64)]), launches
+        return Agent(packages=[("a.pkg.tar.zst", "0" * 64)]), launches, procs
+
+    def wait_for(self, check):
+        for _ in range(250):
+            if check():
+                return
+            time.sleep(0.02)
+        self.fail("timed out")
 
     def test_agent_asking_for_packages_gets_them_and_starts_again(self):
-        agent, launches = self.lifecycle([[b'{"state": "need-packages"}\n'], [b'{"state": "ready"}\n']])
-        agent._launch(agent.generation)
+        agent, launches, procs = self.lifecycle([[b'{"state": "need-packages"}\n'], [b'{"state": "ready"}\n']])
+        agent.start()
+        self.wait_for(lambda: agent.status == {"state": "ready"})
         self.assertEqual(launches, ["", "~/copied"])
-        self.assertNotIn("reach", agent.status.get("message", ""))
+        self.assertIs(agent.proc, procs[1])
+
+    def test_asking_twice_is_an_error_not_a_loop(self):
+        need = [b'{"state": "need-packages"}\n']
+        agent, launches, _ = self.lifecycle([need, list(need)])
+        agent.start()
+        self.wait_for(lambda: agent.status.get("state") == "error")
+        self.assertEqual(launches, ["", "~/copied"])
+        self.assertIn("didn't reach", agent.status["message"])
 
     def test_start_after_stop_during_the_copy_still_starts(self):
         gate, entered = threading.Event(), threading.Event()
-        agent, launches = self.lifecycle([], deliver=lambda: (entered.set(), gate.wait(5)))
+        agent, launches, procs = self.lifecycle([], deliver=lambda: (entered.set(), gate.wait(5)))
         agent.start()
         self.assertTrue(entered.wait(5))
         agent.stop()
@@ -226,11 +254,17 @@ class Bundled(unittest.TestCase):
         agent.start()  # while the first launch is still copying
         self.assertTrue(entered.wait(5), "the second start didn't launch")
         gate.set()
-        for _ in range(100):
-            if len(launches) == 2:
-                break
-            time.sleep(0.02)
-        self.assertEqual(len(launches), 2)  # the stopped launch ran its agent too, then ended it
+        self.wait_for(lambda: len(procs) == 2 and agent.status == {"state": "ready"})
+        # The stopped launch's agent was ended; the new one is the one in use.
+        self.wait_for(lambda: sum(p.ended.is_set() for p in procs) == 1)
+        self.assertFalse(agent.proc.ended.is_set())
+        agent.stop()
+        self.wait_for(lambda: all(p.ended.is_set() for p in procs))
+
+    def test_copies_go_to_a_folder_of_their_own(self):
+        first, _, _ = self.deliver(frame_has=False)
+        second, _, _ = self.deliver(frame_has=False)
+        self.assertNotEqual(first, second)
 
 
 @unittest.skipIf(sys.platform == "win32", "the agent runs on the Frame (Linux)")
@@ -296,10 +330,20 @@ class AgentInstall(unittest.TestCase):
     def test_asks_for_packages_it_was_not_sent(self):
         self.agent.listening, old = (lambda: False), self.agent.listening
         try:
-            with self.assertRaises(self.agent.NeedPackages):
-                self.agent.ensure_daemon("", [("new.pkg.tar.zst", "1" * 64)])
+            for folder in ("", str(self.dir / "gone")):  # none sent, or already tidied away
+                with self.assertRaises(self.agent.NeedPackages):
+                    self.agent.ensure_daemon(folder, [("new.pkg.tar.zst", "1" * 64)])
         finally:
             self.agent.listening = old
+
+    def test_tidy_keeps_other_starts_copies(self):
+        incoming = self.agent.BASE / "incoming"
+        mine, theirs, stale = incoming / "mine", incoming / "theirs", incoming / "stale"
+        for d in (mine, theirs, stale):
+            d.mkdir(parents=True)
+        os.utime(stale, (time.time() - 7200,) * 2)
+        self.agent.tidy_incoming(str(mine))
+        self.assertEqual(sorted(p.name for p in incoming.iterdir()), ["theirs"])
 
     def test_server_and_agent_agree_on_the_stamp(self):
         import server

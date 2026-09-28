@@ -635,8 +635,8 @@ class InputAgent:
                        " && echo yes || true", stdin=kdeconnect_stamp(self.packages).encode(), text=False, timeout=20)
             if have.strip() == b"yes":
                 return ""
-        client = "".join(c for c in input_client() if c.isalnum() or c in "-_")[:64] or "default"
-        folder = f"{KDECONNECT_HOME}/incoming/{client}"
+        # A folder of its own: a cancelled start's agent may still be cleaning up another.
+        folder = f"{KDECONNECT_HOME}/incoming/{secrets.token_hex(8)}"
         ssh(f"mkdir -p {folder}", timeout=20)
         for name, sha in self.packages:
             path = KDECONNECT / "packages" / name
@@ -645,8 +645,7 @@ class InputAgent:
                               " (a build runs app/build/fetch-deps.js to add it)", 500)
             report(f"Copying KDE Connect to the Frame ({name.rsplit('-', 3)[0]})")
             quoted = shlex.quote(name)
-            # Its own temporary name: two starts can be copying at once.
-            ssh(f"cd {folder} && cat > {quoted}.part$$ && mv {quoted}.part$$ {quoted}",
+            ssh(f"cd {folder} && cat > {quoted}.part && mv {quoted}.part {quoted}",
                 stdin=path.read_bytes(), text=False, timeout=600)
         return f"~/{folder}"
 
@@ -693,7 +692,8 @@ class InputAgent:
             # It needed the packages after all (another device changed what's
             # installed after we looked): copy them and start once more.
             with self.lock:
-                if self.proc is not proc or self.generation != generation:
+                # Unless a start() already took over (it launches, and copies if still needed).
+                if self.proc is not proc or self.generation != generation or self.launching is not None:
                     return
                 self.proc, self.launching, self.status = None, generation, {"state": "starting"}
             self._launch(generation, force=True)

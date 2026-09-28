@@ -166,7 +166,7 @@ def ensure_daemon(folder, packages):
     """
     system = SYSTEM_DAEMON.exists()
     if not system and not installed(packages) and not (listening() and our_daemons()):
-        if not folder:
+        if not folder or not Path(folder).is_dir():
             raise NeedPackages()
         install(folder, packages)
     if listening():
@@ -346,6 +346,20 @@ def main():
                 stop_daemon()
 
 
+def tidy_incoming(folder):
+    """Remove this start's copy of the packages, and any a cancelled start left over an hour ago."""
+    incoming = BASE / "incoming"
+    if folder.startswith(str(incoming) + "/"):
+        shutil.rmtree(folder, ignore_errors=True)
+    try:
+        for old in incoming.iterdir():
+            if time.time() - old.stat().st_mtime > 3600:
+                shutil.rmtree(old, ignore_errors=True)
+        incoming.rmdir()
+    except OSError:
+        pass  # none, or another start's copy is still there
+
+
 class daemon_lock:
     """Installing, starting and restarting KDE Connect happen one agent at a time."""
 
@@ -361,12 +375,6 @@ def run(client, name, folder, packages):
     try:
         with daemon_lock():
             ensure_daemon(folder, packages)
-        if folder.startswith(str(BASE / "incoming") + "/"):
-            shutil.rmtree(folder, ignore_errors=True)  # unpacked; the copy isn't needed again
-            try:
-                (BASE / "incoming").rmdir()
-            except OSError:
-                pass  # another device's copy is still there
         device, cert, key = identity(client)
         say("pairing")
         seen = our_daemons()
@@ -390,6 +398,7 @@ def run(client, name, folder, packages):
     except (OSError, RuntimeError, subprocess.SubprocessError) as e:
         say("error", message=str(e))
         return 1
+    tidy_incoming(folder)  # unpacked or not needed: the copy has done its job
     say("ready", keyboard=link.keyboard is not False)
     stdin, pending = sys.stdin.fileno(), b""
     sel = selectors.DefaultSelector()
