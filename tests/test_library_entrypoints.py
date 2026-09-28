@@ -140,8 +140,10 @@ class EntryPoints(unittest.TestCase):
         stop.assert_not_called(); copy.assert_not_called(); self.assert_art()
 
     def test_all_refresh_reports_partial_failures(self):
+        import http.client
         with patch.object(android, 'list_apps', return_value=[{'package':'org.a.game'},{'package':'org.b.game'}]), \
-                patch.object(android, '_meta_or_fail', side_effect=android.FrameError('missing')):
+                patch.object(android, '_meta_or_fail', side_effect=[http.client.RemoteDisconnected('gone'),
+                                                                    AttributeError('odd')]):
             result=android.refresh_art()
         self.assertEqual(len(result),2)
         self.assertTrue(all('error' in a for a in result))
@@ -173,7 +175,7 @@ class SteamGridDB(unittest.TestCase):
 
     def test_exact_match_and_top_votes_per_slot(self):
         calls=[]
-        def get(path,key):
+        def get(path,key,deadline=None):
             calls.append(path)
             if 'search' in path: return [{'id':1,'name':'Other Game'},{'id':2,'name':'Game'}]
             dims=(600,900) if '600x900' in path else (920,430)
@@ -185,6 +187,17 @@ class SteamGridDB(unittest.TestCase):
         self.assertEqual(set(images),set(artwork.SLOTS));self.assertEqual(warnings,[])
         self.assertTrue(all(url.endswith('/top.png') for url in images.values()))
         self.assertTrue(all('/game/2?' in p for p in calls[1:]))
+
+    def test_unicode_titles_match_exactly_and_symbols_never_match_all(self):
+        self.assertEqual(sgdb._name('ビートセイバー VR!'), 'ビートセイバーvr')
+        with patch.object(sgdb,'api_key',return_value='test-key'), \
+                patch.object(sgdb,'_get',return_value=[{'id':1,'name':'Unrelated'},{'id':2,'name':'!!!'}]) as get:
+            self.assertEqual(sgdb.lookup('★★★'),({},[]))
+            get.assert_not_called()
+            self.assertEqual(sgdb.lookup('ビートセイバー'),({},[]))
+        with patch.object(sgdb,'api_key',return_value='test-key'), \
+                patch.object(sgdb,'_get',side_effect=AttributeError("'list' object has no attribute 'get'")):
+            self.assertEqual(sgdb.lookup('Game')[0],{})
 
     def test_wrong_title_and_failed_lookup_fall_back(self):
         with patch.object(sgdb,'api_key',return_value='test-key'),patch.object(sgdb,'_get',return_value=[{'id':1,'name':'Unrelated'}]):

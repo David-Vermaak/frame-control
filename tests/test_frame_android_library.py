@@ -117,29 +117,17 @@ FIXTURES = ROOT / 'tests/fixtures/library'
 
 
 class ArtworkTests(unittest.TestCase):
-    def test_icon_roundtrip_and_transparency(self):
-        w, h, pixels = art.decode((FIXTURES / 'icon.png').read_bytes())
-        self.assertEqual((w, h), (2, 2))
-        self.assertEqual(pixels, bytes([255, 0, 0, 255, 0, 255, 0, 255,
-                                       0, 0, 255, 128, 0, 0, 0, 0]))
-        background = bytearray([10, 20, 30, 255] * 4)
-        art.stamp(background, 2, (w, h, pixels), 0, 0, 2)
-        self.assertEqual(background[:8], pixels[:8])
-        self.assertEqual(background[8:12], bytes([4, 9, 142, 255]))
-        self.assertEqual(background[12:], bytes([10, 20, 30, 255]))
-
     def test_source_inputs_and_url(self):
-        import io
+        from apk_sources import _images
         data = (FIXTURES / 'icon.png').read_bytes()
-        response = io.BytesIO(data)
-        response.geturl = lambda: 'https://example.org/icon.png'
         with patch('frame_steamgriddb.lookup', return_value=({}, [])), \
-                patch.object(art.urllib.request, 'urlopen', return_value=response) as fetch:
+                patch.object(_images, 'fetch', return_value=(data, 'image/png')) as fetch:
             images, warnings = art.prepare('Game', artwork={'banner': data, 'icon': 'https://example.org/icon.png'})
         self.assertEqual(images['banner'], ('png', data))
         self.assertEqual(images['icon'], ('png', data))
         self.assertEqual(warnings, [])
-        self.assertEqual(fetch.call_count, 1)
+        self.assertEqual(fetch.call_args.args[0], 'https://example.org/icon.png')
+        self.assertIsNotNone(fetch.call_args.kwargs['deadline'])
 
     def test_provider_precedence_and_bad_source_fallback(self):
         data = (FIXTURES / 'icon.png').read_bytes()
@@ -150,48 +138,63 @@ class ArtworkTests(unittest.TestCase):
         self.assertEqual(images['icon'], ('png', data))
         self.assertEqual(images['screenshot'], ('png', data))
         self.assertNotIn('wide', images)
-        self.assertEqual(len(warnings), 2)
+        self.assertEqual(warnings, ['Source wide unavailable; using fallback art'])  # one per slot, not per candidate
+
+    def test_any_source_failure_falls_back_to_generated_art(self):
+        import http.client
+        from apk_sources import _images
+        data = (FIXTURES / 'icon.png').read_bytes()
+        for error in (http.client.RemoteDisconnected('gone'), http.client.IncompleteRead(b''), AttributeError('x')):
+            with self.subTest(error=type(error).__name__), \
+                    patch.object(_images, 'fetch', side_effect=error), \
+                    patch('frame_steamgriddb.lookup', side_effect=error):
+                images, warnings = art.prepare('Game', data, {'banner': 'https://example.org/b.png'})
+            self.assertEqual(set(images), {'icon'})
+            self.assertEqual(len(warnings), 2)
+
+    def test_url_fetch_refuses_private_hosts_and_honours_deadline(self):
+        from apk_sources import _images, SourceError
+        local = [(2, 1, 6, '', ('127.0.0.1', 443))]
+        with patch.object(_images.socket, 'getaddrinfo', return_value=local), \
+                self.assertRaisesRegex(SourceError, 'Private'):
+            art.fetch('https://example.org/icon.png')
+        public = [(2, 1, 6, '', ('93.184.216.34', 443))]
+        with patch.object(_images.socket, 'getaddrinfo', return_value=public), \
+                patch.object(_images.socket, 'create_connection') as connect, \
+                self.assertRaisesRegex(SourceError, 'too long'):
+            art.fetch('https://example.org/icon.png', deadline=time.monotonic() - 1)
+        connect.assert_not_called()
+        with self.assertRaises(SourceError):
+            art.fetch('file:///etc/passwd')
 
     def test_supplied_jpeg(self):
         data = (FIXTURES / 'icon.jpg').read_bytes()
         self.assertEqual(art.image_type(data), 'jpg')
+        self.assertEqual(art.image_type(data + b'\0' * 64), 'jpg')  # trailing padding after EOI
         with self.assertRaises(ValueError):
             art.image_type(data[:30])
 
-    def test_bad_artwork_and_expansion_limits(self):
-        import zlib
+    def test_png_variants_left_to_chromium_and_limits(self):
+        def png(w, h, depth, color, interlace):
+            return art.PNG + art.chunk(b'IHDR', struct.pack('>IIBBBBB', w, h, depth, color, 0, 0, interlace)) + \
+                art.chunk(b'IEND', b'')
+        self.assertEqual(art.image_type(png(3840, 1240, 16, 6, 0)), 'png')
+        self.assertEqual(art.image_type(png(3840, 2160, 8, 2, 1)), 'png')
+        for bad, message in ((png(10000, 10, 8, 6, 0), 'dimensions'), (png(5000, 5000, 8, 6, 0), 'dimensions'),
+                             (png(10, 10, 3, 6, 0), 'encoding'), (png(10, 10, 8, 5, 0), 'encoding')):
+            with self.subTest(message=message), self.assertRaisesRegex(ValueError, message):
+                art.image_type(bad)
+        broken = bytearray(png(10, 10, 8, 6, 0))
+        broken[20] ^= 1
+        with self.assertRaisesRegex(ValueError, 'checksum'):
+            art.image_type(bytes(broken))
+        with self.assertRaises(ValueError):
+            art.image_type(art.PNG + b'junk')
+
+    def test_bad_artwork_arguments(self):
         for value in ({'bad': b'bad'}, ['hero']):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 art.prepare('Game', artwork=value)
-        data = bytearray((FIXTURES / 'icon.png').read_bytes())
-        data[45] ^= 1
-        with self.assertRaisesRegex(ValueError, 'checksum'):
-            art.decode(bytes(data))
-        bomb = art.PNG + art.chunk(b'IHDR', struct.pack('>IIBBBBB', 1, 1, 8, 6, 0, 0, 0)) + \
-            art.chunk(b'IDAT', zlib.compress(b'\0' * 1_000_000)) + art.chunk(b'IEND', b'')
-        with self.assertRaisesRegex(ValueError, 'pixels'):
-            art.decode(bomb)
-        huge = art.PNG + art.chunk(b'IHDR', struct.pack('>IIBBBBB', 10000, 10000, 8, 6, 0, 0, 0)) + art.chunk(b'IEND', b'')
-        with self.assertRaisesRegex(ValueError, 'dimensions'):
-            art.decode(huge)
-
-    def test_palette_and_filters(self):
-        import zlib
-        header = art.chunk(b'IHDR', struct.pack('>IIBBBBB', 2, 1, 1, 3, 0, 0, 0))
-        data = art.PNG + header + art.chunk(b'PLTE', b'\xff\0\0\0\xff\0') + art.chunk(b'tRNS', b'\xff\x80') + \
-            art.chunk(b'IDAT', zlib.compress(b'\0\x40')) + art.chunk(b'IEND', b'')
-        self.assertEqual(art.decode(data)[2], bytes([255, 0, 0, 255, 0, 255, 0, 128]))
-        for method in range(5):
-            # Two identical RGBA rows: exercise each predictor with known filtered bytes.
-            first = bytes([10, 20, 30, 255] * 2)
-            filtered = bytearray()
-            for x, value in enumerate(first):
-                a, b, c = first[x-4] if x >= 4 else 0, first[x], first[x-4] if x >= 4 else 0
-                predictor = (0, a, b, (a+b)//2, b)[method]
-                filtered.append((value - predictor) & 255)
-            data = art.PNG + art.chunk(b'IHDR', struct.pack('>IIBBBBB', 2, 2, 8, 6, 0, 0, 0)) + \
-                art.chunk(b'IDAT', zlib.compress(b'\0' + first + bytes([method]) + filtered)) + art.chunk(b'IEND', b'')
-            self.assertEqual(art.decode(data)[2], first * 2)
 
     def test_godot_project_icon(self):
         import io

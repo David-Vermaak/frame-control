@@ -6,6 +6,7 @@ import secrets
 import socket
 import ssl
 import threading
+import time
 from urllib.parse import urljoin, urlsplit
 
 from apk_sources import SourceError
@@ -62,16 +63,25 @@ def image_type(data):
     raise SourceError('Artwork is not a supported image')
 
 
-def fetch(url, redirects=3):
+def fetch(url, redirects=3, deadline=None, limit=MAX_IMAGE):
+    """deadline: time.monotonic() value by which the whole fetch, redirects included, must finish."""
     if not valid_url(url):
         raise SourceError('Artwork URL is not allowed')
+
+    def remaining():
+        if deadline is None:
+            return 10
+        left = deadline - time.monotonic()
+        if left <= 0:
+            raise SourceError('Artwork download took too long')
+        return min(10, left)
     p = urlsplit(url)
     port = p.port or (443 if p.scheme == 'https' else 80)
     addresses = socket.getaddrinfo(p.hostname, port, type=socket.SOCK_STREAM)
     if not addresses or any(not ipaddress.ip_address(a[4][0]).is_global for a in addresses):
         raise SourceError('Private network artwork is not allowed')
     # Connect to the checked IP, never resolve again between validation and use.
-    sock = socket.create_connection((addresses[0][4][0], port), timeout=10)
+    sock = socket.create_connection((addresses[0][4][0], port), timeout=remaining())
     conn = http.client.HTTPConnection(p.hostname, port, timeout=10)
     try:
         if p.scheme == 'https':
@@ -81,15 +91,22 @@ def fetch(url, redirects=3):
         if p.query:
             path += '?' + p.query
         conn.request('GET', path, headers={'User-Agent': 'FrameControl/0.3.1', 'Accept': 'image/png,image/jpeg,image/webp,image/gif'})
+        sock.settimeout(remaining())
         response = conn.getresponse()
         if response.status in (301, 302, 303, 307, 308) and redirects:
             target = urljoin(url, response.getheader('Location', ''))
             conn.close()
-            return fetch(target, redirects - 1)
+            return fetch(target, redirects - 1, deadline, limit)
         if response.status != 200:
             raise SourceError('Artwork is unavailable')
-        data = response.read(MAX_IMAGE + 1)
-        if len(data) > MAX_IMAGE:
+        data = b''
+        while len(data) <= limit:
+            sock.settimeout(remaining())
+            chunk = response.read(min(65536, limit + 1 - len(data)))
+            if not chunk:
+                break
+            data += chunk
+        if len(data) > limit:
             raise SourceError('Artwork is too large')
         return data, image_type(data)
     finally:
