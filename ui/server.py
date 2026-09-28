@@ -147,7 +147,7 @@ _jobs_lock = threading.Lock()
 _jobs = {}  # id -> {"label", "done", "error", "message", "result", "time"}
 
 
-def start_job(label, work):
+def start_job(label, work, progress=False):
     """Run work() in the background. It returns a dict with a "message"."""
     now = time.time()
     with _jobs_lock:
@@ -156,10 +156,14 @@ def start_job(label, work):
         job = secrets.token_hex(8)
         _jobs[job] = {"label": label, "done": False, "error": None, "message": None, "result": None, "time": now}
 
+    def report(stage, percent=None):
+        with _jobs_lock:
+            _jobs[job].update(stage=stage, percent=percent)
+
     def run():
         fields = {}
         try:
-            result = work()
+            result = work(report) if progress else work()
             fields = {"message": result.get("message") or f"{label}: done", "result": result}
         except (Failure, frame_android.FrameError) as e:
             fields = {"error": unreachable(str(e)) or str(e)}
@@ -1262,7 +1266,7 @@ def source_install(body):
             raise SourceError('This source is disabled')
     except SourceError as e:
         raise Failure(str(e), 400)
-    return start_job('Install ' + entry, lambda: apk_search.install(source, entry, version))
+    return start_job('Install ' + entry, lambda report: apk_search.install(source, entry, version, report), progress=True)
 
 
 def source_manage(body):
@@ -1395,6 +1399,19 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json({"os": "SteamOS", "fileManager": None, "computer": DEVICE, "mobile": True} if LOCAL else
                                {"os": frame_host.NAME, "fileManager": frame_host.FILE_MANAGER,
                                 "computer": "Mac" if frame_host.MAC else "PC"})
+            elif path.startswith("/source-image/"):
+                from apk_sources import _images
+                try:
+                    self.send_bytes(*_images.image(path.rsplit("/", 1)[-1]))
+                except Exception:
+                    self.send_json({"error": "Artwork unavailable"}, 404)
+            elif path == "/api/sources/details":
+                args = parse_qs(url.query)
+                try:
+                    self.send_json(apk_search.details(source_text({k: v[0] for k, v in args.items()}, "source"),
+                                                     source_text({k: v[0] for k, v in args.items()}, "id")))
+                except SourceError as e:
+                    raise Failure(str(e), 400)
             elif path == "/api/sources":
                 self.send_json({"sources": apk_search.sources()})
             elif path == "/api/search":

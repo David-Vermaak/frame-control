@@ -1,4 +1,9 @@
-"""Parallel APK search and source selection. No device access during searches."""
+"""Parallel APK search and source selection. No device access during searches.
+
+Optional store metadata: images {icon, banner, screenshots}, developer,
+description, popularity, open_source, requires_meta_services, frame_tested.
+Only an explicit frame_tested=True produces a working-on-Frame verdict.
+"""
 import importlib
 import inspect
 import json
@@ -127,6 +132,35 @@ def fit(entry):
             'reasons': reasons}
 
 
+def verdict(entry):
+    compatibility = fit(entry)
+    hints = ' '.join(str(entry.get(k) or '') for k in ('engine', 'vr_engine', 'vr_hints', 'vr_issues')).lower()
+    if entry.get('requires_meta_services') is True:
+        return {'label': "Needs Meta Quest services; won't run", 'tone': 'blocked'}
+    if entry.get('min_sdk') is not None and entry['min_sdk'] > 30:
+        return {'label': 'Might not work: needs a newer Android than the Frame has', 'tone': 'blocked'}
+    if compatibility['installable'] is False:
+        return {'label': "This version isn't made for the Frame", 'tone': 'blocked'}
+    if 'vrapi' in hints:
+        return {'label': "Made for older Quest headsets; won't run on the Frame", 'tone': 'blocked'}
+    if entry.get('frame_tested') is True:
+        return {'label': 'Works on the Frame', 'tone': 'works'}
+    if compatibility['installable'] is True:
+        return {'label': 'Ready to try on the Frame', 'tone': 'ready'}
+    return {'label': 'Not yet checked on the Frame', 'tone': 'unknown'}
+
+
+def decorate(entry):
+    from apk_sources import _images
+    return dict(entry, fit=fit(entry), verdict=verdict(entry), artwork=_images.artwork(entry))
+
+
+def details(source_id, entry_id):
+    module, source = resolve(source_id)
+    return decorate(dict(module.details(source, entry_id), source=source_id,
+                         source_name=source['name'], trust=source.get('trust')))
+
+
 def offer_rank(entry):
     compatible = entry['fit']['installable'] is True
     return (entry.get('downloadable') is True and entry['fit']['installable'] is not False,
@@ -139,7 +173,7 @@ def offer_rank(entry):
 def group(entries, query='', vr=None, installable=False):
     groups = {}
     for entry in entries:
-        entry = dict(entry, fit=fit(entry))
+        entry = decorate(entry)
         if vr is not None and entry.get('vr') is not vr:
             continue
         if installable and entry['fit']['installable'] is not True:
@@ -204,7 +238,7 @@ def search(query='', vr=None, source=None, installable=False, timeout=TIMEOUT, l
     return {'apps': group(entries, query, vr, installable), 'sources': statuses}
 
 
-def install(source_id, entry_id, version_code=None):
+def install(source_id, entry_id, version_code=None, progress=None):
     import frame_android
     module, source = resolve(source_id)
     if not source['enabled']:
@@ -212,6 +246,8 @@ def install(source_id, entry_id, version_code=None):
     entry = module.details(source, entry_id)
     if entry.get('free') is not True or entry.get('downloadable') is not True:
         raise SourceError('This app must be obtained from its developer page')
+    if progress:
+        progress('Downloading', None)
     downloaded = module.download(source, entry_id, version_code=version_code)
     obb = downloaded.get('obb') or entry.get('obb') or []
     if obb and not hasattr(frame_android, 'install_obb'):
@@ -220,6 +256,8 @@ def install(source_id, entry_id, version_code=None):
               'source': source['name']}
     if 'artwork' in inspect.signature(frame_android.install).parameters:
         kwargs['artwork'] = downloaded.get('artwork') or entry.get('artwork')
+    if progress:
+        progress('Installing', None)
     result = frame_android.install(downloaded['apk'], **kwargs)
     if obb:
         frame_android.install_obb(result['package'], obb)

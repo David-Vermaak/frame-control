@@ -181,6 +181,18 @@ class EndpointTests(SettingsTest):
             self.assertIsNone(job['error'])
             install.assert_called_once_with('/fake.apk', name='Open Brush', icon_png=None, source='one')
 
+    def test_details_endpoint_and_real_install_stages(self):
+        code, entry = self.request('GET', '/api/sources/details?source=one&id=brush')
+        self.assertEqual(code, 200)
+        self.assertEqual(entry['name'], 'Open Brush')
+        self.assertEqual(entry['verdict']['label'], 'Ready to try on the Frame')
+        self.assertIn('artwork', entry)
+        self.assertEqual(self.request('GET', '/api/sources/details?source=one')[0], 400)
+        stages = []
+        with patch.object(server.frame_android, 'install', return_value={'package':'org.brush'}):
+            search.install('one', 'brush', progress=lambda stage, percent: stages.append((stage,percent)))
+        self.assertEqual(stages, [('Downloading',None),('Installing',None)])
+
     def test_http_repository_management(self):
         self.assertEqual(self.request('POST', '/api/sources', {'action': 'enable', 'source': 'one', 'enabled': False})[0], 200)
         code, reply = self.request('POST', '/api/sources', {'action': 'add', 'url': 'https://repo.example/repo'})

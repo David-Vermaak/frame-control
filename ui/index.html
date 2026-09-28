@@ -70,15 +70,6 @@
   body.mobile .desk-only { display: none; }
 
 
-  .source-repo-form { display:grid; gap:10px; margin-top:14px; }
-  .source-repo-form input { display:block; width:100%; margin-top:5px; }
-  .source-offer { border-top:1px solid var(--line); padding-top:10px; margin-top:10px; }
-  #searchGrid .source-offer select { display:block; max-width:100%; width:100%; margin-top:5px; }
-  #searchFilters [aria-pressed=true], #sourceFilters [aria-pressed=true] { box-shadow:inset 0 0 0 1px var(--link); color:var(--link); }
-  #searchGrid h3, #searchGrid p { margin:4px 0; }
-  #searchGrid .row { margin-top:0; }
-  #searchGrid .source-offer { margin-top:auto; }
-  #sourceStatus { margin-bottom:10px; }
   /* ---- pages: one per tab; the header nav switches between them ---- */
   .page { display: flex; flex-direction: column; gap: 26px; }
   .page:not(.on) { display: none; }
@@ -370,6 +361,155 @@
     /* The on-screen keyboard covers the bottom of the screen; the tab bar would ride on top of it. */
     body.typing nav { display: none; }
   }
+  /* ---- Discover: artwork first, details when you need them ---- */
+  .sr-only { position:absolute; width:1px; height:1px; padding:0; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; }
+  #androidLibrary { grid-template-columns:1fr; }
+  #androidLibrary .and-col { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr)); align-items:start; }
+  .store-tabs { display:flex; align-items:center; gap:8px; margin-bottom:20px; border-bottom:1px solid #ffffff12; padding-bottom:14px; }
+  .store-tabs > button { background:transparent; color:var(--muted); border-radius:6px; }
+  .store-tabs > button.on { color:var(--bright); background:#ffffff0e; }
+  .store-heading h1 { font-size:clamp(28px,3.2vw,38px); letter-spacing:-1.2px; line-height:1.15; margin:8px 0 10px; font-weight:700; color:var(--bright); }
+  .store-heading p, .sources-intro p { color:#a8b5c2; margin:0 0 24px; font-size:15px; }
+  .store-eyebrow { color:var(--link); font-size:11px; text-transform:uppercase; font-weight:700; letter-spacing:1.8px; }
+  .store-toolbar { display:grid; grid-template-columns:minmax(0,1fr) minmax(300px,400px); align-items:center; gap:32px; }
+  .store-toolbar .store-heading p { margin-bottom:0; }
+  @media(max-width:900px) { .store-toolbar { display:block; } .store-toolbar .store-heading p { margin-bottom:20px; } }
+  .store-search { display:flex; align-items:center; gap:12px; border:1px solid #ffffff12; background:#0e1723a6; border-radius:8px; padding:6px 8px 6px 16px; }
+  .store-search svg { width:21px; height:21px; color:var(--muted); flex:none; }
+  .store-search input[type=search] { background:transparent; padding:9px 0; font-size:15px; border:0; box-shadow:none; min-width:0; }
+  .store-search:focus-within { border-color:var(--link); }
+  .store-search button { border-radius:5px; }
+  .store-filters { display:flex; justify-content:space-between; align-items:center; gap:16px; margin:16px 0 24px; }
+  .store-chips { display:flex; flex-wrap:wrap; gap:7px; }
+  .store-chips button { border-radius:20px; font-size:12px; height:34px; padding:0 14px; background:#ffffff07; color:#b5c0cb; border:1px solid #ffffff0c; }
+  .store-chips button[aria-pressed=true] { background:#235779; border-color:#5287a5; color:white; }
+  .store-source-select select { max-width:180px; padding:8px 26px 8px 10px; font:inherit; font-size:12px; border:0; border-radius:5px; color:var(--text); background:#1d2b3b; }
+  .store-notice { color:#a8b5c2; font-size:12px; margin:12px 0; }
+  body:has(.page.on #appStore:not([hidden])) #offline { padding:10px 16px; background:#ffffff06; box-shadow:inset 3px 0 0 var(--dim); }
+  body:has(.page.on #appStore:not([hidden])) #offline .s { display:none; }
+  .store-result-count { font-size:13px; color:var(--muted); margin-bottom:14px; }
+  .store-result-count:empty { display:none; }
+  .store-hero { position:relative; display:block; width:100%; height:270px; border:0; padding:0; border-radius:12px; overflow:hidden; text-align:left; margin:0 0 32px; isolation:isolate; }
+  .store-art { position:relative; display:block; overflow:hidden; background:radial-gradient(ellipse at 75% 10%, hsl(var(--hue) 50% 40%),transparent 70%),linear-gradient(140deg,hsl(var(--hue) 35% 18%),#101827); }
+  .store-art > img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; z-index:1; }
+  .art-initial { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:70px; font-weight:700; color:#ffffff45; letter-spacing:-4px; }
+  .store-hero > .store-art { position:absolute; inset:0; }
+  .store-hero::after { content:""; position:absolute; inset:0; background:linear-gradient(90deg,#081421ec 0%,#08142175 48%,#08142108 80%),linear-gradient(0deg,#08142170,transparent); z-index:2; }
+  .hero-copy { position:relative; z-index:3; padding:30px; max-width:550px; display:flex; align-items:flex-start; flex-direction:column; gap:12px; }
+  .hero-copy .store-eyebrow { color:#c2e7ff; }
+  .hero-copy strong { color:white; font-size:38px; letter-spacing:-.8px; line-height:1.1; }
+  .hero-copy > span:not(.store-eyebrow):not(.hero-cta) { color:#e0e8ef; font-size:16px; font-weight:400; max-width:380px; line-height:1.6; }
+  .hero-cta { color:white; display:inline-flex; align-items:center; background:#ffffff20; border:1px solid #ffffff40; border-radius:6px; padding:10px 18px; font-size:13px; margin-top:6px; }
+  .store-row { margin-bottom:34px; }
+  .store-row-head { display:flex; align-items:baseline; gap:12px; margin-bottom:14px; }
+  .store-row-head h2 { text-transform:none; letter-spacing:-.3px; font-size:21px; font-weight:600; color:var(--bright); margin:0; }
+  .store-row-head p { color:var(--muted); font-size:12px; margin:0; }
+  .store-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(225px,1fr)); gap:18px; }
+  .store-card { display:block; width:100%; height:auto; min-width:0; padding:0; border:1px solid #ffffff0b; border-radius:9px; overflow:hidden; text-align:left; background:#1b2938; color:var(--text); transition:transform .18s,box-shadow .18s; font-weight:400; }
+  .store-card:hover { transform:translateY(-4px); background:#223448; box-shadow:0 12px 28px #0004; }
+  .store-card .store-art { aspect-ratio:16/9; width:100%; }
+  .store-card-content { padding:15px 14px; display:block; }
+  .store-card-title { display:flex; align-items:center; gap:9px; margin-bottom:9px; min-width:0; }
+  .store-icon { display:inline-flex; align-items:center; justify-content:center; width:34px; height:34px; border-radius:8px; overflow:hidden; flex:none; background:hsl(var(--hue) 35% 28%); color:#fff; font-size:17px; position:relative; }
+  .store-icon img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
+  .store-card-title strong { font-size:15px; color:var(--bright); text-overflow:ellipsis; overflow:hidden; white-space:nowrap; }
+  .store-summary { display:block; color:#a8b5c2; font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .store-card-foot { display:flex; justify-content:space-between; align-items:center; gap:6px; margin-top:16px; font-size:11px; color:#a8b5c2; }
+  .store-card-foot b { color:#dbeecf; font-weight:500; }
+  .store-badges { display:flex; flex-wrap:wrap; gap:7px; }
+  .store-badge { font-size:11px; color:#b7d8ec; background:#6ec9ff14; padding:4px 9px; border-radius:5px; }
+  .store-badge.works { color:#b8e2ab; background:#70bb5418; }
+  .store-empty { display:flex; flex-direction:column; align-items:center; text-align:center; padding:58px 20px 70px; }
+  .store-empty svg { width:110px; height:90px; color:var(--link); margin-bottom:14px; }
+  .store-empty h2 { font-size:23px; color:var(--bright); margin:8px 0; text-transform:none; letter-spacing:0; }
+  .store-empty p { max-width:390px; color:var(--muted); margin:0 0 22px; }
+  .store-skeleton { aspect-ratio:1.2; background:linear-gradient(110deg,#233446 30%,#30455b 45%,#233446 60%); background-size:250% 100%; border-radius:9px; animation:store-shimmer 1.8s ease infinite; }
+  @keyframes store-shimmer { to { background-position:-150% 0; } }
+  .store-dialog { padding:0; border:1px solid #ffffff1a; border-radius:14px; background:#172331; color:var(--text); width:min(980px,calc(100vw - 40px)); max-width:none; max-height:calc(100dvh - 48px); overflow:auto; box-shadow:0 30px 100px #0009; }
+  .store-dialog::backdrop { background:#030a13c9; backdrop-filter:blur(7px); }
+  .store-close { position:sticky; float:right; top:14px; margin:14px 14px -54px 0; z-index:6; height:36px; width:36px; padding:0; border-radius:50%; background:#09131dcc; color:white; font-size:25px; line-height:1; border:1px solid #ffffff30; }
+  .detail-banner { height:195px; }
+  .detail-banner::after { content:""; position:absolute; inset:0; z-index:2; background:linear-gradient(0deg,#172331,transparent 70%); }
+  .detail-content { padding:0 30px 30px; position:relative; }
+  .detail-heading { display:flex; gap:16px; align-items:center; margin-top:-24px; position:relative; z-index:3; }
+  .detail-heading .store-icon { width:70px; height:70px; border-radius:15px; box-shadow:0 3px 18px #0004; font-size:32px; }
+  .detail-heading h1 { font-size:30px; color:white; letter-spacing:-.7px; margin:0 0 4px; }
+  .detail-heading p { margin:0; color:#a8b5c2; font-size:13px; }
+  .detail-content > .store-badges { margin:20px 0; }
+  .detail-layout { display:grid; grid-template-columns:minmax(0,1fr) 290px; gap:30px; margin-top:22px; }
+  .detail-layout h2 { text-transform:none; letter-spacing:0; font-size:17px; color:white; margin:0 0 14px; }
+  .detail-description { color:#b5c2ce; font-size:14px; line-height:1.75; white-space:pre-line; }
+  .detail-gallery { display:flex; gap:10px; overflow-x:auto; scroll-snap-type:x mandatory; margin:0 0 10px; }
+  .detail-gallery .store-art { flex:0 0 86%; aspect-ratio:16/9; border-radius:7px; scroll-snap-align:start; }
+  .detail-gallery .store-art img { object-fit:contain; background:#0b1420; }
+  .gallery-controls { display:flex; justify-content:space-between; align-items:center; margin-bottom:24px; font-size:11px; color:var(--muted); }
+  .gallery-controls button { height:30px; width:34px; padding:0; border-radius:5px; }
+  .detail-buy { align-self:start; background:#0e1926; padding:18px; border:1px solid #ffffff0a; border-radius:10px; }
+  .detail-buy .store-primary { width:100%; min-height:46px; border-radius:7px; margin:8px 0; font-size:15px; }
+  .detail-verdict { color:#b6d6a8; font-size:12px; line-height:1.55; margin:0 0 15px; }
+  .detail-verdict.blocked { color:#e3b77a; }
+  .detail-verdict.unknown { color:#adbac7; }
+  .detail-price { font-size:23px; color:white; font-weight:600; }
+  .detail-small { font-size:11px; color:var(--muted); margin:4px 0 18px; }
+  .offer-choice { display:flex; align-items:flex-start; gap:9px; padding:11px 9px; margin-top:8px; border:1px solid #ffffff12; border-radius:7px; cursor:pointer; }
+  .offer-choice:has(input:checked) { background:#1e3c52; border-color:#5386a6; }
+  .offer-choice input { margin:4px 0 0; accent-color:var(--blue); }
+  .offer-choice strong { font-size:12px; display:block; color:var(--bright); }
+  .offer-choice small { display:block; font-size:10px; color:#a8bbc9; margin-top:4px; }
+  .offer-mark { display:inline-flex; justify-content:center; align-items:center; height:26px; width:26px; flex:none; border-radius:6px; background:hsl(var(--hue) 30% 30%); color:white; font-size:11px; }
+  .detail-technical { border-top:1px solid #ffffff14; margin-top:25px; padding-top:16px; font-size:12px; color:var(--muted); }
+  .detail-technical summary { cursor:pointer; }
+  .detail-technical dl { display:grid; grid-template-columns:110px minmax(0,1fr); gap:6px; }
+  .detail-technical dd { margin:0; overflow-wrap:anywhere; }
+  .detail-buy .store-primary:disabled { opacity:1; color:#d6e8f7; background:#274f71; cursor:default; }
+  #detailProgress::-webkit-progress-bar { background:#283b4d; border-radius:3px; }
+  #detailProgress::-webkit-progress-value { background:var(--blue); border-radius:3px; }
+  #detailProgress { height:4px; width:100%; accent-color:var(--blue); display:block; margin-bottom:10px; }
+  .sources-dialog { width:min(560px,calc(100vw - 32px)); padding:30px; }
+  .sources-dialog .store-close { margin:-16px -16px -20px 0; top:0; }
+  .sources-intro h1 { font-size:28px; color:white; letter-spacing:-.7px; margin:9px 0; }
+  .source-setting { display:flex; align-items:center; gap:13px; padding:17px 0; border-top:1px solid #ffffff0c; }
+  .source-setting .offer-mark { width:42px; height:42px; font-size:16px; border-radius:10px; }
+  .source-setting .grow { flex:1; min-width:0; }
+  .store-dialog a { color:var(--link); }
+  .source-setting strong { display:block; font-size:14px; color:white; }
+  .source-setting p { color:#a3b4c3; font-size:12px; margin:3px 0; }
+  .source-setting small { color:var(--muted); font-size:10px; }
+  .source-toggle { appearance:none; width:38px; height:23px; flex:none; border-radius:15px; background:#465463; position:relative; cursor:pointer; margin:0; }
+  .source-toggle::after { content:""; position:absolute; top:3px; left:3px; width:17px; height:17px; background:#fff; border-radius:50%; transition:transform .15s; }
+  .source-toggle:checked { background:#208dca; }
+  .source-toggle:checked::after { transform:translateX(15px); }
+  .source-repo-form { display:grid; gap:12px; border-top:1px solid #ffffff14; margin-top:10px; padding-top:24px; }
+  .source-repo-form h2 { font-size:19px; letter-spacing:0; text-transform:none; color:white; margin:0; }
+  .source-repo-form p { color:var(--muted); font-size:12px; margin:0; }
+  .source-repo-form label { font-size:12px; }
+  .source-repo-form input { margin-top:7px; display:block; border-radius:6px; }
+  .source-repo-form details { font-size:11px; color:var(--muted); }
+  .source-repo-form button { justify-self:start; border-radius:6px; }
+  #appStore :focus-visible, .store-dialog :focus-visible, .store-tabs :focus-visible { outline:2px solid var(--link); outline-offset:4px; }
+  .store-search input:focus-visible { outline:0!important; }
+  @media(min-width:1400px) { .store-grid { grid-template-columns:repeat(5,minmax(0,1fr)); } }
+  @media(max-width:1000px) { .store-grid { grid-template-columns:repeat(3,minmax(0,1fr)); } .detail-layout { grid-template-columns:minmax(0,1fr) 260px; gap:20px; } }
+  @media(max-width:680px) {
+    .store-grid { grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+    .store-tabs { margin-bottom:24px; gap:2px; } .store-tabs button { padding:0 10px; font-size:12px; }
+    .store-heading p { font-size:13px; max-width:320px; }
+    .store-filters { align-items:flex-start; flex-direction:column; gap:10px; margin-bottom:18px; }
+    .store-chips { gap:5px; } .store-chips button { font-size:11px; padding:0 10px; }
+    .store-hero { height:285px; border-radius:9px; margin-bottom:26px; }
+    .hero-copy { padding:26px 22px; } .hero-copy strong { font-size:29px; }
+    .hero-copy > span:not(.store-eyebrow):not(.hero-cta) { font-size:13px; max-width:260px; }
+    .store-row-head { display:block; } .store-row-head h2 { font-size:18px; } .store-row-head p { margin-top:3px; }
+    .store-card-content { padding:10px; } .store-card-title { gap:6px; } .store-card-title strong { font-size:13px; }
+    .store-card-title .store-icon { width:25px; height:25px; font-size:12px; border-radius:6px; }
+    .store-card-foot { font-size:10px; margin-top:12px; } .store-summary { font-size:11px; }
+    .store-dialog { width:calc(100vw - 16px); max-height:calc(100dvh - 20px); border-radius:10px; }
+    .detail-banner { height:190px; } .detail-content { padding:0 18px 24px; } .detail-heading h1 { font-size:24px; }
+    .detail-layout { display:flex; flex-direction:column; gap:24px; } .detail-buy { order:-1; width:100%; }
+    .sources-dialog { padding:24px; } .sources-dialog .store-close { margin:-12px -12px -20px 0; }
+  }
+  @media(prefers-reduced-motion:reduce) { html { scroll-behavior:auto; } .store-card, .source-toggle::after { transition:none; } .store-skeleton { animation:none; } }
+
 </style>
 </head>
 <body>
@@ -530,9 +670,16 @@
 
   <div class="page" data-page="android">
   <section id="android">
-    <div class="shelf-head"><h2>Android apps</h2><span class="count" id="andCount"></span><span class="spacer"></span>
-      <button class="action small" id="repNew" title="Report how any APK worked on the Frame">+ Report an APK</button></div>
-    <div class="and-grid">
+    <div class="store-tabs" aria-label="Android sections"><button class="on" data-store-tab="browse" aria-pressed="true">Discover</button><button data-store-tab="library" aria-pressed="false">On your Frame <span id="andCount"></span></button><span class="spacer"></span><button id="sourcesOpen" class="small">Sources <span aria-hidden="true">⚙</span></button><button class="small" id="repNew" hidden>+ Report an APK</button></div>
+    <section id="appStore" aria-label="Discover apps">
+      <div class="store-toolbar"><div class="store-heading"><div><div class="store-eyebrow">A little more possibility</div><h1>Find your next favorite.</h1><p>Great games and useful apps. All in one place, all free to explore.</p></div></div>
+      <form id="sourceSearch" class="store-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg><input id="sourceQ" type="search" aria-label="Search games and apps" placeholder="Search games and apps"><button type="submit" class="small">Search</button></form></div>
+      <div class="store-filters"><div id="searchFilters" class="store-chips"><button data-filter="all" aria-pressed="true">For you</button><button data-filter="vr" aria-pressed="false">VR experiences</button><button data-filter="flat" aria-pressed="false">Flat-screen apps</button><button data-filter="installable" aria-pressed="false">Fits your Frame</button></div><label class="store-source-select"><span class="sr-only">Filter by source</span><select id="sourceFilter"><option value="">All sources</option></select></label></div>
+      <div id="sourceStatus" class="store-notice" role="status" aria-live="polite" hidden></div>
+      <div id="searchCount" class="store-result-count" aria-live="polite"></div>
+      <div id="searchGrid" aria-busy="false"></div>
+    </section>
+    <div class="and-grid" id="androidLibrary" hidden>
       <div class="and-col">
       <div class="panel">
         <div class="shelf-head"><h2>On the Frame</h2></div>
@@ -583,22 +730,7 @@
           reported, including ones not on F-Droid.</div>
       </div>
       </div>
-      <div class="panel">
-        <div class="shelf-head"><h2>Find apps</h2><span class="count" id="searchCount"></span></div>
-        <form id="sourceSearch" class="cat-tools"><input id="sourceQ" type="search" aria-label="Search every APK source" placeholder="Search every APK source…"><button class="small">Search</button></form>
-        <div class="vchips" id="searchFilters"><button class="chip" data-filter="vr" aria-pressed="false">VR</button><button class="chip" data-filter="flat" aria-pressed="false">Flat</button><button class="chip" data-filter="installable" aria-pressed="false">Installable</button></div>
-        <div class="vchips" id="sourceFilters"></div>
-        <div class="hint" id="sourceStatus" role="status" aria-live="polite"></div>
-        <div class="cat-grid" id="searchGrid"></div>
-        <details style="margin-top:20px" id="sourcesPanel"><summary>Sources</summary>
-          <div class="list" id="sourcesList"></div>
-          <form id="addSource" class="source-repo-form">
-            <label>Repository URL<input name="url" type="url" required placeholder="https://example.org/fdroid/repo"></label>
-            <label>Fingerprint (optional)<input name="fingerprint" type="text" autocomplete="off"></label>
-            <button class="small">Add repository</button>
-          </form><div class="hint" id="sourceError" role="status"></div>
-        </details>
-        <div class="hint">Installable means Android 11 and arm64 requirements match. It does not guarantee the app runs. Unknown facts stay unknown.</div>
+      <div hidden>
 <div hidden>        <div class="shelf-head"><h2>Find apps</h2><span class="count" id="catCount"></span></div>
         <div class="cat-tools">
           <input type="text" id="catQ" placeholder="Search F-Droid apps rated for the Frame…">
@@ -686,6 +818,18 @@
   <span class="last" id="lastLog">Ready</span>
   <span class="sub" id="drawerHint">Show ▴</span>
 </div>
+<dialog id="appDetail" class="store-dialog" aria-labelledby="detailTitle">
+  <button class="store-close" data-close="appDetail" aria-label="Close app details">×</button>
+  <div id="detailBody"></div>
+</dialog>
+<dialog id="sourcesDialog" class="store-dialog sources-dialog" aria-labelledby="sourcesTitle">
+  <button class="store-close" data-close="sourcesDialog" aria-label="Close source settings">×</button>
+  <div class="sources-intro"><div class="store-eyebrow">Your app shelves</div><h1 id="sourcesTitle">A world of apps.</h1><p>Choose where you discover games and apps. We bring them together for you.</p></div>
+  <div id="sourcesList"></div>
+  <form id="addSource" class="source-repo-form"><h2>Add a source</h2><p>Have a favorite F-Droid repository? Add its address to browse its apps here.</p><label>Repository address<input name="url" type="url" required placeholder="https://example.org/fdroid/repo"></label><details><summary>Verify this source (optional)</summary><label>Repository fingerprint<input name="fingerprint" type="text" autocomplete="off" placeholder="Paste the fingerprint from the repository owner"></label></details><button class="action">Add source</button></form>
+  <p id="sourceError" class="store-notice" role="status" aria-live="polite"></p>
+</dialog>
+
 <dialog id="apkAltDlg" aria-labelledby="apkAltTitle">
   <h2 id="apkAltTitle">Try another APK version</h2>
   <p id="apkAltReason"></p>
@@ -1324,7 +1468,7 @@ function showJobs() {
   $("jobs").hidden = !jobsRunning;
   $("jobsText").textContent = `${jobsRunning} install${jobsRunning === 1 ? "" : "s"} running`;
 }
-async function runJob(label, key, start) {
+async function runJob(label, key, start, onProgress = () => {}) {
   installing.add(key); jobsRunning++; showJobs();
   log(label + "…");
   try {
@@ -1334,6 +1478,7 @@ async function runJob(label, key, start) {
       let j;
       try { j = await api(`/api/job?id=${encodeURIComponent(job)}`); misses = 0; }
       catch (e) { if (++misses >= 20 || /no such job/.test(e.message)) throw e; continue; }
+      onProgress(j);
       if (!j.done) continue;
       if (j.error) throw new Error(j.error);
       log(j.message, "ok"); toast(j.message);
@@ -1804,64 +1949,132 @@ document.body.addEventListener("click", async e => {
 });
 loadOwned();
 
-// ---- All APK sources ----
-const sourceState = { vr: null, installable: false, source: "", apps: [], request: 0 };
+// ---- Discover apps ----
+const sourceState = { vr: null, installable: false, source: "", apps: [], sources: [], request: 0, detail: null, detailRequest: 0, jobs: new Map() };
+const storeName = s => String(s || "").replace(/ \(demo\)$/i, "");
+const storeHue = name => [...String(name)].reduce((n, c) => (n * 31 + c.charCodeAt(0)) >>> 0, 7) % 360;
+const storeInitial = name => [...String(name || "?")][0].toUpperCase();
+const storeText = text => String(text || "").replace(/<[^>]*>/g, " ").replace(/&nbsp;/g, " ");
+const storeOpenSource = o => o.open_source === true || /^(MIT|Apache|[AL]?GPL|BSD|MPL|ISC|CC0|Unlicense)/i.test(o.license || "");
 function sourcePage(url) { try { const u = new URL(url); return ["https:", "http:"].includes(u.protocol) ? u.href : ""; } catch { return ""; } }
+function storeImage(path, alt, eager=false) { return /^\/source-image\/[\w-]+$/.test(path || "") ? `<img src="${esc(path)}" alt="${esc(alt)}" loading="${eager ? "eager" : "lazy"}" decoding="async">` : ""; }
+function storeArt(o, cls="", eager=false, path=null, alt=null) {
+  const image = path || o.artwork?.banner || o.artwork?.screenshots?.[0];
+  return `<span class="store-art ${cls}" style="--hue:${storeHue(o.name)}"><span class="art-initial" aria-hidden="true">${esc(storeInitial(o.name))}</span>${storeImage(image, alt || `${o.name} artwork`, eager)}</span>`;
+}
+function storeIcon(o) { return `<span class="store-icon" style="--hue:${storeHue(o.name)}" aria-hidden="true">${esc(storeInitial(o.name))}${storeImage(o.artwork?.icon, "")}</span>`; }
+document.addEventListener("error", e => { if (e.target.matches?.(".store-art img, .store-icon img")) e.target.remove(); }, true);
+function sourceMark(s) { const name=storeName(s); return `<span class="offer-mark" style="--hue:${storeHue(name)}" aria-hidden="true">${esc(name === "SideQuest" ? "SQ" : name === "F-Droid" ? "Fd" : name.slice(0,2))}</span>`; }
+function sourceDescription(s) { return s.description || ({fdroid:"Independent, open-source apps",sidequest:"Discover something new in VR",itch:"Games from independent creators",github:"Direct from the people who make it"})[s.kind] || (s.name.includes("GitHub") ? "Direct from the people who make it" : s.name.includes("Droid") ? "Independent, open-source apps" : s.name.includes("SideQuest") ? "Discover something new in VR" : s.name.includes("itch") ? "Games from independent creators" : "Apps shared by this community"); }
 async function loadSources() {
   try {
-    const { sources } = await api("/api/sources");
-    $("sourceFilters").innerHTML = `<button class="chip" data-source="" aria-pressed="${!sourceState.source}">All sources</button>` + sources.filter(s => s.enabled).map(s => `<button class="chip" data-source="${esc(s.id)}" aria-pressed="${sourceState.source === s.id}">${esc(s.name)}</button>`).join("");
-    $("sourcesList").innerHTML = sources.map(s => `<div class="item"><label class="grow"><input type="checkbox" data-enable="${esc(s.id)}" ${s.enabled ? "checked" : ""}> ${esc(s.name)} <span class="sub">${esc(s.trust || "unknown")} · ${esc(s.status || "not searched")}</span></label>${s.builtin === false ? `<button class="small" data-remove="${esc(s.id)}">Remove</button>` : ""}</div>`).join("") || `<div class="sub">No source modules are available in this build.</div>`;
+    const {sources} = await api("/api/sources"); sourceState.sources = sources;
+    $("sourceFilter").innerHTML = `<option value="">All sources</option>` + sources.filter(s=>s.enabled).map(s=>`<option value="${esc(s.id)}">${esc(storeName(s.name))}</option>`).join("");
+    $("sourceFilter").value = sourceState.source;
+    $("sourcesList").innerHTML = sources.map(s=>`<div class="source-setting">${sourceMark(s.name)}<div class="grow"><strong>${esc(storeName(s.name))}</strong><p>${esc(sourceDescription(s))}</p><small>${esc(({official:"Official store",community:"Community",user:"Added by you"})[s.trust] || "Community")}</small>${s.builtin === false ? `<button class="small" data-remove="${esc(s.id)}" aria-label="Remove ${esc(s.name)}">Remove</button>` : ""}</div><input class="source-toggle" role="switch" type="checkbox" aria-label="Enable ${esc(storeName(s.name))}" data-enable="${esc(s.id)}" ${s.enabled ? "checked" : ""}></div>`).join("") || `<p class="store-notice">Your sources will appear here when they are available.</p>`;
   } catch (e) { $("sourceError").textContent = e.message; }
 }
+function storeCard(app) {
+  const i=sourceState.apps.indexOf(app), o=app.offers[0];
+  return `<button class="store-card" data-app="${i}" aria-label="View ${esc(app.name)}">${storeArt(o)}<span class="store-card-content"><span class="store-card-title">${storeIcon(o)}<strong>${esc(app.name)}</strong></span><span class="store-summary">${esc(storeText(app.summary) || "A new addition to your Frame")}</span><span class="store-card-foot"><span>${o.vr ? "VR experience" : o.vr === false ? "Flat-screen app" : "Android app"}</span><b>Free</b></span></span></button>`;
+}
+function storeRow(title, subtitle, apps) { return apps.length ? `<section class="store-row"><div class="store-row-head"><h2>${esc(title)}</h2><p>${esc(subtitle)}</p></div><div class="store-grid">${apps.slice(0,5).map(storeCard).join("")}</div></section>` : ""; }
+function storeEmpty() {
+  return `<div class="store-empty"><svg viewBox="0 0 120 100" fill="none" aria-hidden="true"><rect x="18" y="25" width="60" height="55" rx="12" fill="currentColor" opacity=".08"/><rect x="29" y="18" width="60" height="55" rx="12" stroke="currentColor" opacity=".35"/><circle cx="61" cy="43" r="15" stroke="currentColor" stroke-width="3"/><path d="m72 55 17 18M17 12v10m-5-5h10m79-4v10m-5-5h10" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg><h2>A little further to explore.</h2><p>No apps found this time. Try a different name, clear your filters, or explore another source.</p><button class="action" id="storeReset">Explore all apps</button></div>`;
+}
+function renderStore() {
+  const apps=sourceState.apps, browsing=!$("sourceQ").value.trim() && sourceState.vr === null && !sourceState.installable && !sourceState.source;
+  $("searchCount").textContent = browsing ? "" : `${apps.length} ${apps.length===1 ? "app" : "apps"}${$("sourceQ").value.trim() ? ` for “${$("sourceQ").value.trim()}”` : ""}`;
+  if (!apps.length) { $("searchGrid").innerHTML=storeEmpty(); return; }
+  if (!browsing) { $("searchGrid").innerHTML=`<div class="store-grid">${apps.map(storeCard).join("")}</div>`; return; }
+  const featured=apps.find(a=>a.offers[0].vr && a.offers[0].artwork?.banner && a.offers[0].verdict?.tone !== 'blocked') || apps.find(a=>a.offers[0].artwork?.banner) || apps[0], o=featured.offers[0];
+  const tested=apps.filter(a=>a.offers.some(o=>o.vr && o.verdict?.tone==='works'));
+  const vr=tested.length ? tested : apps.filter(a=>a.offers.some(o=>o.vr && o.verdict?.tone !== 'blocked'));
+  const popular=[...apps].sort((a,b)=>(b.offers[0].popularity||0)-(a.offers[0].popularity||0));
+  const recent=apps.filter(a=>a.offers.some(o=>o.updated)).sort((a,b)=>String(b.offers[0].updated||'').localeCompare(String(a.offers[0].updated||'')));
+  $("searchGrid").innerHTML=`<button class="store-hero" data-app="${apps.indexOf(featured)}" aria-label="Explore ${esc(featured.name)}">${storeArt(o,"",true)}<span class="hero-copy"><span class="store-eyebrow">Step into something new</span><strong>${esc(featured.name)}</strong><span>${esc(storeText(featured.summary))}</span><span class="hero-cta">Explore ${esc(featured.name)} <span aria-hidden="true">&nbsp; ↗</span></span></span></button>` + storeRow(apps.some(a=>a.offers[0].popularity) ? "Popular apps" : "Explore apps","More ways to make your Frame yours",popular) + storeRow(tested.length ? "VR that works on the Frame" : "Step into VR",tested.length ? "Experiences checked on a Frame" : "A new perspective, a whole new playground",vr) + storeRow("Recently updated","Fresh from their creators",recent);
+}
+function storeChips() { $("searchFilters").querySelectorAll("button").forEach(b=>b.setAttribute("aria-pressed",b.dataset.filter==='all' ? sourceState.vr===null && !sourceState.installable : b.dataset.filter==='installable' ? sourceState.installable : sourceState.vr===(b.dataset.filter==='vr'))); }
 async function searchSources() {
-  const request = ++sourceState.request;
-  $("sourceStatus").textContent = "Searching enabled sources…";
-  const params = new URLSearchParams({ q: $("sourceQ").value, source: sourceState.source, installable: String(sourceState.installable) });
-  if (sourceState.vr !== null) params.set("vr", String(sourceState.vr));
+  const request=++sourceState.request;
+  $("searchGrid").setAttribute("aria-busy","true");
+  $("searchGrid").innerHTML=`<div class="store-grid" role="status" aria-label="Finding apps">${Array.from({length:8},()=>'<div class="store-skeleton" aria-hidden="true"></div>').join("")}</div>`;
+  const params=new URLSearchParams({q:$("sourceQ").value,source:sourceState.source,installable:String(sourceState.installable)});
+  if(sourceState.vr!==null)params.set("vr",String(sourceState.vr));
   try {
-    const result = await api("/api/search?" + params);
-    if (request !== sourceState.request) return;
-    sourceState.apps = result.apps;
-    $("searchCount").textContent = `${result.apps.length} apps`;
-    $("sourceStatus").textContent = result.sources.map(s => `${s.name}: ${s.status === "error" ? s.error : s.status}`).join(" · ") || "No enabled sources";
-    $("searchGrid").innerHTML = result.apps.map((a, i) => `<article class="cat-card"><h3>${esc(a.name || "Unnamed app")}</h3><div class="sub">${esc(a.package || "Package unknown")}</div><p>${esc(a.summary || "")}</p><div class="row">${[...new Set(a.offers.map(o => o.source_name))].map(n => `<span class="tag">${esc(n)}</span>`).join(" ")}</div><div class="source-offer"><label>Get from <select aria-label="Source for ${esc(a.name)}" data-offer="${i}">${a.offers.map((o, j) => `<option value="${j}">${esc(o.source_name)} · ${esc(o.version || "Version unknown")} · ${o.verified === true ? "Verified" : "Unverified"}</option>`).join("")}</select></label><div id="offerInfo${i}"></div></div></article>`).join("") || `<div class="sub">No matching apps. Try another search or enable more sources.</div>`;
-    result.apps.forEach((_, i) => renderOffer(i, 0));
-    await loadSources();
-  } catch (e) { if (request === sourceState.request) $("sourceStatus").textContent = e.message; }
+    const result=await api("/api/search?"+params);if(request!==sourceState.request)return;
+    sourceState.apps=result.apps;
+    const unavailable=result.sources.filter(s=>s.status==='error'||s.status==='timed out').map(s=>storeName(s.name));
+    $("sourceStatus").textContent=unavailable.length ? `${unavailable.join(" and ")} ${unavailable.length===1 ? "isn't" : "aren't"} responding right now. You can still explore the other sources.` : "";
+    $("sourceStatus").hidden=!unavailable.length;
+    renderStore();await loadSources();
+  } catch(e) { if(request===sourceState.request) { $("searchGrid").innerHTML=storeEmpty();$("sourceStatus").hidden=false;$("sourceStatus").textContent="We couldn't reach the app shelves. Try again in a moment."; } }
+  finally { if(request===sourceState.request)$("searchGrid").setAttribute("aria-busy","false"); }
 }
-function renderOffer(i, j) {
-  const o = sourceState.apps[i].offers[j], page = sourcePage(o.page), busy = installing.has(`${o.source}:${o.id}`);
-  $("offerInfo" + i).innerHTML = `<p class="sub">${esc(o.fit.verdict)} · API ${esc(o.min_sdk ?? "unknown")} · ${esc(o.abis == null ? "ABI unknown" : o.abis.join(", ") || "No native code")}<br>Version code ${esc(o.version_code ?? "unknown")} · ${o.size == null ? "Size unknown" : (o.size / 1048576).toFixed(1) + " MB"} · Updated ${esc(o.updated || "unknown")}</p><p class="hint">${o.fit.reasons.map(esc).join(" · ")}</p><div class="row">${o.downloadable && o.fit.installable !== false ? `<button class="small action" data-source-install="${i}" data-choice="${j}" ${busy ? "disabled" : ""}>${busy ? "Downloading and installing…" : "Install"}</button>` : ""}${page ? `<a href="${esc(page)}" target="_blank" rel="noopener noreferrer">Developer page</a>` : ""}</div>`;
+function currentOffer() { return sourceState.detail?.app.offers[sourceState.detail.choice]; }
+function detailBadges(o) { return `<span class="store-badge">${o.vr ? "VR experience" : o.vr===false ? "Flat-screen app" : "Android app"}</span>${o.verdict?.tone==='works' ? '<span class="store-badge works">✓ Works on Frame</span>' : ''}<span class="store-badge">Free</span>${storeOpenSource(o) ? '<span class="store-badge">Open source</span>' : ''}`; }
+function renderDetail() {
+  const restoreOfferFocus=document.activeElement?.name==='storeOffer';
+  const d=sourceState.detail;if(!d)return;const o=currentOffer(), images=o.artwork?.screenshots||[], page=sourcePage(o.page);
+  $("detailBody").innerHTML=storeArt(o,"detail-banner",true)+`<div class="detail-content"><div class="detail-heading">${storeIcon(o)}<div><h1 id="detailTitle">${esc(o.name)}</h1><p>${esc(o.developer || o.author || 'From '+storeName(o.source_name))}</p></div></div><div class="store-badges">${detailBadges(o)}</div><div class="detail-layout"><div><div class="detail-gallery" id="detailGallery" aria-label="App screenshots" tabindex="0">${images.map((p,i)=>storeArt(o,"",false,p,`${o.name} screenshot ${i+1}`)).join("")}</div>${images.length ? `<div class="gallery-controls"><span>${images.length} screenshots · scroll to explore</span><div><button data-gallery="-1" aria-label="Previous screenshot">←</button> <button data-gallery="1" aria-label="Next screenshot">→</button></div></div>` : ''}<h2>About this app</h2><div class="detail-description">${esc(storeText(o.description || o.summary || "Discover this app on its developer's page."))}</div>${page ? `<p><a href="${esc(page)}" target="_blank" rel="noopener noreferrer">Meet the creators ↗</a></p>` : ''}<details class="detail-technical"><summary>Technical details</summary><dl><dt>Package</dt><dd>${esc(o.package||"Unknown")}</dd><dt>Version</dt><dd>${esc(o.version||"Unknown")} (${esc(o.version_code??"unknown")})</dd><dt>Android API</dt><dd>${esc(o.min_sdk??"Unknown")}</dd><dt>Architecture</dt><dd>${esc(o.abis?.join(', ')||"Unknown / no native code")}</dd><dt>Updated</dt><dd>${esc(o.updated||"Unknown")}</dd><dt>Compatibility</dt><dd>${(o.fit?.reasons||[]).map(esc).join(' · ')||'No known installation blockers'}</dd></dl></details></div><aside class="detail-buy"><div class="detail-price">Free</div><p class="detail-small">No purchase needed.</p><p class="detail-verdict ${esc(o.verdict?.tone||'unknown')}">${esc(o.verdict?.label||'Not yet checked on the Frame')}</p><button id="detailInstall" class="action store-primary">Install</button><progress id="detailProgress" max="100" hidden aria-label="Installation progress"></progress><p id="detailInstallNote" class="detail-small" role="status" aria-live="polite"></p><h2>Get it from</h2><div id="detailOffers">${d.app.offers.map((v,j)=>`<label class="offer-choice"><input type="radio" name="storeOffer" value="${j}" ${j===d.choice?'checked':''}><span>${sourceMark(v.source_name)}</span><span><strong>${esc(storeName(v.source_name))}${j===0?' · Recommended':''}</strong><small>${v.verified===true?'✓ Verified download':'Verification not provided'}</small><small>${esc(v.version ? 'v'+v.version : 'Latest release')}${v.size!=null?' · '+(v.size/1048576).toFixed(0)+' MB':''}</small></span></label>`).join('')}</div></aside></div></div>`;
+  updateInstall();
+  if(restoreOfferFocus)document.querySelector('#detailOffers input:checked')?.focus();
 }
-$("sourceSearch").onsubmit = e => { e.preventDefault(); searchSources(); };
-$("searchFilters").onclick = e => {
-  const b = e.target.closest("[data-filter]"); if (!b) return;
-  if (b.dataset.filter === "installable") sourceState.installable = !sourceState.installable;
-  else { const value = b.dataset.filter === "vr"; sourceState.vr = sourceState.vr === value ? null : value; }
-  $("searchFilters").querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", b.dataset.filter === "installable" ? sourceState.installable : sourceState.vr === (b.dataset.filter === "vr")));
-  searchSources();
-};
-$("sourceFilters").onclick = e => { const b = e.target.closest("[data-source]"); if (b) { sourceState.source = b.dataset.source; searchSources(); } };
-$("searchGrid").onchange = e => { if (e.target.matches("[data-offer]")) renderOffer(+e.target.dataset.offer, +e.target.value); };
-$("searchGrid").onclick = async e => {
-  const b = e.target.closest("[data-source-install]"); if (!b) return;
-  const o = sourceState.apps[+b.dataset.sourceInstall].offers[+b.dataset.choice];
-  if (installing.has(`${o.source}:${o.id}`)) return;
-  b.disabled = true; b.textContent = "Downloading and installing…";
-  const result = await runJob(`Install ${o.name}`, `${o.source}:${o.id}`, () => api("/api/sources/install", {source: o.source, id: o.id, version_code: o.version_code ?? null}));
-  b.disabled = false; b.textContent = result ? "Installed" : "Retry install";
-  if (result) loadAndroid();
-  if (!b.isConnected) searchSources();
-};
+function updateInstall() {
+  const o=currentOffer();if(!o || !$("detailInstall"))return;
+  const job=sourceState.jobs.get(`${o.source}:${o.id}`), blocked=o.verdict?.tone==='blocked', page=sourcePage(o.page), b=$("detailInstall");
+  b.disabled=!!(job && !job.done) || (blocked && !job?.result) || (!o.downloadable && !page);
+  b.textContent=job?.result ? 'Open in Steam' : job && !job.done ? (job.stage||'Downloading')+(job.percent!=null?` ${Math.round(job.percent)}%`:'…') : blocked ? 'Not compatible' : o.downloadable ? (job?.error?'Try again':'Install on Frame') : 'Get from the creator ↗';
+  $("detailProgress").hidden=!job || job.done;
+  if(job?.percent!=null)$("detailProgress").value=job.percent;else $("detailProgress").removeAttribute("value");
+  $("detailInstallNote").textContent=job?.result ? '✓ Installed. Find it in your Steam library.' : job?.error || (job && !job.done ? 'Keep exploring. We’ll take care of the installation.' : o.verdict?.tone==='works' ? 'Adds to your Steam library.' : 'Compatibility can vary. Adds to your Steam library.');
+  $("detailOffers").querySelectorAll('input').forEach(input=>input.disabled=!!job&&!job.done);
+}
+async function openStoreApp(index) {
+  const app=sourceState.apps[index];if(!app)return;
+  sourceState.detail={app:{...app,offers:app.offers.map(o=>({...o}))},choice:0};
+  renderDetail();if(!$("appDetail").open)$("appDetail").showModal();$("appDetail").scrollTop=0;
+  await loadOfferDetails();
+}
+async function loadOfferDetails() {
+  const d=sourceState.detail,o=currentOffer(), request=++sourceState.detailRequest;
+  try {
+    const detail=await api('/api/sources/details?'+new URLSearchParams({source:o.source,id:o.id}));
+    if(request!==sourceState.detailRequest || d!==sourceState.detail)return;
+    const artwork={icon:detail.artwork?.icon||o.artwork?.icon,banner:detail.artwork?.banner||o.artwork?.banner,screenshots:detail.artwork?.screenshots?.length?detail.artwork.screenshots:o.artwork?.screenshots||[]};
+    d.app.offers[d.choice]={...o,...detail,artwork};renderDetail();
+  } catch(e) { if(d===sourceState.detail)$("detailInstallNote").textContent="Some app details couldn't be refreshed. You can still view this listing."; }
+}
+async function installStoreApp() {
+  const o=currentOffer(), key=`${o.source}:${o.id}`, existing=sourceState.jobs.get(key);
+  if(existing?.result) { await act(`Open ${o.name}`,()=>api('/api/android',{action:'launch',package:existing.result.package}),$("detailInstall"));return; }
+  if(!o.downloadable) { const url=sourcePage(o.page);if(url)window.open(url,'_blank','noopener,noreferrer');return; }
+  if(existing&&!existing.done)return;
+  const state={stage:'Downloading',percent:null,done:false};sourceState.jobs.set(key,state);updateInstall();
+  const result=await runJob(`Install ${o.name}`,key,()=>api('/api/sources/install',{source:o.source,id:o.id,version_code:o.version_code??null}),j=>{Object.assign(state,{stage:j.stage||'Downloading',percent:j.percent??null,error:j.error});updateInstall();});
+  Object.assign(state,{done:true,result,error:result?null:state.error||"We couldn't finish the installation. Try again."});updateInstall();
+  if(result)loadAndroid();
+}
 async function changeSource(body) {
-  $("sourceError").textContent = "Saving…";
-  try { const result = await api("/api/sources", body); $("sourceError").textContent = result.message; sourceState.source = ""; await loadSources(); await searchSources(); }
-  catch (e) { $("sourceError").textContent = e.message; await loadSources(); }
+  $("sourceError").textContent="Saving your sources…";
+  try { const result=await api('/api/sources',body);$("sourceError").textContent=result.message;sourceState.source='';await loadSources();await searchSources(); }
+  catch(e) { $("sourceError").textContent=e.message;await loadSources(); }
 }
-$("sourcesList").onchange = e => { if (e.target.matches("[data-enable]")) changeSource({action: "enable", source: e.target.dataset.enable, enabled: e.target.checked}); };
-$("sourcesList").onclick = e => { const b = e.target.closest("[data-remove]"); if (b) changeSource({action: "remove", source: b.dataset.remove}); };
-$("addSource").onsubmit = e => { e.preventDefault(); const data = new FormData(e.target); changeSource({action: "add", url: data.get("url"), fingerprint: data.get("fingerprint")}); };
+let storeSearchTimer;
+$("sourceQ").oninput=()=>{clearTimeout(storeSearchTimer);storeSearchTimer=setTimeout(searchSources,300);};
+$("sourceSearch").onsubmit=e=>{e.preventDefault();clearTimeout(storeSearchTimer);searchSources();};
+$("sourceFilter").onchange=e=>{sourceState.source=e.target.value;searchSources();};
+$("searchFilters").onclick=e=>{const b=e.target.closest('[data-filter]');if(!b)return;const f=b.dataset.filter;if(f==='all'){sourceState.vr=null;sourceState.installable=false;}else if(f==='installable')sourceState.installable=!sourceState.installable;else sourceState.vr=sourceState.vr===(f==='vr')?null:f==='vr';storeChips();searchSources();};
+$("searchGrid").onclick=e=>{const b=e.target.closest('[data-app]');if(b)openStoreApp(+b.dataset.app);if(e.target.closest('#storeReset')){$('sourceQ').value='';sourceState.vr=null;sourceState.installable=false;sourceState.source='';storeChips();searchSources();}};
+$("detailBody").onclick=e=>{if(e.target.closest('#detailInstall'))installStoreApp();const b=e.target.closest('[data-gallery]');if(b)$('detailGallery').scrollBy({left:+b.dataset.gallery*$('detailGallery').clientWidth*.86,behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'});};
+$("detailBody").onchange=e=>{if(e.target.name==='storeOffer'){sourceState.detail.choice=+e.target.value;renderDetail();loadOfferDetails();}};
+$("sourcesOpen").onclick=()=>{loadSources();$('sourcesDialog').showModal();};
+$("sourcesList").onchange=e=>{if(e.target.matches('[data-enable]'))changeSource({action:'enable',source:e.target.dataset.enable,enabled:e.target.checked});};
+$("sourcesList").onclick=e=>{const b=e.target.closest('[data-remove]');if(b)changeSource({action:'remove',source:b.dataset.remove});};
+$("addSource").onsubmit=e=>{e.preventDefault();const f=new FormData(e.target);changeSource({action:'add',url:f.get('url'),fingerprint:f.get('fingerprint')});};
+document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>$(b.dataset.close).close());
+$('appDetail').addEventListener('close',()=>{sourceState.detailRequest++;});
+document.querySelectorAll('[data-store-tab]').forEach(b=>b.onclick=()=>{const browse=b.dataset.storeTab==='browse';$('appStore').hidden=!browse;$('androidLibrary').hidden=browse;$('repNew').hidden=browse;$('sourcesOpen').hidden=!browse;document.querySelectorAll('[data-store-tab]').forEach(t=>{t.classList.toggle('on',t===b);t.setAttribute('aria-pressed',t===b);});if(!browse)loadAndroid();});
 loadSources().then(searchSources);
 
 // ---- Android apps (own Lepton instance each) + catalogue ----
