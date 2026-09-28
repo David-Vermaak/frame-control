@@ -486,6 +486,10 @@ class Registry:
         with self.lock:
             return self.data.get("active")
 
+    def emptied(self):
+        with self.lock:
+            return bool(self.data.get("emptied")) and not self.data["devices"]
+
     def set_active(self, device_id):
         with self.lock:
             self._find(device_id)
@@ -510,6 +514,7 @@ class Registry:
                 if host and not any(a["host"] == host for a in d["addresses"]):
                     d["addresses"].append(new_address(host))
             self.data["devices"].append(d)
+            self.data.pop("emptied", None)
             if not self.data.get("active"):
                 self.data["active"] = device_id
             self.save()
@@ -534,6 +539,8 @@ class Registry:
             d = self._find(device_id)
             self.data["devices"].remove(d)
             self.data.setdefault("dismissed", {})[d["alias"]] = d.get("config_host") or ""
+            if not self.data["devices"]:
+                self.data["emptied"] = True  # removed on purpose: don't fall back to the `frame` alias
             if self.data.get("active") == device_id:
                 self.data["active"] = self.data["devices"][0]["id"] if self.data["devices"] else None
             self.save()

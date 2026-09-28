@@ -292,6 +292,11 @@ class Registry(Base):
         self.assertEqual(self.reg.get(b["id"])["user"], "deck")  # a rejected edit changes nothing
         self.reg.remove_device(b["id"])
         self.assertEqual(self.reg.active(), a["id"])
+        self.assertFalse(self.reg.emptied())
+        self.reg.remove_device(a["id"])
+        self.assertTrue(self.reg.emptied())  # the connector then uses no headset at all
+        self.reg.add_device("frame-4")
+        self.assertFalse(self.reg.emptied())
         with self.assertRaises(fd.DeviceError):
             self.reg.get(b["id"])
 

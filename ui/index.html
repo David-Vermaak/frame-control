@@ -2812,7 +2812,7 @@ async function findOn(where, d, btn) {
     dv.found = { where, dev: d.id, data: await api(`/api/devices/${where}?id=${encodeURIComponent(d.id)}`) };
   } catch (e) { dv.found = { where, dev: d.id, error: e.message }; }
   finally { btn.disabled = false; }
-  renderFound(d);
+  if (dv.sel === d.id) renderFound(d);  // another headset may be showing by now
 }
 function renderFound(d) {
   const f = dv.found, el = $("dvFound");

@@ -26,6 +26,7 @@ when the page asks.
 Python stdlib only. Runs on this computer, never on the Frame.
 """
 import copy
+import ipaddress
 import queue
 import re
 import socket
@@ -101,6 +102,11 @@ def probe(host, port, timeout=PROBE_TIMEOUT, update=None):
     infos = infos[:4]
     for n, (family, kind, proto, _, addr) in enumerate(infos):
         ip = addr[0]
+        if family == socket.AF_INET6 and len(addr) > 3 and addr[3] and "%" not in ip:
+            try:  # a link-local IPv6 address only works with its interface
+                ip = f"{ip}%{socket.if_indextoname(addr[3])}"
+            except (OSError, AttributeError):
+                pass
         left = deadline - now()
         if left <= 0:
             break
@@ -126,8 +132,13 @@ def probe(host, port, timeout=PROBE_TIMEOUT, update=None):
 
 
 def ssh_target(host, ip):
-    """Where ssh should go for an address whose probe answered from `ip`."""
-    return ip if ip and re.fullmatch(r"\d{1,3}(\.\d{1,3}){3}", ip) else host
+    """Where ssh should go for an address whose probe answered from `ip`: that IP, so ssh
+    doesn't look the name up again and try an address that didn't answer."""
+    try:
+        ipaddress.ip_address((ip or "").split("%")[0])
+        return ip
+    except ValueError:
+        return host
 
 
 def probe_raw(host, port, result):
@@ -308,7 +319,14 @@ class Link:
             except frame_devices.DeviceError:
                 pass
         devices = self.reg.devices()
-        return devices[0] if devices else self.bare("frame")
+        if devices:
+            return devices[0]
+        if self.reg.emptied():
+            return self.NONE  # every headset was removed: reach nothing until one is added
+        return self.bare("frame")  # never set up here, or set up before the registry existed
+
+    NONE = {"id": "none", "name": "No headset", "alias": "frame-control-no-headset", "user": None, "port": None,
+            "addresses": [], "transient": True, "none": True, "identity_files": []}
 
     @staticmethod
     def bare(alias):
@@ -318,6 +336,8 @@ class Link:
 
     def host_opts(self, device, host):
         """What every ssh command adds to reach DEVICE at HOST."""
+        if device.get("none"):
+            return ["-o", "HostName=no-headset.invalid"]  # fails at once, with ssh's own "can't resolve"
         if device.get("transient") or not host:
             return []
         return ["-o", f"HostName={frame_devices.ssh_host(host)}",
@@ -434,8 +454,8 @@ class Link:
                     self.state.update(phase="connected", retry_at=None, error=None)
                 else:
                     self.fails += 1
-                    self.state.update(phase="failed",
-                                      retry_at=now() + RETRY[min(self.fails, len(RETRY)) - 1])
+                    self.state.update(phase="failed", retry_at=None if device.get("none") else
+                                      now() + RETRY[min(self.fails, len(RETRY)) - 1])
                     if not self.state["error"]:
                         self.state["error"] = {"stage": "find", "message": "Couldn't connect", "raw": ""}
                 self.version += 1
@@ -462,6 +482,9 @@ class Link:
             self.state["error"] = {"stage": sid, "message": message, "raw": raw}
 
     def attempt(self, device):
+        if device.get("none"):
+            self.fail("find", "No headset is set up. Add one on the Devices tab.")
+            return False
         # 1. this computer's network
         self.stage("network", "active")
         net = frame_network.current_network(self.last_fp)
@@ -654,9 +677,8 @@ class Link:
     def handshake(self, device, a, found, user):
         """SSH to one address, following ssh -v through stages 3-5.
         -> "ok", "next" (try another address) or "stop"."""
-        # An IPv4 address that answered is used as is, so ssh doesn't look the name up
-        # again and try an address that didn't answer (a dead IPv6 route, say). IPv6
-        # answers keep the name: a link-local one needs its zone, which ssh adds itself.
+        # The IP that answered (with a link-local IPv6 address's zone), so ssh doesn't
+        # look the name up again and stall on an address that didn't answer.
         opts = self.host_opts(device, ssh_target(a["host"], found.get("ip")))
         alias = device["alias"]
         with self.route_lock:
@@ -862,7 +884,7 @@ def devices_view(link):
     active = link.active_device()
     names = {nid: link.reg.network_name(dict(n, id=nid)) for nid, n in snap["networks"].items()}
     devices = []
-    if active.get("transient"):
+    if active.get("transient") and not active.get("none"):
         devices.append(dict(link.public_device(active), active=True, addresses=[], managed=False, pinned=False))
     for d in snap["devices"]:
         view = {k: v for k, v in d.items() if k not in ("config_host", "addresses")}

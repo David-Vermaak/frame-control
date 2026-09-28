@@ -150,12 +150,12 @@ class Connecting(unittest.TestCase):
     def test_falls_through_to_the_address_that_is_really_the_headset(self):
         # Tried in this order: a name that doesn't resolve, a different device, the headset.
         self.listen6()
-        d = self.device("nothing.invalid", "::1", "localhost")
-        self.hosts({"::1": "wrong", "localhost": "ok"})
+        d = self.device("nothing.invalid", "::1", "127.0.0.1")
+        self.hosts({"::1": "wrong", "127.0.0.1": "ok"})
         self.link.connect(["start"])
         s = self.link.snapshot()
         self.assertEqual(s["phase"], "connected", s["error"])
-        self.assertEqual(s["via"]["host"], "localhost")
+        self.assertEqual(s["via"]["host"], "127.0.0.1")
         self.assertEqual([st["state"] for st in s["stages"]], ["done"] * 5)
         rows = {p["host"]: p for p in s["probes"]}
         self.assertEqual(rows["nothing.invalid"]["state"], "unresolved")
@@ -164,16 +164,15 @@ class Connecting(unittest.TestCase):
         # Every ssh command was pointed at the winner, with the host key pinned per device.
         alias, opts = self.routes[-1]
         self.assertEqual(alias, "frame-t")
-        ip = rows["localhost"]["ip"]  # an IPv4 answer is used as is; an IPv6 one keeps the name
-        self.assertIn("HostName=" + (ip if "." in ip else "localhost"), opts)
+        self.assertIn("HostName=127.0.0.1", opts)
         self.assertIn(f"HostKeyAlias=frame-control-{d['id']}", opts)
         self.assertIn(f"Port={self.port}", opts)
         master = [c for c in self.calls() if "ControlMaster=yes" in c][-1]
         self.assertIn("StrictHostKeyChecking=accept-new", master)  # first connection: nothing pinned yet
         self.assertTrue(fd.known_hosts(d["id"]).parent.is_dir())  # where ssh saves the key it accepts
-        # It learned: localhost works on this network.
+        # It learned: 127.0.0.1 works on this network.
         learned = {a["host"]: a for a in self.reg.get(d["id"])["addresses"]}
-        self.assertEqual(learned["localhost"]["networks"], ["n-test"])
+        self.assertEqual(learned["127.0.0.1"]["networks"], ["n-test"])
         self.assertEqual(learned["::1"]["networks"], [])
         self.assertTrue(self.link.alive())
         self.link.close_master()
@@ -232,6 +231,15 @@ class Connecting(unittest.TestCase):
         s = self.link.snapshot()
         self.assertEqual((s["phase"], s["via"]["host"], s["via"]["ip"]), ("connected", "localhost", "127.0.0.1"))
         self.assertIn("HostName=127.0.0.1", self.routes[-1][1])
+
+    def test_no_headset_after_removing_them_all(self):
+        d = self.device("localhost")
+        self.reg.remove_device(d["id"])
+        self.link.connect(["switch"])
+        s = self.link.snapshot()
+        self.assertEqual((s["phase"], s["device"]["id"], s["retry_at"]), ("failed", "none", None))
+        self.assertIn("No headset", s["error"]["message"])
+        self.assertEqual(self.routes[-1], ("frame-control-no-headset", ["-o", "HostName=no-headset.invalid"]))
 
     def test_a_bare_alias_lets_ssh_config_decide(self):
         self.link.override = "frame-bare"
@@ -354,6 +362,9 @@ class Connecting(unittest.TestCase):
         for body in bad:
             with self.assertRaises(fd.DeviceError, msg=body):
                 fl.devices_action(self.link, body, open_setup=lambda *a: self.fail("setup ran"))
+        # Removing every headset leaves none in use, rather than falling back to the `frame` alias.
+        spare = self.reg.add_device("frame-spare")
+        fl.devices_action(self.link, {"action": "remove", "id": spare["id"]}, None)
         # The only headset, whose ssh alias would stay: not without removing that too.
         (self.dir / "ssh" / "config").write_text("# >>> steam-frame (frame-t) >>>\nHost frame-t\n  HostName localhost\n"
                                                 "Host *\n# <<< steam-frame (frame-t) <<<\n")
