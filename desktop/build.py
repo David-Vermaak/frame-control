@@ -57,7 +57,9 @@ def build(destination):
         libdir = plugin_dir.parent
         for relative in ('pipewire-0.3/libpipewire-module-protocol-native.so',
                          'pipewire-0.3/libpipewire-module-client-node.so',
-                         'spa-0.2/support/libspa-support.so'):
+                         'pipewire-0.3/libpipewire-module-adapter.so',
+                         'spa-0.2/support/libspa-support.so',
+                         'spa-0.2/videoconvert/libspa-videoconvert.so'):
             source = libdir / relative
             if not source.is_file():
                 raise SystemExit('Missing PipeWire runtime library: ' + str(source))
@@ -68,10 +70,11 @@ def build(destination):
         config = destination / 'share' / 'pipewire'
         config.mkdir(parents=True, exist_ok=True)
         (config / 'client.conf').write_text(
-            'context.spa-libs = { support.* = support/libspa-support }\n'
+            'context.spa-libs = { support.* = support/libspa-support video.convert.* = videoconvert/libspa-videoconvert }\n'
             'context.modules = [\n'
             '  { name = libpipewire-module-protocol-native }\n'
             '  { name = libpipewire-module-client-node }\n'
+            '  { name = libpipewire-module-adapter }\n'
             ']\n')
     copied = set()
     while pending:

@@ -186,6 +186,9 @@ for name, ret, args in [
     ('pw_main_loop_new', C.c_void_p, [C.c_void_p]),
     ('pw_main_loop_get_loop', C.c_void_p, [C.c_void_p]),
     ('pw_context_new', C.c_void_p, [C.c_void_p, C.c_void_p, C.c_size_t]),
+    ('pw_context_find_factory', C.c_void_p, [C.c_void_p, C.c_char_p]),
+    ('pw_context_load_spa_handle', C.c_void_p, [C.c_void_p, C.c_char_p, C.c_void_p]),
+    ('pw_unload_spa_handle', C.c_int, [C.c_void_p]),
     ('pw_context_destroy', None, [C.c_void_p]),
     ('pw_main_loop_destroy', None, [C.c_void_p])]:
     fn = getattr(lib, name)
@@ -195,6 +198,10 @@ loop = lib.pw_main_loop_new(None)
 assert loop, 'bundled SPA loop support did not load'
 context = lib.pw_context_new(lib.pw_main_loop_get_loop(loop), None, 0)
 assert context, 'bundled PipeWire client modules did not load'
+assert lib.pw_context_find_factory(context, b'adapter'), 'video adapter factory is missing'
+handle = lib.pw_context_load_spa_handle(context, b'video.convert', None)
+assert handle, 'bundled SPA video converter did not load'
+lib.pw_unload_spa_handle(handle)
 lib.pw_context_destroy(context)
 lib.pw_main_loop_destroy(loop)
 """
