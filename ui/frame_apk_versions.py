@@ -50,7 +50,7 @@ def _versions(package, cached_only=False):
     for source, repo in REPOS:
         try:
             index = frame_catalog.load_index(repo, cached_only=cached_only)
-        except (OSError, ValueError) as e:
+        except Exception as e:  # one bad repo (dropped download, odd index) mustn't hide the others
             errors.append(f'Could not check {source}: {e}')
             continue
         for v in index.get(package, []):

@@ -4,6 +4,7 @@ import json
 import os
 import sys
 import tempfile
+import time
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import patch
@@ -94,6 +95,33 @@ class VersionsTest(unittest.TestCase):
             self.assertEqual(frame_catalog.load_index(repo)['org.example.app'][0]['version_code'], 9)
             fetch.assert_called_once()
         self.assertTrue(os.path.exists(raw))
+
+    def test_malformed_entries_are_skipped(self):
+        raw = os.path.join(self.tmp.name, 'odd.json')
+        with open(raw, 'w') as f:
+            json.dump({'packages': {'a.b': {'versions': {'x': {'manifest': {}}, 'y': None, 'z': build(4)}},
+                                    'c.d': {'versions': None}, 'e.f': []}}, f)
+        self.assertEqual([v['version_code'] for v in frame_catalog._reduce_index(raw)['a.b']], [4])
+
+    def test_one_failing_repo_keeps_the_others(self):
+        real = frame_catalog.load_index
+        def load(repo, cached_only=False):
+            if 'izzy' in repo:
+                raise KeyError('file')
+            return real(repo, cached_only=cached_only)
+        with patch.object(frame_catalog, 'load_index', side_effect=load):
+            result = versions.alternatives('org.example.app')
+        self.assertEqual([v['version_code'] for v in result['versions']], [3, 2, 1])
+        self.assertEqual(len(result['errors']), 1)
+
+    def test_newer_raw_index_outdates_reduced_copy(self):
+        repo = versions.REPOS[0][1]
+        frame_catalog.load_index(repo)
+        raw = os.path.join(self.tmp.name, 'data', 'index-v2.json')
+        with open(raw, 'w') as f:
+            json.dump({'packages': {'org.example.app': {'versions': {'x': build(8)}}}}, f)
+        os.utime(raw, ns=(time.time_ns() + 10**9,) * 2)
+        self.assertEqual(frame_catalog.load_index(repo)['org.example.app'][0]['version_code'], 8)
 
     def test_concurrent_requests_share_download(self):
         raw = os.path.join(self.tmp.name, 'data', 'index-v2.json')

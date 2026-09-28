@@ -92,8 +92,13 @@ def _reduce_index(path):
                 continue
             found = True
             for package in reader.members():
-                records = []
-                for v in reader.value().get('versions', {}).values():
+                records, entry = [], reader.value()
+                versions = entry.get('versions') if isinstance(entry, dict) else None
+                for v in (versions.values() if isinstance(versions, dict) else ()):
+                    # Skip malformed entries rather than losing the whole repo.
+                    if not (isinstance(v, dict) and isinstance(v.get('manifest'), dict)
+                            and isinstance(v.get('file'), dict) and v['file'].get('name')):
+                        continue
                     if not installable(v):
                         continue
                     m, file = v['manifest'], v['file']
@@ -121,7 +126,9 @@ def load_index(repo, cached_only=False):
     path = raw + '.installable-v1'
     with _index_lock:
         mtime = os.stat(path).st_mtime_ns if os.path.exists(path) else None
-        if mtime is not None and (cached_only or time.time() - mtime / 1e9 < 86400):
+        # A newer raw index (the catalogue script refreshed it) outdates the reduced copy.
+        newer_raw = mtime is not None and os.path.exists(raw) and os.stat(raw).st_mtime_ns > mtime
+        if mtime is not None and (cached_only or (time.time() - mtime / 1e9 < 86400 and not newer_raw)):
             cached = _indexes.get(path)
             if cached is None or cached[0] != mtime:
                 with open(path) as f:

@@ -448,7 +448,7 @@ def open_thing(body):
 def apk_versions(query):
     args = parse_qs(query, keep_blank_values=True)
     packages, codes = args.get('package', []), args.get('code', [])
-    if len(packages) != 1 or not re.fullmatch(r'[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)+', packages[0]):
+    if len(packages) != 1 or not frame_android.PKG_RE.match(packages[0]):
         raise Failure('invalid Android package id', 400)
     if codes and (len(codes) != 1 or not re.fullmatch(r'[0-9]{1,19}', codes[0])):
         raise Failure('invalid version code', 400)

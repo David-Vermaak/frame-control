@@ -221,10 +221,10 @@
   .and-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 22px; align-items: start; }
   .and-col { display: grid; gap: 22px; align-content: start; }
   .rep-item .s { white-space: normal; }
-  #repDlg, #titleDlg, #wiDlg { background: #1e2329; color: var(--text); border: 1px solid rgba(255,255,255,.1); border-radius: 4px;
+  #repDlg, #titleDlg, #wiDlg, #apkAltDlg { background: #1e2329; color: var(--text); border: 1px solid rgba(255,255,255,.1); border-radius: 4px;
             padding: 22px; width: min(560px, 92vw); box-shadow: 0 20px 60px rgba(0,0,0,.6); }
-  #repDlg::backdrop, #titleDlg::backdrop, #wiDlg::backdrop { background: rgba(0,0,0,.55); }
-  #repDlg h2, #titleDlg h2, #wiDlg h2 { margin: 0 0 14px; font-size: 15px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--bright); }
+  #repDlg::backdrop, #titleDlg::backdrop, #wiDlg::backdrop, #apkAltDlg::backdrop { background: rgba(0,0,0,.55); }
+  #repDlg h2, #titleDlg h2, #wiDlg h2, #apkAltDlg h2 { margin: 0 0 14px; font-size: 15px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--bright); }
   #repForm label, #titleForm label { display: block; font-size: 12.5px; color: var(--muted); margin-top: 10px; }
   #repForm label input[type=text], #repForm textarea, #titleForm label input, #titleForm label select { margin-top: 5px; }
   #titleForm select { width: 100%; background: rgba(0,0,0,.28); color: var(--text); border: 1px solid transparent;
@@ -555,7 +555,7 @@
 <dialog id="apkAltDlg" aria-labelledby="apkAltTitle">
   <h2 id="apkAltTitle">Try another APK version</h2>
   <p id="apkAltReason"></p>
-  <div id="apkAltVersions"></div>
+  <div class="list" id="apkAltVersions"></div>
   <p class="sub" id="apkAltNote"></p>
   <div id="apkAltLinks"></div>
   <p class="sub" id="apkAltErrors"></p>
