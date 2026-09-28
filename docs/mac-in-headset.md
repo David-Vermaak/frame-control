@@ -290,6 +290,23 @@ Of the targets, click to photon is met without the Frame's compositor (the
 headset has to be worn to measure its share), and so is content latency.
 The frame-rate and no-stall targets aren't yet met while scrolling.
 
+**Worn** (**verified** 2026-09-28 22:00, `vrcmd --stats` activity level 1,
+home Wi-Fi over Tailscale, `bench/results/2026-09-28-39afb23-worn.json`;
+ms p50/p95):
+
+| Scenario | Content | Input to drawn | fps drawn | What happened |
+|---|---|---|---|---|
+| test | 10.8 / 15.3 | 25.7 / 34.4 | 58 | as unworn |
+| scroll | 22.2 / 141 | – | 37.7 | Wi-Fi queued 56–364 ms and held frames for 220–270 ms; the controller went to 2.6 Mbit/s and 45 fps |
+| type | 13.5 / 24.3 | 56.8 / 106 | – | slower replies than unworn (43 / 60) |
+
+The Frame's CPU wasn't the limit: about 27% in total, and the viewer took
+45% of one core. The link to a headset on someone's head is much rougher
+than to one lying still. The adaptation keeps latency bounded there, but
+the frame rate drops. The USB-C cable avoids Wi-Fi entirely. Frames
+actually shown were still about 39 fps for the test pattern while worn, so
+the unworn throttling isn't the whole story. The cause is **unknown**.
+
 What was learned (all **verified**, unless marked):
 
 - The biggest costs are encoding (4–7 ms), network (4–6 ms), and decoding
