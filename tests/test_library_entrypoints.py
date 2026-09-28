@@ -329,6 +329,10 @@ class SteamGridDB(unittest.TestCase):
         self.assertEqual(set(images),set(artwork.SLOTS));self.assertEqual(warnings,[])
         self.assertTrue(all(url.endswith('/top.png') for url in images.values()))
         self.assertTrue(all('/game/2?' in p for p in calls[1:]))
+        # SteamGridDB rejects JPEG in logo/icon queries (the live API returned an error for SuperTux).
+        for p in calls[1:]:
+            jpeg = 'image%2Fjpeg' in p
+            self.assertEqual(jpeg, p.startswith(('/grids/', '/heroes/')), p)
 
     def test_unicode_titles_match_exactly_and_symbols_never_match_all(self):
         self.assertEqual(sgdb._name('ビートセイバー VR!'), 'ビートセイバーvr')

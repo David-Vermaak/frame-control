@@ -84,7 +84,9 @@ def lookup(name, deadline=None):
         for slot, kind, dimensions in [('grid', 'grids', '600x900'), ('wide', 'grids', '920x430'),
                                        ('hero', 'heroes', ''), ('logo', 'logos', ''), ('icon', 'icons', '')]:
             try:
-                query = {'types': 'static', 'nsfw': 'false', 'humor': 'false', 'mimes': 'image/png,image/jpeg'}
+                # Logos and icons only come as PNG (or WebP/ICO); asking for JPEG there is rejected outright.
+                mimes = 'image/png,image/jpeg' if kind in ('grids', 'heroes') else 'image/png'
+                query = {'types': 'static', 'nsfw': 'false', 'humor': 'false', 'mimes': mimes}
                 if dimensions:
                     query['dimensions'] = dimensions
                 records = _get('/' + kind + '/game/' + str(gid) + '?' + urllib.parse.urlencode(query), key, deadline)
