@@ -65,6 +65,20 @@ FC_API void fc_portal_close(Portal *p) {
     g_free(p->session);if(p->bus)g_object_unref(p->bus);
     if(p->context)g_main_context_unref(p->context);g_free(p);
 }
+/* Each pipeline gets a fresh restricted PipeWire connection. A dup of a
+ * previously consumed protocol socket is not a new connection. */
+FC_API int fc_portal_refresh(Portal *p,char *error,int capacity) {
+    GVariantBuilder b;g_variant_builder_init(&b,G_VARIANT_TYPE_VARDICT);
+    GUnixFDList *fds=NULL;GError *e=NULL;
+    GVariant *r=g_dbus_connection_call_with_unix_fd_list_sync(p->bus,BUS,PATH,SC,"OpenPipeWireRemote",
+         g_variant_new("(oa{sv})",p->session,&b),G_VARIANT_TYPE("(h)"),G_DBUS_CALL_FLAGS_NONE,10000,NULL,&fds,NULL,&e);
+    if(!r){g_strlcpy(error,e->message,capacity);g_error_free(e);return -1;}
+    int handle;g_variant_get(r,"(h)",&handle);g_variant_unref(r);
+    int fd=g_unix_fd_list_get(fds,handle,&e);g_object_unref(fds);
+    if(fd<0){g_strlcpy(error,e->message,capacity);g_error_free(e);return -1;}
+    if(p->fd>=0)close(p->fd);
+    p->fd=fd;return fd;
+}
 FC_API Portal *fc_portal_select(char *error,int capacity) {
     Portal *p=g_new0(Portal,1);p->fd=-1;p->context=g_main_context_new();
     g_main_context_push_thread_default(p->context);
@@ -99,13 +113,7 @@ FC_API Portal *fc_portal_select(char *error,int capacity) {
     }
     if(streams)g_variant_unref(streams);g_variant_unref(r);r=NULL;
     if(!p->node || p->width<=0 || p->height<=0) {g_strlcpy(error,"Portal returned no stream size",capacity);goto fail;}
-    g_variant_builder_init(&b,G_VARIANT_TYPE_VARDICT);GUnixFDList *fds=NULL;
-    r=g_dbus_connection_call_with_unix_fd_list_sync(p->bus,BUS,PATH,SC,"OpenPipeWireRemote",
-         g_variant_new("(oa{sv})",p->session,&b),G_VARIANT_TYPE("(h)"),G_DBUS_CALL_FLAGS_NONE,10000,NULL,&fds,NULL,&e);
-    if(!r){g_strlcpy(error,e->message,capacity);g_error_free(e);goto fail;}
-    int handle;g_variant_get(r,"(h)",&handle);g_variant_unref(r);
-    p->fd=g_unix_fd_list_get(fds,handle,&e);g_object_unref(fds);
-    if(p->fd<0){g_strlcpy(error,e->message,capacity);g_error_free(e);goto fail;}
+    if(fc_portal_refresh(p,error,capacity)<0)goto fail;
     g_main_context_pop_thread_default(p->context);return p;
 fail:
     g_main_context_pop_thread_default(p->context);fc_portal_close(p);return NULL;

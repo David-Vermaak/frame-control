@@ -44,7 +44,10 @@ class Helpers(unittest.TestCase):
 
     @unittest.skipUnless(shutil.which("bash"), "needs bash")
     def test_launch_script_parses(self):
-        r = subprocess.run(["bash", "-n"], input=frame_macview.LAUNCH, text=True, capture_output=True)
+        bash = str(Path(os.environ.get("ProgramFiles", "C:/Program Files")) / "Git/bin/bash.exe") if sys.platform == "win32" else "bash"
+        if sys.platform == "win32" and not Path(bash).exists():
+            self.skipTest("Git Bash is not installed (WSL bash is not a local shell)")
+        r = subprocess.run([bash, "-n"], input=frame_macview.LAUNCH.encode("utf-8"), capture_output=True)
         self.assertEqual(r.returncode, 0, r.stderr)
 
     def test_show_checks_the_source_before_anything_else(self):

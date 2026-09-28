@@ -105,6 +105,17 @@ class AdapterTests(unittest.TestCase):
         with self.assertRaises(frame_macview.MacViewError):
             view.show('separate:12')
 
+    def test_session_end_releases_native_input_only_once(self):
+        session = object.__new__(agent.Session)
+        session.lock, session.input_lock = threading.RLock(), threading.RLock()
+        session.stop_event = threading.Event()
+        session.ws, session.input = mock.Mock(), mock.Mock()
+        session.released = False
+        session.end()
+        session.end()
+        session.input.release.assert_called_once()
+        self.assertTrue(session.stop_event.is_set())
+
     def test_stats_keep_capture_time_and_bound_records(self):
         stats = Stats(lambda: 10000000)
         stats.input(dict(t='m', i=1, tv=9999990))

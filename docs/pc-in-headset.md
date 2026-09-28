@@ -78,11 +78,12 @@ window resize/minimize, and non-US keyboard layouts.
 - Mac virtual-display separation remains Mac-only. Windows WGC and the
   Linux portal share the selected window directly.
 
-Current adaptation limitation: PC gating follows the shared frame-rate tier.
-Live bitrate updates are applied to x264. Hardware encoders retain their
-initial bitrate, and PC resolution does not yet follow the controller's
-scale tier. This is an explicit remaining gap, not a measured performance
-claim.
+PC capture follows the shared frame-rate and resolution tiers. x264 updates
+bitrate while running. Hardware encoders are drained and reopened when the
+budget changes materially, at most once a second, because their live property
+support varies. Reopening starts a new keyframe and retains the consented
+portal session. **Untested:** hardware reconfiguration latency and whether a
+particular desktop permits reconnecting its PipeWire stream this way.
 
 ## Build and measure
 
@@ -124,8 +125,36 @@ same bounded shaping relay, without administrator privileges.
   latency p50/p95 83/156.5 ms. This establishes the existing viewer/transport
   route, not Windows/Linux capture, input or a latency target. The probe's
   helper, tunnel and viewer were stopped afterward.
-- **CI, pending:** Ubuntu x64/ARM64 and Windows native library builds and
-  x264 test-pattern protocol tests. No Windows or Linux desktop VM was used.
+- **Verified in CI:** native library builds and real x264 protocol tests passed
+  on Windows, Ubuntu x64 and Ubuntu ARM64 in
+  [run 36422214445](https://github.com/saphid/frame-control/actions/runs/36422214445).
+  All four installer builds passed in
+  [run 36422214425](https://github.com/saphid/frame-control/actions/runs/36422214425).
+  These are build/synthetic tests, not desktop-host verification. No VM was used.
+- **Verified, real Frame, same build/date:** the ARM64 PC agent and its
+  bundled libraries ran from a temporary user directory, using x264's moving
+  test pattern. Traffic travelled Frame → Mac SSH relay → Frame viewer.
+  The shared bench recorded 351 drawn frames, content p50/p95 15.1/80.3 ms,
+  and 34.8 fps. The frame-rate and late-frame targets failed. This checks the
+  new agent and real viewer together; it is not a representative PC link.
+  The helper exited 0, its viewer/tunnels stopped, and its directory was removed.
+  [Raw benchmark result](../bench/results/2026-09-28-c5fc552-dirty-pc-agent-frame-arm64-hairpin.json).
+  This first probe's input echo measured message receipt to the next capture,
+  not a visible pattern response; later builds make test clicks change its color.
+- **Verified, Mac:** all 600 states in a 60-second congestion/recovery trace
+  matched the original Swift controller. `tests/test_pc_controller.py` retains
+  the original trace digest as a regression check.
 - **Untested:** real Windows WGC → Media Foundation → Frame; real Linux
   portal → PipeWire → VA-API/x264 → Frame; physical laser input on either.
   No benchmark numbers for those desktop paths are claimed.
+
+## Independent review availability
+
+A direct read-only review was attempted with
+`devin -p --model swe-2-max --permission-mode auto --prompt-file …`. The first
+attempt exited 0 after rejecting a tool that needed interactive permission;
+it did not inspect the diff. A full inline-diff attempt returned no output
+for 15 minutes and was terminated (shell exit 143). A smaller inline native
+code review returned no output within 300 seconds (process exit -15).
+SWE-2 Max was requested; no completed review or findings were received, so
+independent review is **unverified**, not a passed check. The PR remains draft.

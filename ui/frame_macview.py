@@ -56,12 +56,12 @@ BROWSER_FLAGS = []
 PANEL_BOX = (1920, 1080)
 
 # Opens one viewer on gamescope's X display and gives its window its own panel
-# id. Args: appid url width height tag [browser flags...]. The page puts "[tag]" in its title at
+# id. Args: appid url width height tag profile [browser flags...]. The page puts "[tag]" in its title at
 # once, which is how its X window is found (Chromium may hand the URL to an
 # instance that's already running, so there's no process to follow).
 LAUNCH = r"""set -u
-appid=$1 url=$2 w=$3 h=$4 tag=$5
-shift 5
+appid=$1 url=$2 w=$3 h=$4 tag=$5 profile=$6
+shift 6
 export DISPLAY=:0 LC_ALL=C.UTF-8
 unset WAYLAND_DISPLAY
 if ! xprop -root GAMESCOPE_FOCUSABLE_WINDOWS >/dev/null 2>&1; then
@@ -73,15 +73,15 @@ common=(--ozone-platform=x11 --force-device-scale-factor=1 --no-first-run --no-d
   --disable-features=Translate,MediaRouter --autoplay-policy=no-user-gesture-required
   "--window-size=$w,$h" "$@" "--app=$url")
 if [ -x "$HOME/chromium-xr/chrome" ]; then
-  cmd=("$HOME/chromium-xr/chrome" "--user-data-dir=$HOME/.local/share/frame-control/mac-view" "${common[@]}")
+  cmd=("$HOME/chromium-xr/chrome" "--user-data-dir=$HOME/.local/share/frame-control/$profile" "${common[@]}")
 elif flatpak info org.chromium.Chromium >/dev/null 2>&1; then
   cmd=(flatpak run org.chromium.Chromium
-    "--user-data-dir=$HOME/.var/app/org.chromium.Chromium/data/frame-mac-view" "${common[@]}")
+    "--user-data-dir=$HOME/.var/app/org.chromium.Chromium/data/frame-$profile" "${common[@]}")
 else
   echo "NO_BROWSER"
   exit 3
 fi
-log=/tmp/frame-mac-view.log
+log=/tmp/frame-$profile.log
 setsid nohup "${cmd[@]}" >>"$log" 2>&1 </dev/null &
 for _ in $(seq 1 60); do
   sleep 0.5
@@ -117,6 +117,7 @@ def fit(w, h, box=PANEL_BOX):
 
 class MacView:
     host = "mac"
+    viewer_profile = "mac-view"
 
     def __init__(self, tunnel_ssh, run, frame, track=None):
         self.tunnel_ssh = list(tunnel_ssh)
@@ -200,7 +201,7 @@ class MacView:
                     break
                 self.agent.kill()
             else:
-                raise MacViewError(f"The Mac streaming helper didn't start: {line.strip() or 'no output'}")
+                raise MacViewError(f"The streaming helper didn't start: {line.strip() or 'no output'}")
             if self.port != int(m.group(1)):
                 self._drop_tunnel()
             self.port = int(m.group(1))
@@ -216,7 +217,7 @@ class MacView:
             with urllib.request.urlopen(req, timeout=10) as r:
                 return json.load(r)
         except (urllib.error.URLError, OSError, ValueError) as e:
-            raise MacViewError(f"The Mac streaming helper didn't answer: {e}")
+            raise MacViewError(f"The streaming helper didn't answer: {e}")
 
     # ---- the tunnel from the Frame ----
 
@@ -381,7 +382,7 @@ class MacView:
                   "bpp": q["bpp"]}
         url = f"http://127.0.0.1:{self.remote_port}/view?{urlencode(params)}"
         w, h = fit(width or 1280, height or 720)
-        args = " ".join(_quote(str(a)) for a in (appid, url, w, h, tag, *self.browser_flags))
+        args = " ".join(_quote(str(a)) for a in (appid, url, w, h, tag, self.viewer_profile, *self.browser_flags))
         try:
             out = self.run("bash -s -- " + args, stdin=LAUNCH, timeout=60)
         except Exception as e:  # noqa: BLE001 - the server's Failure carries the Frame's words
@@ -413,7 +414,8 @@ class MacView:
             if self.shown or self.shows != shows or self.launching:
                 return
             try:
-                self.run("pkill -f '[f]rame-control/mac-view|[d]ata/frame-mac-view' || true", timeout=10)
+                pattern = "[f]rame-control/" + self.viewer_profile + "|[d]ata/frame-" + self.viewer_profile
+                self.run("pkill -f " + _quote(pattern) + " || true", timeout=10)
             except Exception:
                 pass
 

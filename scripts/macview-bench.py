@@ -255,7 +255,10 @@ class LabView(frame_macview.MacView):
 
 def ssh_runner(base):
     def run(remote, stdin=None, timeout=30):
-        r = subprocess.run([*base, remote], input=stdin, capture_output=True, text=True, timeout=timeout)
+        r = subprocess.run([*base, remote], input=stdin.encode("utf-8") if stdin is not None else None,
+                           capture_output=True, timeout=timeout)
+        r.stdout = r.stdout.decode("utf-8", errors="replace")
+        r.stderr = r.stderr.decode("utf-8", errors="replace")
         if r.returncode:
             e = RuntimeError((r.stderr or r.stdout).strip())
             e.stdout = r.stdout
@@ -386,6 +389,7 @@ def run_scenario(args, scenario, agent_port, token, frame_ssh):
     cpu = None
     if args.pc:
         mv.host = "windows" if sys.platform == "win32" else "linux"
+        mv.viewer_profile = "pc-view"
     try:
         if scenario in ("scroll", "type"):
             chrome = chrome_window(f"{scenario}.html")
@@ -754,7 +758,7 @@ def document(args, frame_ssh, results, **extra):
     commit = git("rev-parse", "--short", "HEAD") + ("+dirty" if git("status", "--porcelain", "--", "mac", "ui") else "")
     return {
         "label": args.label or args.cmd, "date": datetime.datetime.now().isoformat(timespec="seconds"), "commit": commit,
-        "config": {"quality": args.quality, "mode": args.mode, "net": args.net or "none", "delay_ms": args.delay,
+        "config": {"quality": args.quality, "mode": "native" if args.pc else args.mode, "net": args.net or "none", "delay_ms": args.delay,
                    "buffer_ms": args.buffer, "host": args.host or args.frame, "usb": args.usb, "ssh_opts": args.ssh_opt,
                    "encoder": os.environ.get("FRAME_MAC_VIEW_ENCODER", ""), "duration_s": args.duration,
                    "browser_flags": args.browser_flag if args.browser_flag is not None else frame_macview.BROWSER_FLAGS},

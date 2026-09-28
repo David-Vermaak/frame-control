@@ -92,19 +92,19 @@ int fc_update(FCController *c,int64_t now) {
     int64_t age=c->flight.n ? now-c->flight.a[0].t : 0;
     int delivered=rate(&c->acked),sending=rate(&c->sent);
     if(c->sent.n) c->frame_bytes=sending/16/c->sent.n;
-    int demand=MIN(c->captures.n,MIN(c->max_fps,fps[c->tier]))*c->frame_bytes*8;
+    int demand=(int)MIN((int64_t)MIN(c->captures.n,MIN(c->max_fps,fps[c->tier]))*c->frame_bytes*8,2147483647);
     int signal=(sending>=c->target/2 && queue>40000)||c->held>=3||age>baseline+100000;
     int congested=signal && c->signal;c->signal=signal;c->held=0;
     if(congested && now-c->decrease>300000) {
-        int next=MAX(300000,MIN(c->target*4/5,MAX(delivered*9/10,c->target/2)));
-        if(demand>0 && demand*2<=c->target*5/4) next=MAX(next,MIN(c->target,demand*2));
+        int next=MAX(300000,MIN((int64_t)c->target*4/5,MAX((int64_t)delivered*9/10,c->target/2)));
+        if(demand>0 && (int64_t)demand*2<=(int64_t)c->target*5/4) next=MAX(next,MIN(c->target,(int64_t)demand*2));
         c->target=next;c->decrease=now;
     } else if(!congested && now-c->decrease>1000000 && now-c->increase>250000 && c->target<c->ceiling &&
-              (sending>c->target*6/10 || now-c->decrease>3000000)) {
-        c->target=MIN(c->ceiling,(int)(c->target*1.1)+50000);c->increase=now;
+              (sending>(int64_t)c->target*6/10 || now-c->decrease>3000000)) {
+        c->target=MIN(c->ceiling,(int64_t)(c->target*1.1)+50000);c->increase=now;
     }
     double share=(double)c->target/MAX(c->ceiling,1);
-    if(c->tier<4 && share<floors[c->tier] && sending>=c->target*7/10) {
+    if(c->tier<4 && share<floors[c->tier] && sending>=(int64_t)c->target*7/10) {
         if(!c->below)c->below=now;
         if(now-c->below>500000) {
             for(c->tier=0;c->tier<4 && share<floors[c->tier];c->tier++) {}

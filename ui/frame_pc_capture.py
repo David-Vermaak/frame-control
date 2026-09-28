@@ -45,12 +45,14 @@ class Native:
             'fc_capture_pull': (C.c_int, [C.c_void_p, C.POINTER(Encoded)]),
             'fc_capture_error': (C.c_char_p, [C.c_void_p]),
             'fc_capture_bitrate': (None, [C.c_void_p, C.c_int]),
-            'fc_capture_key': (None, [C.c_void_p]), 'fc_capture_close': (None, [C.c_void_p]),
+            'fc_capture_key': (None, [C.c_void_p]),
+            'fc_capture_test': (None, [C.c_void_p, C.c_uint32]), 'fc_capture_close': (None, [C.c_void_p]),
         }
         if sys.platform.startswith('linux'):
             signatures.update({
                 'fc_portal_select': (C.c_void_p, [C.c_char_p, C.c_int]),
                 'fc_portal_close': (None, [C.c_void_p]),
+                'fc_portal_refresh': (C.c_int, [C.c_void_p, C.c_char_p, C.c_int]),
                 'fc_portal_value': (C.c_int, [C.c_void_p, C.c_int]),
                 'fc_portal_input': (C.c_int, [C.c_void_p, C.c_int, C.c_double, C.c_double, C.c_int, C.c_int]),
             })
@@ -113,7 +115,7 @@ def dimensions(w, h, maximum):
 def pipeline(source, platform, encoder, w, h, fps, bitrate, codec='h264'):
     """Only locally constructed numeric source IDs enter the pipeline parser."""
     if source['src'] == 'test':
-        capture = 'videotestsrc is-live=true pattern=ball'
+        capture = 'videotestsrc name=source is-live=true pattern=ball'
     elif platform == 'win32':
         kind, ident = source['src'].split(':')
         if kind not in ('window', 'display') or not re.fullmatch(r'[0-9]+', ident):
@@ -124,7 +126,7 @@ def pipeline(source, platform, encoder, w, h, fps, bitrate, codec='h264'):
         capture = 'pipewiresrc fd=%d path=%d do-timestamp=true' % (source['fd'], source['node'])
     # The source gate runs before conversion/encoding. There is no leaky queue
     # of H.264 frames; every encoded reference frame reaches the socket.
-    raw = '%s ! video/x-raw,framerate=%d/1 ! identity name=gate ! videoconvert ! videoscale ! video/x-raw,width=%d,height=%d' % (capture, fps, w, h)
+    raw = '%s ! video/x-raw,framerate=%d/1 ! identity name=gate ! videoconvert ! videoscale add-borders=false ! video/x-raw,width=%d,height=%d' % (capture, fps, w, h)
     if codec == 'jpeg':
         enc = 'jpegenc name=enc quality=80'
         parse = ''
@@ -158,12 +160,16 @@ class PortalInput:
             raise RuntimeError('The desktop portal refused input; check the sharing permission')
 
     def release(self):
-        for b in list(self.buttons):
-            self.emit(1, code=b, down=0)
-            self.buttons.discard(b)
-        for k in list(self.keys):
-            self.emit(3, code=k, down=0)
-            self.keys.discard(k)
+        error = None
+        for values, kind in ((self.buttons, 1), (self.keys, 3)):
+            for code in list(values):
+                try:
+                    self.emit(kind, code=code, down=0)
+                    values.discard(code)
+                except RuntimeError as e:
+                    error = e
+        if error:
+            raise error
 
     def handle(self, m):
         t = m['t']
@@ -282,12 +288,22 @@ class WindowsInput:
         self.buttons, self.keys = set(), set()
 
     def release(self):
+        error = None
         for button in list(self.buttons):
-            self.host.send(mouse=(0, 0, 0, {0: 4, 1: 0x40, 2: 0x10}[button]))
-            self.buttons.discard(button)
+            try:
+                self.host.send(mouse=(0, 0, 0, {0: 4, 1: 0x40, 2: 0x10}[button]))
+                self.buttons.discard(button)
+            except RuntimeError as e:
+                error = e
         for vk in list(self.keys):
-            self.host.send(key=(vk, 0, 2))
-            self.keys.discard(vk)
+            try:
+                extended = 1 if vk in (33, 34, 35, 36, 37, 38, 39, 40, 45, 46, 91, 92, 163, 165) else 0
+                self.host.send(key=(vk, 0, 2 | extended))
+                self.keys.discard(vk)
+            except RuntimeError as e:
+                error = e
+        if error:
+            raise error
 
     def handle(self, m):
         t, u = m['t'], self.host.user
@@ -328,7 +344,8 @@ class WindowsInput:
             if re.fullmatch(r'Key[A-Z]', code) or re.fullmatch(r'Digit[0-9]', code):
                 vk = ord(code[-1])
             if vk:
-                self.host.send(key=(vk, 0, 0 if down else 2))
+                extended = 1 if vk in (33, 34, 35, 36, 37, 38, 39, 40, 45, 46, 91, 92, 163, 165) else 0
+                self.host.send(key=(vk, 0, extended | (0 if down else 2)))
                 (self.keys.add if down else self.keys.discard)(vk)
             elif down and len(str(m.get('key', ''))) == 1:
                 self.handle({'t': 'text', 's': m['key']})

@@ -85,6 +85,15 @@ FC_API const char *fc_capture_error(Capture *c) {return c->error;}
 FC_API void fc_capture_bitrate(Capture *c,int bps) {
     g_object_set(c->encoder,"bitrate",(guint)MAX(1,bps/1000),NULL);
 }
+FC_API void fc_capture_test(Capture *c,uint32_t input) {
+    GstElement *source=gst_bin_get_by_name(GST_BIN(c->pipeline),"source");
+    if(source) {
+        /* Each benchmark click visibly changes the ball, before injection is
+         * timestamped. This is a response, not merely a protocol input echo. */
+        guint color=0xff000000u | ((input*2654435761u)&0x00ffffffu);
+        g_object_set(source,"foreground-color",color,NULL);gst_object_unref(source);
+    }
+}
 FC_API void fc_capture_key(Capture *c) {
     GstPad *p=gst_element_get_static_pad(c->encoder,"src");
     gst_pad_send_event(p,gst_video_event_new_upstream_force_key_unit(GST_CLOCK_TIME_NONE,TRUE,0));gst_object_unref(p);

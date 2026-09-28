@@ -13,6 +13,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import math
 import os
+import queue
 from pathlib import Path
 import secrets
 import socket
@@ -138,8 +139,12 @@ class Session:
         self.stop_event, self.key_event = threading.Event(), threading.Event()
         self.lock, self.input_lock = threading.RLock(), threading.RLock()
         self.pending, self.last_submit = {}, 0
+        self.reconfiguring = False
+        self.test_inputs = queue.Queue(maxsize=128)
         self.input = None if self.src == 'test' else WindowsInput(agent.windows, source) if agent.windows else PortalInput(self.native, source)
         self.writer = None
+        self.released = False
+        self.input_enabled = self.src == 'test' or self.source.get('devices', 3) == 3
 
     def gate(self, stage, pts, capture, arrived):
         # Exceptions cannot cross a ctypes callback boundary.
@@ -154,7 +159,7 @@ class Session:
                 self.stats.captured += 1
                 self.controller.call('capture', arrived)
                 state = self.controller.state()
-                if self.pending or arrived-self.last_submit < 1000000/state['fps'] or not self.controller.call('gate', arrived, 1):
+                if self.reconfiguring or len(self.pending) >= 3 or arrived-self.last_submit < 1000000/state['fps'] or not self.controller.call('gate', arrived, 1):
                     self.stats.skipped += 1
                     return 0
                 self.pending[pts] = dict(cap=capture, arr=arrived, e0=arrived, tier=state['tier'], br=state['target'])
@@ -164,10 +169,20 @@ class Session:
             self.stop_event.set()
             return 0
 
+    def fresh_pipewire(self):
+        if 'portal' not in self.source:
+            return
+        error = C.create_string_buffer(1024)
+        fd = self.native.lib.fc_portal_refresh(self.source['portal'], error, len(error))
+        if fd < 0:
+            raise RuntimeError(error.value.decode(errors='replace'))
+        self.source['fd'] = fd
+
     def produce(self):
         native, capture = self.native.lib, None
         try:
             encoder = "x264enc" if self.src == "test" and self.native.has("x264enc") else self.agent.encoder
+            self.fresh_pipewire()
             description = pipeline(self.source, sys.platform, encoder, self.w, self.h, self.fps, self.bitrate, self.codec)
             self.callback = GATE(self.gate)
             error = C.create_string_buffer(1024)
@@ -175,8 +190,14 @@ class Session:
             if not capture:
                 raise RuntimeError(error.value.decode(errors='replace'))
             last_update = last_stats = self.native.now()
-            last_output = last_update
+            last_output = last_config = last_update
+            applied = (self.w, self.h, self.bitrate)
+            wanted = applied
             while not self.stop_event.is_set():
+                while not self.test_inputs.empty():
+                    event = self.test_inputs.get_nowait()
+                    native.fc_capture_test(capture, int(event.get('i', 0)) & 0xffffffff)
+                    self.stats.input(event)
                 output = Encoded()
                 result = native.fc_capture_pull(capture, C.byref(output))
                 now = self.native.now()
@@ -185,9 +206,9 @@ class Session:
                 if result:
                     last_output = now
                     with self.lock:
-                        # Exactly one raw frame is in flight and B-frames are disabled.
-                        # x264 may offset PTS; associate by that single frame,
-                        # keeping the actual pre-encode capture timestamp.
+                        # At most three raw frames are in flight; no B-frames.
+                        # x264 offsets PTS, so match the FIFO encode order while
+                        # retaining the actual pre-encode capture timestamp.
                         raw_pts = next(iter(self.pending), None)
                         record = self.pending.get(raw_pts)
                         if record is None:
@@ -208,12 +229,36 @@ class Session:
                         native.fc_capture_key(capture)
                 if now-last_update >= 100000:
                     target = self.controller.update(now)
-                    # x264 supports live bitrate changes. Hardware elements
-                    # advertise their mutability; the initial bitrate always
-                    # applies. Frame gating remains active for every encoder.
+                    state = self.controller.state()
+                    w, h = dimensions(self.w, self.h, max(320, int(max(self.w, self.h)*state['scale'])))
                     if target and self.codec == 'h264' and encoder == 'x264enc':
                         native.fc_capture_bitrate(capture, target)
+                        self.bitrate = target
+                    # Hardware properties are not uniformly mutable in PLAYING.
+                    # Drain then reopen the pipeline at a keyframe when its
+                    # budget changes materially. The portal fd/session stays
+                    # alive, so this does not bypass or repeat user consent.
+                    desired_bitrate = target or applied[2]
+                    bitrate_change = self.codec == 'h264' and encoder != 'x264enc' and abs(desired_bitrate-applied[2]) > applied[2]*.2
+                    if not self.reconfiguring and now-last_config >= 1000000 and ((w, h) != applied[:2] or bitrate_change):
+                        wanted = (w, h, desired_bitrate)
+                        with self.lock:
+                            self.reconfiguring = True
                     last_update = now
+                if self.reconfiguring:
+                    with self.lock:
+                        drained = not self.pending
+                    if drained:
+                        native.fc_capture_close(capture)
+                        capture = None
+                        self.fresh_pipewire()
+                        description = pipeline(self.source, sys.platform, encoder, wanted[0], wanted[1], self.fps, wanted[2], self.codec)
+                        capture = native.fc_capture_open(description.encode(), self.callback, error, len(error))
+                        if not capture:
+                            raise RuntimeError(error.value.decode(errors='replace'))
+                        applied, self.bitrate, last_config = wanted, wanted[2], now
+                        with self.lock:
+                            self.reconfiguring = False
                 if now-last_stats >= 1000000:
                     self.ws.send(dict(self.stats.summary(), t='stats', bitrate=self.bitrate,
                                       size='%dx%d' % (self.w, self.h), tier=self.controller.state()['tier']))
@@ -235,7 +280,7 @@ class Session:
             return
         self.ws.send(dict(t='hello', r=self.key))
         self.ws.send(dict(t='info', src=self.src, title=self.source.get('title', self.source.get('name', 'Test pattern')),
-                          app='PC', codec=self.codec, input=self.src == 'test' or self.source.get('devices', 3) == 3,
+                          app='PC', codec=self.codec, input=self.input_enabled,
                           inputMessage='Allow pointer and keyboard control in the host sharing dialog.',
                           aspect=self.w/self.h, warm=0))
         with self.lock:
@@ -264,8 +309,23 @@ class Session:
                         if self.stop_event.is_set():
                             break
                         if self.input:
-                            self.input.handle(m)
-                        self.stats.input(m)
+                            if not self.input_enabled and t != 'release':
+                                continue
+                            try:
+                                self.input.handle(m)
+                                self.stats.input(m)
+                            except RuntimeError as e:
+                                self.input_enabled = False
+                                try:
+                                    self.input.release()
+                                except RuntimeError:
+                                    pass
+                                self.ws.send(dict(t='error', message=str(e)))
+                        elif m.get('i'):
+                            try:
+                                self.test_inputs.put_nowait(m)
+                            except queue.Full:
+                                pass
         finally:
             self.end()
             self.writer.join(6)
@@ -277,7 +337,8 @@ class Session:
             self.stop_event.set()
         self.ws.close()
         with self.input_lock:
-            if self.input:
+            if self.input and not self.released:
+                self.released = True
                 try:
                     self.input.release()
                 except (RuntimeError, OSError):
@@ -294,6 +355,7 @@ class Agent:
         self.windows = Windows() if sys.platform == 'win32' else None
         self.encoder = 'mfh264enc' if self.windows else 'vah264enc' if native.has('vah264enc') else 'x264enc'
         self.shutting_down = False
+        self.selection_generation = 0
 
     def lists(self):
         if self.windows:
@@ -316,6 +378,7 @@ class Agent:
         if len(self.sources) >= 8:
             raise ValueError('Stop a panel before sharing another source')
         self.selecting, self.selection_error = True, ''
+        generation = self.selection_generation
         def choose():
             error = C.create_string_buffer(1024)
             portal = self.native.lib.fc_portal_select(error, len(error))
@@ -323,7 +386,7 @@ class Agent:
                 self.selecting = False
                 if not portal:
                     self.selection_error = error.value.decode(errors='replace')
-                elif self.shutting_down:
+                elif self.shutting_down or generation != self.selection_generation:
                     self.native.lib.fc_portal_close(portal)
                 else:
                     fd, node, w, h, devices = [self.native.lib.fc_portal_value(portal, i) for i in range(5)]
@@ -334,6 +397,8 @@ class Agent:
 
     def stop(self, src=None):
         with self.lock:
+            if src is None:
+                self.selection_generation += 1
             self.grants.revoke(src)
             sessions = [s for s in self.sessions.values() if src is None or s.src == src]
             for session in sessions:
@@ -452,8 +517,19 @@ class Handler(BaseHTTPRequestHandler):
             # under the same lock as redemption, before any capture starts.
             session = Session(agent, WebSocket(self), key, source, query)
             for old in list(agent.sessions.values()):
-                if old.key == key:
+                if old.key == key or old.src == source['src']:
+                    if old.key != key:
+                        agent.grants.keys.pop(old.key, None)
+                        try:
+                            old.ws.send(dict(t='close'))
+                        except OSError:
+                            pass
                     old.end()
+                    if old.writer:
+                        old.writer.join(6)
+                        if old.writer.is_alive():
+                            session.controller.close()
+                            raise ValueError('The previous capture is still stopping; retry shortly')
             ident = agent.next_id
             agent.next_id += 1
             agent.sessions[ident] = session
@@ -468,6 +544,11 @@ class Handler(BaseHTTPRequestHandler):
         except (OSError, ValueError, RuntimeError):
             session.end()
         finally:
+            session.end()
+            if session.writer:
+                session.writer.join(6)
+            if not session.writer or not session.writer.is_alive():
+                session.controller.close()
             with agent.lock:
                 agent.sessions.pop(ident, None)
             self.close_connection = True

@@ -6,11 +6,13 @@ are different. No second viewer, SSH supervisor or benchmark launcher.
 """
 import os
 import sys
+import subprocess
 from frame_macview import MacView, MacViewError, ROOT
 from frame_pc_capture import LIBRARY, NATIVE
 
 
 class PCView(MacView):
+    viewer_profile = 'pc-view'
     host = 'windows' if sys.platform == 'win32' else 'linux'
 
     def __init__(self, *args, **kwargs):
@@ -39,13 +41,34 @@ class PCView(MacView):
         env = super().agent_environment()
         env['GST_PLUGIN_PATH_1_0'] = str(NATIVE / 'lib' / 'gstreamer-1.0')
         env['GST_PLUGIN_SYSTEM_PATH_1_0'] = ''
-        env['GST_REGISTRY_1_0'] = str(NATIVE.parent / 'registry.bin') if os.access(NATIVE.parent, os.W_OK) else os.path.join(os.path.expanduser('~'), '.cache', 'frame-control-gst.bin')
+        cache = os.path.join(os.path.expanduser('~'), '.cache', 'frame-control')
+        os.makedirs(cache, exist_ok=True)
+        env['GST_REGISTRY_1_0'] = os.path.join(cache, 'gstreamer-registry.bin')
         env['GST_REGISTRY_FORK'] = 'no'
         if sys.platform == 'win32':
             env['PATH'] = str(NATIVE / 'bin') + os.pathsep + env.get('PATH', '')
         else:
             env['LD_LIBRARY_PATH'] = str(NATIVE / 'lib') + os.pathsep + env.get('LD_LIBRARY_PATH', '')
         return env
+
+    def shutdown(self):
+        self.closing = True
+        try:
+            self.stop()
+        except MacViewError:
+            pass
+        if self.tunnel and self.tunnel.poll() is None:
+            self.tunnel.terminate()
+        if self.agent and self.agent.poll() is None:
+            # EOF gives the host a chance to release held input and portal
+            # sessions, including on Windows where terminate is uncatchable.
+            if self.agent.stdin:
+                self.agent.stdin.close()
+            try:
+                self.agent.wait(10)
+            except subprocess.TimeoutExpired:
+                self.agent.kill()
+                self.agent.wait(5)
 
     def _show(self, src, quality, width, height):
         if src.startswith('separate:'):
