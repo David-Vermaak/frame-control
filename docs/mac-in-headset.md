@@ -76,6 +76,17 @@ The Frame is built around Steam streaming, so this was checked first
   host. It would still be one screen in one panel: Remote Play has
   nothing like one panel per Mac window, so Frame Control's own stream
   stays the way to see separate windows.
+- **Steam has a "stream desktop" call, and it pairs with a Mac
+  (verified 2026-09-28).** In the Remote Play device list, the Frame's
+  Steam UI calls `SteamClient.RemotePlay.StartDesktopStream(<client id>)`
+  for a connected device. Called over CDP with the Mac's client ID, it made
+  the Mac's Steam show "Authorize Device" and ask for a 4-digit code shown
+  on the Frame. Once the code was entered, the Mac logged
+  `k_ERemoteDeviceAuthorizationSuccess`. No stream started in that attempt,
+  and a second attempt, now that the device is authorized, is the next
+  test. If it streams the Mac's desktop, that's a whole-screen option built
+  into Steam: one panel, Valve's encoder and transport. It still wouldn't
+  give each window its own panel.
 - **What Steam's work did give us: the USB-C link.** Plugged into the Mac,
   the Frame appears as a network port called "Steam Frame". Steam's Remote
   Play discovery uses it, and so does Frame Control's stream now (see
@@ -83,14 +94,17 @@ The Frame is built around Steam streaming, so this was checked first
 
 Next steps, once Steam on the Frame is healthy:
 
-1. Stream the one Mac game installed here (Fortune Mill) from the Frame's
+1. Call `StartDesktopStream` again now that the Frame is authorized, and
+   compare its latency and sharpness with Frame Control's stream of the same
+   screen.
+2. Stream the one Mac game installed here (Fortune Mill) from the Frame's
    library, over Wi-Fi and over USB-C.
-2. Record whether it starts, how it's shown, and its latency. Steam's
+3. Record whether it starts, how it's shown, and its latency. Steam's
    streaming overlay shows this; our benchmark can't measure it.
-3. While streaming, switch away from the game on the Mac, and see whether
+4. While streaming, switch away from the game on the Mac, and see whether
    the Mac's desktop appears in the headset, and whether its keyboard and
    pointer work.
-4. If it works, Frame Control's Games page could offer "Stream from the
+5. If it works, Frame Control's Games page could offer "Stream from the
    Mac" for Mac-installed games.
 
 ## How it works
