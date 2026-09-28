@@ -280,19 +280,21 @@ class InstallTests(unittest.TestCase):
         self.assertIn(('remove', '3346865537'), [c.args for c in api.call_args_list])
         self.assertTrue(any(c.args[0] == 'rm -rf Applications/Android/org.test.vr' for c in ssh.call_args_list))
 
-    def test_remove_keeps_data_when_requested_and_surfaces_api_failure(self):
-        with patch.object(android, '_meta_or_fail', return_value=dict(self.existing)), \
+    def test_remove_keeps_data_when_requested_and_survives_steam_failure(self):
+        with patch.object(android, '_meta_or_fail', side_effect=lambda pkg: dict(self.existing)), \
                 patch.object(android, 'stop'), \
                 patch.object(android, 'shortcut_tool', return_value='{"warnings": []}') as api, \
                 patch.object(android, 'ssh') as ssh:
             android.remove('org.test.vr', keep_data=True)
             api.assert_called_once_with('remove', '3346865537')
             ssh.assert_called_once_with('rm -rf Applications/Android/org.test.vr')
-            api.side_effect = android.FrameError('CDP unavailable')
+            api.side_effect = android.FrameError('SharedJSContext not found: is the Steam client running?')
             ssh.reset_mock()
-            with self.assertRaises(android.FrameError):
-                android.remove('org.test.vr')
-            ssh.assert_not_called()
+            result = android.remove('org.test.vr')
+            ssh.assert_called_once_with('rm -rf Applications/Android/org.test.vr '
+                                        '.local/share/Steam/steamapps/compatdata/2800000001 '
+                                        '.local/share/Steam/steamapps/shadercache/2800000001')
+            self.assertIn('Steam client running', result['library_warnings'][0])
 
     def test_stop_requests_steam_and_has_container_fallback(self):
         with patch.object(android, '_meta_or_fail', return_value=self.existing), \
@@ -312,6 +314,7 @@ class SteamAPITests(unittest.TestCase):
         self.assertIn('SetShortcutIsVR(id, true)', js)
         self.assertIn('SetShortcutName(id, "A \\"name\\"\\n")', js)
         self.assertIn('SetCustomArtworkForApp(id, data, ext, type)', js)
+        self.assertLess(js.index('ClearCustomArtworkForApp(id, type)'), js.index('SetCustomArtworkForApp(id, data, ext, type)'))
         self.assertEqual(shortcuts.ASSETS, {'grid': 0, 'hero': 1, 'logo': 2, 'wide': 3, 'icon': 4})
         self.assertIn('NewUnsavedCollection(name, undefined, [app])', js)
 
@@ -322,6 +325,49 @@ class SteamAPITests(unittest.TestCase):
         self.assertIn('[0, 1, 2, 3]', js)
         self.assertLess(js.index('ClearCustomArtworkForApp(id, type)'), js.index('RemoveShortcut(id)'))
         self.assertIn('const wanted = []', js)
+        self.assertNotIn('throw', js)  # tidy-up failures are warnings; RemoveShortcut always runs
+
+    def test_devkit_configure_leaves_vr_flag_and_uses_sideloaded(self):
+        slots = {slot: str(FIXTURES / 'icon.png') for slot in art.SLOTS}
+        with patch.object(shortcuts, 'evaluate', return_value={'warnings': []}) as evaluate:
+            shortcuts.configure(42, 'Game', '', '', '/icon', None, slots, {'category': 'Sideloaded'})
+        js = evaluate.call_args.args[0]
+        self.assertIn('if (null !== null)', js)
+        self.assertIn('const wanted = ["Sideloaded"]', js)
+        with patch.object(sys, 'argv', ['steam_shortcuts.py', 'configure', '42', 'Game', '', '', '/icon', '',
+                                        json.dumps(slots), '{}']), \
+                patch.object(shortcuts, 'configure', return_value={}) as configure, patch('builtins.print'):
+            shortcuts.main()
+        self.assertIsNone(configure.call_args.args[5])
+
+    def test_render_writes_jpeg_and_retries_oversized_photo_with_generated_art(self):
+        import base64
+        png = base64.b64encode((FIXTURES / 'icon.png').read_bytes()).decode()
+        jpg = base64.b64encode((FIXTURES / 'icon.jpg').read_bytes()).decode()
+        huge = base64.b64encode(b'\xff\xd8\xff' + b'\0' * (12 * 1024 * 1024)).decode()
+        calls = []
+        def evaluate(js, timeout=20):
+            calls.append((json.loads(js[js.rindex('renderLibraryArtwork(') + 21:-1]), timeout))
+            hero = ['jpg', huge] if len(calls) == 1 else ['png', png]
+            return {'images': {'grid': ['jpg', jpg], 'wide': ['jpg', jpg], 'hero': hero,
+                               'logo': ['png', png], 'icon': ['png', png]}, 'warnings': []}
+        with tempfile.TemporaryDirectory() as tmp:
+            for name in ('icon.png', 'hero.jpg'):
+                Path(tmp, 'source-' + name).write_bytes((FIXTURES / ('icon.jpg' if name.endswith('jpg') else 'icon.png')).read_bytes())
+            Path(tmp, 'hero.png').write_bytes(b'stale')
+            plan = Path(tmp, 'input.json')
+            plan.write_text(json.dumps({'label': 'Game', 'images': {'icon': str(Path(tmp, 'source-icon.png')),
+                                                                     'hero': str(Path(tmp, 'source-hero.jpg'))}}))
+            with patch.object(shortcuts, 'evaluate', side_effect=evaluate):
+                result = shortcuts.render(str(plan))
+            self.assertEqual(set(calls[0][0]['images']), {'icon', 'hero'})
+            self.assertEqual(set(calls[1][0]['images']), {'icon'})
+            self.assertEqual([c[1] for c in calls], [75, 75])
+            self.assertTrue(result['paths']['grid'].endswith('grid.jpg'))
+            self.assertTrue(result['paths']['hero'].endswith('hero.png'))
+            self.assertIn('generated art used', result['warnings'][0])
+            self.assertFalse(Path(tmp, 'hero.jpg').exists())
+            self.assertEqual(Path(tmp, 'grid.jpg').read_bytes(), (FIXTURES / 'icon.jpg').read_bytes())
 
     def test_stop_uses_exact_64_bit_game_id_string(self):
         with patch.object(sys, 'argv', ['steam_shortcuts.py', 'stop', '3346865537']), \
@@ -335,7 +381,7 @@ class SteamContextTests(unittest.TestCase):
     def test_collection_lifecycle_and_native_artwork_calls(self):
         steam = {'apps': [], 'shortcuts': [{'appid': 42, 'name': 'Before'}], 'compat_tools': {},
                  'collections': [{'name': 'Android', 'apps': [999]}]}
-        def evaluate(expression):
+        def evaluate(expression, timeout=20):
             nonlocal steam
             proc = subprocess.run(['node', str(ROOT / 'tests/fakeframe/rootfs/usr/local/lib/fakeframe/cef_shim.js')],
                                   input=json.dumps({'id': 1, 'expression': expression, 'awaitPromise': True,
@@ -357,9 +403,34 @@ class SteamContextTests(unittest.TestCase):
                                 {slot: str(FIXTURES / 'icon.png') for slot in art.SLOTS})
             self.assertEqual(steam['shortcuts'][0]['name'], 'Renamed')
             self.assertEqual(steam['collections'][1]['apps'], [])
+            with patch.object(sys, 'argv', ['steam_shortcuts.py', 'list']), patch('builtins.print') as out:
+                shortcuts.main()
+            self.assertEqual(json.loads(out.call_args.args[0]),
+                             [{'appid': 42, 'name': 'Renamed', 'exe': '/exe', 'start_dir': '/dir'}])
             shortcuts.remove(42)
             self.assertEqual(steam['shortcuts'], [])
             self.assertEqual(steam['collections'][0]['apps'], [999])
+
+    @unittest.skipUnless(__import__('shutil').which('node'), 'optional V8 fixture check requires node')
+    def test_remove_without_collections_or_artwork_api_still_removes(self):
+        steam = {'apps': [], 'shortcuts': [{'appid': 42, 'name': 'Game', 'exe': '"/home/steamos/devkit-game/G/g"',
+                                            'start_dir': '/home/steamos/devkit-game/G'}], 'compat_tools': {}}
+        def evaluate(expression, timeout=20):
+            nonlocal steam
+            expression = ('delete globalThis.collectionStore;'
+                          'SteamClient.Apps.ClearCustomArtworkForApp = async () => { throw Error("busy"); };' + expression)
+            proc = subprocess.run(['node', str(ROOT / 'tests/fakeframe/rootfs/usr/local/lib/fakeframe/cef_shim.js')],
+                                  input=json.dumps({'id': 1, 'expression': expression, 'awaitPromise': True,
+                                                    'steam': steam}) + '\n',
+                                  text=True, capture_output=True, timeout=10, check=True)
+            reply = json.loads(proc.stdout)
+            self.assertNotIn('exceptionDetails', reply['result'])
+            steam = reply['steam']
+            return reply['result']['result'].get('value')
+        with patch.object(shortcuts, 'evaluate', side_effect=evaluate):
+            result = shortcuts.remove(42)
+        self.assertEqual(steam['shortcuts'], [])
+        self.assertEqual(len(result['warnings']), 5)
 
 
 if __name__ == '__main__':

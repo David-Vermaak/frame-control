@@ -71,6 +71,13 @@ function build(steam) {
       NewUnsavedCollection(name, filter, apps) { return collection({name, apps: apps.map(a => a.appid)}); },
       async SaveCollection(c) { if (!steam.collections.includes(c.value)) steam.collections.push(c.value); },
     },
+    // Shortcut exe/start folder live in app details, not overviews (Frame, 2026-09-28).
+    appDetailsStore: {
+      GetAppDetails(id) {
+        const s = findShortcut(id);
+        return s ? { strShortcutExe: s.exe, strShortcutStartDir: s.start_dir, bShortcutIsVR: !!s.vr } : null;
+      },
+    },
     appStore: {
       get allApps() { return allApps(); },
       GetAppOverviewByAppID(id) { return allApps().find(a => a.appid === Number(id)) || null; },

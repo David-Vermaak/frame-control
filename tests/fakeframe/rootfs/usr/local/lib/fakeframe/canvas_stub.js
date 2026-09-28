@@ -23,7 +23,8 @@ function surface() {
       drawImage(){canvas.draws++;},getImageData:()=>({data:new Uint8ClampedArray(canvas.width*canvas.height*4)}),
       createLinearGradient:()=>({addColorStop(){}}),createRadialGradient:()=>({addColorStop(){}})};
     for(const method of ['save','restore','beginPath','rect','roundRect','clip','fillRect','putImageData','arc','fill','stroke'])ctx[method]=()=>{};
-    canvas.getContext=()=>ctx;canvas.toDataURL=()=> 'data:image/png;base64,'+png(canvas.width,canvas.height);
+    canvas.getContext=()=>ctx;canvas.toDataURL=type=>type==='image/jpeg'?'data:image/jpeg;base64,'+Buffer.from('ffd8ffe000104a464946','hex').toString('base64'):
+      'data:image/png;base64,'+png(canvas.width,canvas.height);
     canvases.push(canvas);return canvas;
   }};
   class Image {constructor(){this.width=2;this.height=2;} async decode(){if(this.src.includes('YmFk'))throw Error('bad image');}}

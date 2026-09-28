@@ -110,11 +110,83 @@ class EntryPoints(unittest.TestCase):
         config = next(c.args for c in self.api.call_args_list if c.args[0] == 'configure')
         self.assertEqual(json.loads(config[8])['category'], 'Sideloaded')
         self.assertEqual(config[3:5], ('',''))  # Never replace devkit's executable/runtime wiring.
+        self.assertEqual(config[6], '')  # nor the VR flag the title declares
+        self.assertEqual(set(result['artwork']), set(artwork.SLOTS))
 
     def test_native_renamed_shortcut_uses_saved_identity(self):
         self.api.side_effect = lambda *args, **kw: '[{"appid":42,"name":"Renamed"}]'
         with patch.object(titles, 'ssh', return_value='{"shortcut":42}'):
-            self.assertEqual(titles._library_shortcut('Original', 'Original'), 42)
+            self.assertEqual(titles._library_shortcut('Original', '/home/steamos/devkit-game/Original'), 42)
+
+    def test_native_shortcut_never_matched_by_name_alone(self):
+        d = '/home/steamos/devkit-game/Game'
+        shortcuts = [{'appid':1,'name':'Game','exe':'"/home/steamos/.local/bin/game"','start_dir':'/home/steamos'},
+                     {'appid':2,'name':'Other','exe':'"/home/steamos/devkit-game/Game2/g.exe"','start_dir':''}]
+        self.api.side_effect = lambda *args, **kw: json.dumps(shortcuts)
+        with patch.object(titles, 'ssh', return_value=''):
+            self.assertIsNone(titles._library_shortcut('Game', d))
+            shortcuts.append({'appid':3,'name':'Renamed','exe':'"/home/steamos/devkit-game/Game/bin/g.exe"','start_dir':''})
+            self.assertEqual(titles._library_shortcut('Game', d), 3)
+            shortcuts.append({'appid':4,'name':'Copy','exe':'','start_dir':d})
+            with self.assertRaisesRegex(android.FrameError, 'ambiguous'):
+                titles._library_shortcut('Game', d)
+
+    def test_native_cleanup_failure_keeps_original_error(self):
+        with tempfile.TemporaryDirectory() as root:
+            plan = {'id':'Example','name':'Example','root':root,'size':3,'target':'game.exe',
+                    'runtime':'proton-experimental','source':'example.zip'}
+            def ssh(cmd, **kwargs):
+                if 'steamos-prepare-upload' in cmd: return '{"directory":"/home/steamos/devkit-game/Example"}'
+                if 'steam-client-create-shortcut' in cmd: return '{"success":"registered"}'
+                return ''
+            def steam(*args, **kwargs):
+                if args[0] == 'remove': raise android.FrameError('Steam went away')
+                return self.steam(*args)
+            self.api.side_effect = steam
+            with patch.object(titles, 'ssh', side_effect=ssh), patch.object(titles, 'ensure_utils'), \
+                    patch.object(titles, '_copy_tree'), patch.object(titles, '_rsync', return_value=True), \
+                    patch.object(android, 'apply_library', side_effect=android.FrameError('render failed')):
+                with self.assertRaisesRegex(android.FrameError, 'render failed'):
+                    titles._install(plan, lambda *args: None)
+
+    def test_native_remove_survives_steam_being_down(self):
+        cmds = []
+        def ssh(cmd, **kwargs):
+            cmds.append(cmd)
+            return 'yes' if 'test -d' in cmd else '/home/steamos' if 'HOME' in cmd else ''
+        self.api.side_effect = android.FrameError('SharedJSContext not found')
+        with patch.object(titles, 'ssh', side_effect=ssh), patch.object(titles, 'ensure_utils'):
+            titles.remove('Game')
+        self.assertTrue(any('steamos-delete --delete-title Game' in c for c in cmds))
+
+    def test_native_refresh_art_backfills_registered_title(self):
+        meta = {'id':'Game','name':'My Game','source':'game.zip'}
+        writes = []
+        def ssh(cmd, input=None, **kwargs):
+            if 'test -d' in cmd: return 'yes'
+            if 'HOME' in cmd: return '/home/steamos'
+            if cmd.startswith('cat devkit-game/Game-framecontrol.json'): return json.dumps(meta)
+            if cmd == 'python3 -':
+                self.assertIn("/home/steamos/devkit-game/Game/.frame-artwork", input)
+                return json.dumps({'artwork': {'banner': 'YmFubmVy'}, 'icon': ''})
+            if cmd.startswith('cat > devkit-game/Game-framecontrol.json'): writes.append(json.loads(input))
+            return ''
+        shortcuts = [{'appid':7,'name':'My Game','exe':'','start_dir':'/home/steamos/devkit-game/Game'}]
+        self.api.side_effect = lambda *args, **kw: json.dumps(shortcuts) if args[0] == 'list' else self.steam(*args)
+        with patch.object(titles, 'ssh', side_effect=ssh), \
+                patch.object(artwork, 'prepare', return_value=({}, [])) as prepare:
+            result = titles.refresh_art('Game')
+        self.assertEqual(prepare.call_args.args[2], {'banner': b'banner'})
+        self.assertEqual(result['shortcut'], 7)
+        self.assertEqual(set(writes[-1]['artwork']), set(artwork.SLOTS))
+        self.assert_art()
+        shortcuts.clear()
+        with patch.object(titles, 'ssh', side_effect=ssh), \
+                patch.object(titles, 'list_titles', return_value=[{'id':'Game','name':'My Game','frame_control':True},
+                                                                 {'id':'Valve','name':'V','frame_control':False}]):
+            results = titles.refresh_art()
+        self.assertEqual(len(results), 1)
+        self.assertIn("hasn't registered", results[0]['error'])
 
     def test_native_failure_removes_new_blank_shortcut(self):
         with tempfile.TemporaryDirectory() as root:

@@ -24,10 +24,10 @@ def target_ws():
 class WS:
     """Just enough RFC 6455 for one CDP request/response on loopback."""
 
-    def __init__(self, url):
+    def __init__(self, url, timeout=20):
         host_port, path = url[len('ws://'):].split('/', 1)
         host, port = host_port.split(':')
-        self.s = socket.create_connection((host, int(port)), timeout=20)
+        self.s = socket.create_connection((host, int(port)), timeout=timeout)
         key = base64.b64encode(os.urandom(16)).decode()
         self.s.sendall((f'GET /{path} HTTP/1.1\r\nHost: {host_port}\r\nUpgrade: websocket\r\n'
                         f'Connection: Upgrade\r\nSec-WebSocket-Key: {key}\r\n'
@@ -71,8 +71,8 @@ class WS:
                 return msg.decode()
 
 
-def evaluate(js):
-    ws = WS(target_ws())
+def evaluate(js, timeout=20):
+    ws = WS(target_ws(), timeout)
     ws.send(json.dumps({'id': 1, 'method': 'Runtime.evaluate', 'params': {
         'expression': js, 'awaitPromise': True, 'returnByValue': True}}))
     while True:
@@ -89,8 +89,8 @@ def evaluate(js):
 ASSETS = {'grid': 0, 'hero': 1, 'logo': 2, 'wide': 3, 'icon': 4}
 
 
-def collections_js(appid, vr=None, category='Android'):
-    wanted = [] if vr is None else [category, *(['Android VR'] if vr and category == 'Android' else [])]
+def collections_js(appid, wanted=()):
+    wanted = list(wanted)
     return f'''async function syncCollections() {{
       const wanted = {json.dumps(wanted)};
       if (typeof collectionStore === "undefined" ||
@@ -147,6 +147,9 @@ def notes_js(name, details):
     }}'''
 
 
+MAX_ART = 12 * 1024 * 1024  # Steam's custom artwork limit per slot
+
+
 def render(plan):
     with open(plan) as f:
         source = json.load(f)
@@ -154,32 +157,50 @@ def render(plan):
     for slot, path in source['images'].items():
         ext = os.path.splitext(path)[1][1:]
         with open(path, 'rb') as f:
-            data = f.read(12 * 1024 * 1024 + 1)
-        if len(data) > 12 * 1024 * 1024:
+            data = f.read(MAX_ART + 1)
+        if len(data) > MAX_ART:
             raise ValueError('source artwork too large')
         images[slot] = [ext, base64.b64encode(data).decode()]
     renderer = globals().get('ART_RENDERER')
     if renderer is None:
         with open(os.path.join(os.path.dirname(__file__), 'library_artwork.js')) as f:
             renderer = f.read()
-    result = evaluate(renderer + '\nrenderLibraryArtwork(' + json.dumps({'label': source['label'], 'images': images}) + ')')
+    try:
+        return _render(plan, renderer, source['label'], images)
+    except (ValueError, OSError, EOFError, SystemExit) as e:
+        # Generated art from the icon alone always fits; a photo that didn't must not fail the install.
+        result = _render(plan, renderer, source['label'], {k: v for k, v in images.items() if k == 'icon'})
+        result['warnings'].insert(0, 'Source artwork could not be rendered (' + str(e)[:120] + '); generated art used')
+        return result
+
+
+def _render(plan, renderer, label, images):
+    # A 4K photo takes seconds to decode and encode on the Frame; allow well beyond that.
+    result = evaluate(renderer + '\nrenderLibraryArtwork(' + json.dumps({'label': label, 'images': images}) + ')',
+                      timeout=75)
     if not isinstance(result, dict) or set(result.get('images', {})) != set(ASSETS):
         raise ValueError('incomplete artwork render')
     paths = {}
-    for slot, encoded in result['images'].items():
-        path = os.path.join(os.path.dirname(plan), slot + '.png')
+    for slot, (ext, encoded) in result['images'].items():
         data = base64.b64decode(encoded, validate=True)
-        if not data.startswith(b'\x89PNG\r\n\x1a\n') or len(data) > 12 * 1024 * 1024:
-            raise ValueError('invalid rendered image')
-        with open(path + '.tmp', 'wb') as f:
+        signature = {'png': b'\x89PNG\r\n\x1a\n', 'jpg': b'\xff\xd8\xff'}.get(ext)
+        if not signature or not data.startswith(signature) or len(data) > MAX_ART:
+            raise ValueError(slot + ' render is ' + str(len(data)) + ' bytes of ' + str(ext))
+        paths[slot] = os.path.join(os.path.dirname(plan), slot + '.' + ext)
+        with open(paths[slot] + '.tmp', 'wb') as f:
             f.write(data)
+    for slot, path in paths.items():
         os.replace(path + '.tmp', path)
-        paths[slot] = path
-    return {'paths': paths, 'warnings': result.get('warnings', [])}
+        for stale in ('png', 'jpg'):
+            other = os.path.join(os.path.dirname(plan), slot + '.' + stale)
+            if other != path and os.path.exists(other):
+                os.remove(other)
+    return {'paths': paths, 'warnings': list(result.get('warnings', []))}
 
 
 def configure(appid, name, exe, start_dir, icon, vr, artwork, options=None):
     options = options or {}
+    category = options.get('category', 'Android')
     if set(artwork) != set(ASSETS):
         raise ValueError('all five Steam artwork slots are required')
     images = []
@@ -190,8 +211,8 @@ def configure(appid, name, exe, start_dir, icon, vr, artwork, options=None):
         if ext not in ('png', 'jpg'):
             raise ValueError('artwork must be PNG or JPEG')
         with open(path, 'rb') as f:
-            data = f.read(12 * 1024 * 1024 + 1)
-        if len(data) > 12 * 1024 * 1024:
+            data = f.read(MAX_ART + 1)
+        if len(data) > MAX_ART:
             raise ValueError('artwork is too large')
         if slot != 'icon':  # Frame's custom-art API maps type 4 to Header; use SetShortcutIcon.
             images.append([ASSETS[slot], ext, base64.b64encode(data).decode()])
@@ -203,30 +224,41 @@ def configure(appid, name, exe, start_dir, icon, vr, artwork, options=None):
       if (typeof SteamClient.Apps.SetShortcutSortAs === "function")
         SteamClient.Apps.SetShortcutSortAs(id, {json.dumps(name)});
       SteamClient.Apps.SetShortcutIcon(id, {json.dumps(icon)});
-      if (typeof SteamClient.Apps.SetShortcutIsVR === "function")
-        SteamClient.Apps.SetShortcutIsVR(id, {json.dumps(vr)});
-      else warnings.push("Steam VR shortcut flag API unavailable");
+      // null (devkit titles): leave the VR flag as Steam registered it.
+      if ({json.dumps(vr)} !== null) {{
+        if (typeof SteamClient.Apps.SetShortcutIsVR === "function")
+          SteamClient.Apps.SetShortcutIsVR(id, {json.dumps(vr)});
+        else warnings.push("Steam VR shortcut flag API unavailable");
+      }}
       if (typeof SteamClient.Apps.SetCustomArtworkForApp === "function") {{
-        for (const [type, ext, data] of {json.dumps(images)})
+        for (const [type, ext, data] of {json.dumps(images)}) {{
+          // Steam keeps a slot's PNG and JPEG side by side; clear it so a stale one can't win.
+          if (typeof SteamClient.Apps.ClearCustomArtworkForApp === "function")
+            try {{ await SteamClient.Apps.ClearCustomArtworkForApp(id, type); }} catch (e) {{}}
           await SteamClient.Apps.SetCustomArtworkForApp(id, data, ext, type);
+        }}
       }} else throw new Error("Steam artwork API unavailable; installation is incomplete");
-      {collections_js(int(appid), vr, options.get('category', 'Android'))}
+      {collections_js(int(appid), [category] + (['Android VR'] if vr and category == 'Android' else []))}
       try {{ warnings.push(...await syncCollections()); }}
       catch (e) {{ warnings.push("Steam collections: " + String(e)); }}
       {notes_js(name, options.get('details', {}))}
       return {{warnings}};
-    }})()''')
+    }})()''', timeout=60)
 
 
 def remove(appid):
+    # Collections and artwork are tidy-up: only a missing RemoveShortcut may fail the removal.
     return evaluate(f'''(async () => {{
-      const id = {int(appid)};
+      const id = {int(appid)}, warnings = [];
       {collections_js(int(appid))}
-      const warnings = await syncCollections();
+      try {{ warnings.push(...await syncCollections()); }}
+      catch (e) {{ warnings.push("Steam collections: " + String(e)); }}
       if (typeof SteamClient.Apps.ClearCustomArtworkForApp === "function") {{
-        for (const type of [0, 1, 2, 3])
-          await SteamClient.Apps.ClearCustomArtworkForApp(id, type);
-      }} else throw new Error("Steam artwork removal API unavailable");
+        for (const type of [0, 1, 2, 3]) {{
+          try {{ await SteamClient.Apps.ClearCustomArtworkForApp(id, type); }}
+          catch (e) {{ warnings.push("Steam artwork " + type + ": " + String(e)); }}
+        }}
+      }} else warnings.push("Steam artwork removal API unavailable");
       SteamClient.Apps.RemoveShortcut(id);
       return {{warnings}};
     }})()''')
@@ -246,13 +278,24 @@ def main():
         }})()'''
         print(evaluate(js))
     elif cmd == 'list':
-        js = '''(() => appStore.allApps.filter(a => a.app_type === 1073741824)
-                  .map(a => ({appid: a.appid, name: a.display_name, devkit_gameid: a.devkit_gameid})))()'''
+        # Overviews carry no exe or devkit id (checked 2026-09-28); app details do, once registered.
+        js = '''(async () => Promise.all(appStore.allApps.filter(a => a.app_type === 1073741824).map(async a => {
+          let d = typeof appDetailsStore !== "undefined" && appDetailsStore.GetAppDetails(a.appid);
+          if (!d && typeof SteamClient.Apps.RegisterForAppDetails === "function") d = await new Promise(ok => {
+            let reg;
+            const timer = setTimeout(() => { if (reg) reg.unregister(); ok(null); }, 3000);
+            reg = SteamClient.Apps.RegisterForAppDetails(a.appid, x => {
+              clearTimeout(timer); setTimeout(() => reg && reg.unregister()); ok(x); });
+          });
+          return {appid: a.appid, name: a.display_name, devkit_gameid: a.devkit_gameid,
+                  exe: d ? d.strShortcutExe || "" : "", start_dir: d ? d.strShortcutStartDir || "" : ""};
+        })))()'''
         print(json.dumps(evaluate(js)))
     elif cmd == 'render':
         print(json.dumps(render(args[0])))
     elif cmd == 'configure':
-        print(json.dumps(configure(int(args[0]), *args[1:5], args[5] == '1', json.loads(args[6]),
+        vr = {'1': True, '0': False}.get(args[5])  # '' leaves Steam's VR flag alone
+        print(json.dumps(configure(int(args[0]), *args[1:5], vr, json.loads(args[6]),
                                    json.loads(args[7]) if len(args) > 7 else None)))
     elif cmd == 'stop':
         evaluate(f'SteamClient.Apps.TerminateApp({json.dumps(str((int(args[0]) << 32) | 0x02000000))}, false)')
