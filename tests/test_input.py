@@ -363,6 +363,22 @@ class Bundled(unittest.TestCase):
             self.server.ssh, self.server.LOCAL = old
         self.assertEqual(calls, ["rm -rf .local/share/frame-control/kdeconnect/incoming/ab12"])
 
+    def test_a_launch_error_leaves_it_ready_to_try_again(self):
+        # Popen fails (say, out of file handles) and so does removing the copy: the
+        # page gets the error and the next start launches.
+        agent, launches, procs = self.lifecycle([])
+        agent.deliver = lambda report, force=False: "~/.local/share/frame-control/kdeconnect/incoming/z"
+        old_popen, old_ssh = self.server.subprocess.Popen, self.server.ssh
+        self.server.subprocess.Popen = self.server.ssh = lambda *a, **k: (_ for _ in ()).throw(OSError(24, "Too many open files"))
+        try:
+            agent.start()
+            self.wait_for(lambda: agent.status.get("state") == "error")
+        finally:
+            self.server.subprocess.Popen, self.server.ssh = old_popen, old_ssh
+        self.assertIsNone(agent.launching)
+        agent.start()
+        self.wait_for(lambda: agent.status == {"state": "ready"})
+
     def test_copies_go_to_a_folder_of_their_own(self):
         first, _, _ = self.deliver(frame_has=False)
         second, _, _ = self.deliver(frame_has=False)

@@ -659,8 +659,8 @@ class InputAgent:
         if folder.startswith(f"{KDECONNECT_HOME}/incoming/") and not LOCAL:
             try:
                 ssh(f"rm -rf {folder}", timeout=20)
-            except Failure:
-                pass
+            except (Failure, OSError):
+                pass  # never let tidying up get in the way of reporting and retrying
 
     def start(self):
         with self.lock:
