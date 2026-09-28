@@ -85,6 +85,89 @@ class Failure(Exception):
         self.status = status
 
 
+# What ssh prints when it never reached the Frame, and what to tell the user
+# instead. Only ssh's own wording is matched, so a command that ran on the Frame
+# and failed keeps its real error.
+UNREACHABLE = [
+    (re.compile(r"Could not resolve hostname"),
+     "Can't find the Frame on the network. Check it's on and connected, or run Set Up Connection."),
+    (re.compile(r"port \d+: (Operation timed out|Connection timed out|Host is down|No route to host|"
+                r"Network is unreachable)"),
+     "The Frame isn't answering. It may be asleep, switched off, or on another network."),
+    (re.compile(r"[Tt]imed out talking to "),
+     "The Frame took too long to answer. It may be asleep or busy; try again."),
+    (re.compile(r"port \d+: Connection refused"),
+     "The Frame refused the connection. Check Developer Mode is still on."),
+    (re.compile(r"Permission denied \(publickey"),
+     "The Frame didn't accept this computer's SSH key. Run Set Up Connection again."),
+    (re.compile(r"Host key verification failed"),
+     "The Frame's SSH identity changed (after a reinstall, or a different device). Run Set Up Connection again."),
+    (re.compile(r"kex_exchange_identification|Connection closed by .* port \d+|Connection reset by .* port \d+"),
+     "The connection to the Frame dropped. Try again."),
+]
+
+
+def unreachable(message):
+    """The plain-language reason the Frame couldn't be reached, or None if it was."""
+    for pattern, friendly in UNREACHABLE:
+        if pattern.search(message):
+            return friendly
+    return None
+
+
+def error_body(message):
+    """A JSON error body and status; SSH connection failures become one clear offline message."""
+    friendly = unreachable(message)
+    if friendly:
+        return {"error": friendly, "offline": True, "detail": message}, 503
+    return {"error": message}, None
+
+
+# ---- Background jobs: installs that can outlast a request ------------------
+#
+# Flatpak and Android installs can take many minutes. The request starts the
+# work and returns a job id at once; the page polls /api/job for the outcome.
+
+JOB_TTL = 3600
+_jobs_lock = threading.Lock()
+_jobs = {}  # id -> {"label", "done", "error", "message", "result", "time"}
+
+
+def start_job(label, work):
+    """Run work() in the background. It returns a dict with a "message"."""
+    now = time.time()
+    with _jobs_lock:
+        for j in [j for j, v in _jobs.items() if v["done"] and now - v["time"] > JOB_TTL]:
+            del _jobs[j]
+        job = secrets.token_hex(8)
+        _jobs[job] = {"label": label, "done": False, "error": None, "message": None, "result": None, "time": now}
+
+    def run():
+        fields = {}
+        try:
+            result = work()
+            fields = {"message": result.get("message") or f"{label}: done", "result": result}
+        except (Failure, frame_android.FrameError) as e:
+            fields = {"error": unreachable(str(e)) or str(e)}
+        except Exception as e:
+            fields = {"error": f"{type(e).__name__}: {e}"}
+        finally:
+            with _jobs_lock:
+                _jobs[job].update(fields, done=True, time=time.time())
+
+    threading.Thread(target=run, daemon=True).start()
+    return {"message": f"{label}…", "job": job}
+
+
+def job_status(query):
+    with _jobs_lock:
+        job = _jobs.get((parse_qs(query).get("id") or [""])[0])
+        snapshot = job and {k: v for k, v in job.items() if k != "time"}
+    if not snapshot:
+        raise Failure("no such job (the app may have restarted)", 404)
+    return snapshot
+
+
 _master_lock = threading.Lock()
 _master = None
 
@@ -408,11 +491,13 @@ def flatpak(body):
     if not FLATPAK_ID.match(app):
         raise Failure("bad Flatpak app ID", 400)
     if action == "install":
-        # Per-user, so it survives SteamOS updates and needs no sudo (as install-apps.sh).
-        ssh("flatpak remote-add --user --if-not-exists flathub "
-            "https://dl.flathub.org/repo/flathub.flatpakrepo && "
-            f"flatpak install --user -y --noninteractive flathub {shlex.quote(app)}", timeout=900)
-        return {"message": f"Installed {app}"}
+        def work():
+            # Per-user, so it survives SteamOS updates and needs no sudo (as install-apps.sh).
+            ssh("flatpak remote-add --user --if-not-exists flathub "
+                "https://dl.flathub.org/repo/flathub.flatpakrepo && "
+                f"flatpak install --user -y --noninteractive flathub {shlex.quote(app)}", timeout=1800)
+            return {"message": f"Installed {app}"}
+        return start_job(f"Install {app}", work)
     if action == "uninstall":
         out = ssh(f"flatpak uninstall --user -y -- {shlex.quote(app)}", timeout=300)
         return {"message": strip_ansi(out).strip() or f"Removed {app}"}
@@ -449,8 +534,13 @@ def android(body):
     ensure_master()
     try:
         if action == "install":
-            m = frame_catalog.install(pkg)
-            return {"message": f"Installed {m['label']}. It's in the Steam library; launching it opens its own panel.", "app": m}
+            frame_catalog.app(pkg)  # an unknown package fails now, not in the background
+
+            def work():
+                m = frame_catalog.install(pkg)
+                return {"message": f"Installed {m['label']}. It's in the Steam library; launching it opens its own panel.",
+                        "app": m}
+            return start_job(f"Install {pkg}", work)
         if action in ("launch", "stop"):
             m = getattr(frame_android, action)(pkg)
             return {"message": f"{'Launching' if action == 'launch' else 'Stopped'} {m['label']}"}
@@ -1156,6 +1246,10 @@ class Handler(BaseHTTPRequestHandler):
     def send_json(self, obj, status=200):
         self.send_bytes(json.dumps(obj).encode(), "application/json", status)
 
+    def send_error_json(self, message, status):
+        body, offline_status = error_body(message)
+        self.send_json(body, offline_status or status)
+
     def do_GET(self):
         if not self.local_request():
             return
@@ -1175,6 +1269,8 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json({"titles": frame_titles.list_titles()})
             elif path == "/api/titles/job":
                 self.send_json(title_job(url.query))
+            elif path == "/api/job":
+                self.send_json(job_status(url.query))
             elif path == "/api/android/displays":
                 self.send_json(android_displays())
             elif path == "/api/android/reports":
@@ -1204,9 +1300,9 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 self.send_json({"error": "not found"}, 404)
         except Failure as e:
-            self.send_json({"error": str(e)}, e.status)
+            self.send_error_json(str(e), e.status)
         except frame_android.FrameError as e:
-            self.send_json({"error": str(e)}, 502)
+            self.send_error_json(str(e), 502)
         except Exception as e:
             self.send_json({"error": f"{type(e).__name__}: {e}"}, 500)
 
@@ -1230,11 +1326,11 @@ class Handler(BaseHTTPRequestHandler):
                 raise Failure("request body must be a JSON object", 400)
             self.send_json(handler(body))
         except Failure as e:
-            self.send_json({"error": str(e)}, e.status)
+            self.send_error_json(str(e), e.status)
         except (ValueError, TypeError) as e:
             self.send_json({"error": f"bad request: {e}"}, 400)
         except frame_android.FrameError as e:
-            self.send_json({"error": str(e)}, 502)
+            self.send_error_json(str(e), 502)
         except Exception as e:
             self.send_json({"error": f"{type(e).__name__}: {e}"}, 500)
 

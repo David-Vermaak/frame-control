@@ -16,7 +16,7 @@ See what the headset sees, install games and Android apps, move files and text a
 
 <br>
 
-<img src="docs/img/frame-control.png" alt="Frame Control showing the headset view, battery and status, and the Steam library" width="900">
+<img src="docs/img/frame-control.png" alt="Frame Control's Games tab: installed games, sideloaded titles, and your Steam library with Frame ratings" width="900">
 
 <a id="trailer"></a>
 <a href="https://github.com/saphid/steam-frame/releases/download/trailer/frame-control-trailer.mp4"><img src="docs/img/trailer.jpg" alt="Watch the Frame Control trailer" width="900"></a>
