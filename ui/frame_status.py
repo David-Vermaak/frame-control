@@ -156,27 +156,56 @@ def flatpaks():
     return out
 
 
-uptime = read("/proc/uptime")
-procs = process_names()
-print(json.dumps({
-    "time": time.time(),
-    "hostname": socket.gethostname(),
-    "os": os_release(),
-    "uptime": float(uptime.split()[0]) if uptime else None,
-    "battery": battery(),
-    "power": power_source(),
-    "disk": {"root": disk("/"), "home": disk("/home")},
-    "memory": memory(),
-    "temp": max_temp(),
-    "wifi": wifi(),
-    "ip": ip_addr(),
-    "volume": volume(),
-    "services": {
-        "steamvr": "vrserver" in procs,
-        "desktop": "plasmashell" in procs,
-        "lepton": port_listening(5555),
-        "rdp": "xrdp" in procs,
-    },
-    "games": games(),
-    "flatpaks": flatpaks(),
-}))
+def thermal_alerts():
+    """Use the kernel's per-zone hot/critical trips, never a guessed chip limit."""
+    alerts, known = [], False
+    for z in glob.glob("/sys/class/thermal/thermal_zone*"):
+        t = num(z + "/temp", 0.001)
+        for trip in glob.glob(z + "/trip_point_*_type"):
+            if read(trip) not in ("hot", "critical"):
+                continue
+            limit = num(trip[:-4] + "temp", 0.001)
+            if t is not None and limit is not None and limit > 0:
+                known = True
+                if t >= limit:
+                    alerts.append({"zone": read(z + "/type"), "tempC": t, "limitC": limit})
+    return alerts if known else None
+
+
+def activity_level():
+    try:
+        rows = json.loads(run("/opt/steamvr/bin/linuxarm64/vrcmd", "--stats"))
+        return next((r.get("activity_level") for r in rows if r.get("operation") == "status"), None)
+    except (ValueError, TypeError):
+        return None
+
+
+def main():
+    uptime = read("/proc/uptime")
+    procs = process_names()
+    print(json.dumps({
+        "time": time.time(),
+        "hostname": socket.gethostname(),
+        "os": os_release(),
+        "uptime": float(uptime.split()[0]) if uptime else None,
+        "battery": battery(),
+        "power": power_source(),
+        "disk": {"root": disk("/"), "home": disk("/home")},
+        "memory": memory(),
+        "temp": max_temp(),
+        "wifi": wifi(),
+        "ip": ip_addr(),
+        "volume": volume(),
+        "services": {
+            "steamvr": "vrserver" in procs,
+            "desktop": "plasmashell" in procs,
+            "lepton": port_listening(5555),
+            "rdp": "xrdp" in procs,
+        },
+        "games": games(),
+        "flatpaks": flatpaks(),
+    }))
+
+
+if __name__ == "__main__":
+    main()

@@ -39,6 +39,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import frame_android  # noqa: E402
 import frame_apk_versions  # noqa: E402
 import frame_catalog  # noqa: E402
+import frame_comfort  # noqa: E402
 import frame_host  # noqa: E402
 import frame_store  # noqa: E402
 import frame_titles  # noqa: E402
@@ -250,6 +251,37 @@ def terminal(argv):
 
 def status(_body):
     return json.loads(ssh("python3 -", stdin=(HERE / "frame_status.py").read_text(), timeout=20))
+
+
+def comfort(body):
+    try:
+        frame_comfort.validate(body)
+    except ValueError as e:
+        raise Failure(str(e), 400)
+    # Content-addressed, user-only helper bundle. Desktop and phone use the same
+    # on-headset state/lock; no listener, service registration or third-party app.
+    import hashlib
+    files = {name: (HERE / name).read_text() for name in
+             ("frame_comfort.py", "frame_status.py", "frame_steam.py")}
+    version = hashlib.sha256(json.dumps(files, sort_keys=True).encode()).hexdigest()[:16]
+    script = """import json, os, pathlib, subprocess, sys
+os.umask(0o077)
+files = %r
+root = pathlib.Path.home() / '.cache/frame-control/comfort' / %r
+root.mkdir(parents=True, exist_ok=True)
+for name, source in files.items():
+    path = root / name
+    if not path.exists():
+        tmp = root / (name + '.' + str(os.getpid()))
+        tmp.write_text(source)
+        tmp.replace(path)
+r = subprocess.run([sys.executable, str(root / 'frame_comfort.py'), %r], capture_output=True, text=True)
+print(r.stdout, end='')
+""" % (files, version, json.dumps(body))
+    out = json.loads(ssh("python3 -", stdin=script, timeout=65))
+    if out.get("error") and "active" not in out:
+        raise Failure(out["error"], 409)
+    return out
 
 
 def headset_view():
@@ -1227,7 +1259,7 @@ def _sweep_one(prefix, d):
         pass
 
 
-POST = {"/api/android/display": android_display, "/api/android": android, "/api/titles": titles, "/api/launch": launch, "/api/steam": steam, "/api/volume": set_volume, "/api/clipboard": clipboard,
+POST = {"/api/comfort": comfort, "/api/android/display": android_display, "/api/android": android, "/api/titles": titles, "/api/launch": launch, "/api/steam": steam, "/api/volume": set_volume, "/api/clipboard": clipboard,
         "/api/flatpak": flatpak, "/api/open": open_thing, "/api/shots/save": save_shots,
         "/api/webinstall/check": webinstall_check, "/api/webinstall/start": webinstall_start,
         "/api/webinstall/cancel": webinstall_cancel}
