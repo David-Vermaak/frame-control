@@ -35,9 +35,13 @@ def inspect(data):
     mains = [f for f in filters if MAIN in f['actions']]
     vr_filters = [f for f in mains if VR & f['categories']]
     # Lepton's apk-info-extractor ignores <activity-alias>; Godot 4 puts LAUNCHER only there.
-    return {'launchable': any(LAUNCHER in f['categories'] for f in mains if not f['alias']),
-            'vr_activity': bool(vr_filters), 'vr': bool(vr_filters) or samsung}, \
-        [f for f in vr_filters if not f['alias']]
+    real = [f for f in mains if not f['alias']]
+    targets = [f for f in real if VR & f['categories']]
+    if not targets and any(LAUNCHER in f['categories'] or VR & f['categories'] for f in mains if f['alias']):
+        targets = [f for f in real if f['templates']]  # the patch copies an existing <category>
+    launchable = any(LAUNCHER in f['categories'] for f in real)
+    return {'launchable': launchable, 'repairable': not launchable and bool(targets),
+            'vr_activity': bool(vr_filters), 'vr': bool(vr_filters) or samsung}, targets
 
 
 def _append_string(chunk, text):
@@ -64,7 +68,7 @@ def add_launcher_category(axml_bytes):
     if info['launchable']:
         return axml_bytes
     if not filters:
-        raise frame_apk.ApkError('no VR activity with a MAIN intent filter to patch')
+        raise frame_apk.ApkError('no activity with a MAIN intent filter that Frame Control can patch')
     target = filters[0]
     chunks = list(frame_apk._chunks(axml_bytes, 8, len(axml_bytes)))
     pool = next(c for c in chunks if c[0] == 1)
@@ -87,7 +91,7 @@ def add_launcher_category(axml_bytes):
             struct.pack_into('<HBBI', start, a + 12, 8, 0, 3, index)
             break
     else:
-        raise frame_apk.ApkError('VR category has no name attribute')
+        raise frame_apk.ApkError('category has no name attribute')
     end = struct.pack('<HHI', 0x0103, hs, hs + 8) + start[8:hs] + start[hs:hs + 8]
     result = bytearray(axml_bytes[:8])
     for _, _, off, size in chunks:

@@ -18,11 +18,14 @@ import frame_android
 from test_frame_apk import pool
 
 
+DEFAULT = 'android.intent.category.DEFAULT'
+
+
 def manifest(utf8=False, launcher=False, category=None, samsung=False, split=False, alias=False):
     strings = ['manifest', 'package', 'org.test.vr', 'application', 'activity', 'intent-filter',
                'action', 'category', 'name', vr.MAIN, category or next(iter(sorted(vr.VR))),
                vr.LAUNCHER, 'http://schemas.android.com/apk/res/android', 'meta-data', 'value',
-               'com.samsung.android.vr.application.mode', 'vr_only', 'activity-alias']
+               'com.samsung.android.vr.application.mode', 'vr_only', 'activity-alias', DEFAULT, next(iter(sorted(vr.VR)))]
     def start(tag, attrs=()):
         body = struct.pack('<IIHHHHHH', 0xffffffff, strings.index(tag), 20, 20, len(attrs), 0, 0, 0)
         for name, value in attrs:
@@ -43,9 +46,11 @@ def manifest(utf8=False, launcher=False, category=None, samsung=False, split=Fal
     if launcher:
         b += leaf('category', [('name', vr.LAUNCHER)])
     b += end('intent-filter') + end('activity')
-    if alias:  # Godot 4: LAUNCHER only on an alias of the VR activity
+    if alias:  # Godot 4: LAUNCHER only on an alias of the activity ('vr' or 'flat')
         b += start('activity-alias') + start('intent-filter') + leaf('action', [('name', vr.MAIN)])
-        b += leaf('category', [('name', strings[10])]) + leaf('category', [('name', vr.LAUNCHER)])
+        if alias == 'vr':
+            b += leaf('category', [('name', next(iter(sorted(vr.VR))))])
+        b += leaf('category', [('name', vr.LAUNCHER)])
         b += end('intent-filter') + end('activity-alias')
     b += end('application') + end('manifest')
     return struct.pack('<HHI', 3, 8, len(b) + 8) + b
@@ -80,15 +85,39 @@ class VRTests(unittest.TestCase):
         self.assertTrue(vr.inspect(vr.add_launcher_category(manifest(launcher=True, split=True)))[0]['launchable'])
 
     def test_alias_launcher_is_not_enough(self):
-        original = manifest(alias=True)
-        info, filters = vr.inspect(original)
-        self.assertFalse(info['launchable'])
-        self.assertTrue(info['vr_activity'])
-        self.assertEqual(len(filters), 1)
-        result = vr.add_launcher_category(original)
-        info, filters = vr.inspect(result)
+        # (manifest, still VR after patching)
+        cases = [(manifest(alias='vr'), True),                    # Godot 4 VR export
+                 (manifest(alias='vr', category=DEFAULT), True),  # VR category only on the alias
+                 (manifest(alias='flat', category=DEFAULT), False)]  # Godot 4 flat export
+        for original, is_vr in cases:
+            info, filters = vr.inspect(original)
+            self.assertFalse(info['launchable'])
+            self.assertTrue(info['repairable'])
+            self.assertEqual(len(filters), 1)
+            self.assertFalse(filters[0]['alias'])
+            result = vr.add_launcher_category(original)
+            info, _ = vr.inspect(result)
+            self.assertTrue(info['launchable'])
+            self.assertFalse(info['repairable'])
+            self.assertEqual(info['vr'], is_vr)
+
+    def test_alias_with_launchable_activity_is_left_alone(self):
+        original = manifest(launcher=True, alias='vr')
+        info, _ = vr.inspect(original)
         self.assertTrue(info['launchable'])
-        self.assertIn(vr.LAUNCHER, filters[0]['categories'])
+        self.assertFalse(info['repairable'])
+        self.assertEqual(vr.add_launcher_category(original), original)
+
+    def test_patch_alias_apk(self):
+        with tempfile.TemporaryDirectory() as d:
+            src, dst = Path(d) / 'in.apk', Path(d) / 'out.apk'
+            with zipfile.ZipFile(src, 'w') as z:
+                z.writestr('AndroidManifest.xml', manifest(alias='flat', category=DEFAULT))
+            with patch.object(signing, 'signing_key', return_value=self.key):
+                result = frame_android.patch(src, dst)
+            self.assertEqual(result['patched'], ['launcher'])
+            self.assertTrue(frame_apk.apk_info(dst)['launchable'])
+            self.assertTrue(signing.verify(dst))
 
     def test_styled_pool(self):
         for utf8 in (False, True):
@@ -189,7 +218,7 @@ class VRTests(unittest.TestCase):
 
     def test_install_auto_and_override(self):
         base = {'package': 'org.test.vr', 'label': 'VR', 'abis': [], 'min_sdk': None,
-                'vr': True, 'vr_activity': True, 'launchable': False}
+                'vr': True, 'vr_activity': True, 'launchable': False, 'repairable': True}
         with patch.object(frame_android, 'apk_info', return_value=base), \
                 patch.object(frame_android, 'xr_compat_files', return_value={}), \
                 patch.object(frame_android, 'patch', return_value={'patched': ['launcher']}) as repair, \
@@ -234,7 +263,7 @@ class VRTests(unittest.TestCase):
 
     def test_install_adds_layer_to_vr_apps(self):
         base = {'package': 'org.test.vr', 'label': 'VR', 'abis': [], 'min_sdk': None,
-                'vr': True, 'vr_activity': True, 'launchable': True}
+                'vr': True, 'vr_activity': True, 'launchable': True, 'repairable': False}
         layer = {'x': b''}
         with patch.object(frame_android, 'apk_info', return_value=dict(base)), \
                 patch.object(frame_android, 'xr_compat_files', return_value=layer), \

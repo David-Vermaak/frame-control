@@ -149,7 +149,7 @@ def install(apk_path, flatscreen=None, name=None, source=None, icon_png=None, xr
     # changes calls SteamVR would otherwise reject.
     add = xr_compat_files(apk_path) if (info['vr'] if xr_compat is None else xr_compat) else {}
     with _install_lock:
-        if add or (not info['launchable'] and info['vr_activity']):
+        if add or info['repairable']:
             with tempfile.TemporaryDirectory(prefix='frame-vr-') as tmp:
                 patched = os.path.join(tmp, 'app.apk')
                 info['patched'] = patch(apk_path, patched, add)['patched']
@@ -320,8 +320,8 @@ def patch(src, dst, add=None):
         info = apk_info(src)
         with zipfile.ZipFile(src) as z:
             original = frame_apk._read(z, 'AndroidManifest.xml', frame_apk.MAX_MANIFEST)
-        manifest = add_launcher_category(original) if info['vr_activity'] else original
-        if not info['launchable'] and not info['vr_activity']:
+        manifest = add_launcher_category(original) if info['repairable'] else original
+        if not info['launchable'] and not info['repairable']:
             raise FrameError('APK has no MAIN/LAUNCHER or patchable VR activity')
         repack(src, dst, replace={'AndroidManifest.xml': manifest}, add=add)
         result = apk_info(dst)
@@ -341,8 +341,9 @@ def main():
             if cmd == 'info':
                 info = apk_info(args[0])
                 print(frame_apk_versions.describe(info))
-                if info.get('vr'):
-                    print('VR app' + ('' if info.get('launchable') else '; Frame Control adds the LAUNCHER entry Lepton needs'))
+                fix = '; Frame Control adds the LAUNCHER entry Lepton needs' if info.get('repairable') else ''
+                if info.get('vr') or fix:
+                    print(('VR app' if info.get('vr') else 'Android app') + fix)
                 for note in info.get('vr_issues', []):
                     print(note)
                 return
