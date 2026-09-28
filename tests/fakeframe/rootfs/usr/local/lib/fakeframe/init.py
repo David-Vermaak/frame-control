@@ -231,6 +231,12 @@ def sysfs(state):
 
 def runtimes(state):
     """Installed compat tools as Steam app manifests, and the Lepton launcher itself."""
+    # Verified 2026-09-28, BUILD_ID 20260925.6191901: both parents are
+    # steamos:steamos 0755. The root supervisor must not leave them root-owned
+    # when creating Steam's fake manifests; user-account app installs need them.
+    for directory in (HOME + '/.local', HOME + '/.local/share'):
+        os.makedirs(directory, mode=0o755, exist_ok=True)
+        chown(directory)
     apps = fs.STEAM_ROOT + '/steamapps'
     for alias, installed in state['runtimes'].items():
         acf = f'{apps}/appmanifest_{fs.RUNTIME_APPIDS[alias]}.acf'

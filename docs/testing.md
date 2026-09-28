@@ -157,3 +157,8 @@ fake-Frame library/process ownership. `tests/e2e/test_media_transfer.py` checks 
 HTTP/SSH upload and library listing without pretending the fake renders VR.
 Real decode timings and captured stereo output are recorded in
 [vr-video.md](vr-video.md). Generated media only; no external player required.
+
+**Verified 2026-09-28**, real Frame BUILD_ID 20260925.6191901: `~/.local`
+and `~/.local/share` are `steamos:steamos`, mode 0755. The fake supervisor
+sets those parent owners too; previously its root-created Steam manifests
+left the parents root-owned and incorrectly prevented user runtime installs.
