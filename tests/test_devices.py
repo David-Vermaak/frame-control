@@ -266,6 +266,9 @@ class Registry(Base):
         self.reg.record_success(d["id"], "192.168.1.40", "n-home", 3.2)
         self.reg.update_address(d["id"], "192.168.1.40", label="Home")
         self.assertEqual(self.reg.get(d["id"])["addresses"][1]["networks"], ["n-home"])  # a label keeps what it learned
+        with self.assertRaises(fd.DeviceError):
+            self.reg.update_address(d["id"], "192.168.1.40", new_host="192.168.1.41", label="bad\nlabel")
+        self.assertEqual(self.reg.get(d["id"])["addresses"][1]["networks"], ["n-home"])  # rejected: unchanged
         self.reg.update_address(d["id"], "192.168.1.40", new_host="192.168.1.41")
         moved = self.reg.get(d["id"])["addresses"][1]
         self.assertEqual((moved["host"], moved["networks"], moved["last_ok"]), ("192.168.1.41", [], None))

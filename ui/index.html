@@ -925,8 +925,11 @@ const savesToDevice = () => !!(window.frameApp && window.frameApp.saveImages);
 let devGen = 0;
 async function api(path, body) {
   const gen = devGen;
+  // Changes name the headset the page was showing, so the server refuses one meant
+  // for a headset it has since switched away from.
+  const dev = window.connDevice ? { "X-Frame-Device": window.connDevice } : {};
   const opts = body === undefined ? { headers: {"X-Frame-UI": UI_KEY} } : {
-    method: "POST", headers: {"Content-Type": "application/json", "X-Frame-UI": UI_KEY}, body: JSON.stringify(body) };
+    method: "POST", headers: {"Content-Type": "application/json", "X-Frame-UI": UI_KEY, ...dev}, body: JSON.stringify(body) };
   let r;
   try { r = await fetch(path, opts); }
   catch {
@@ -1536,6 +1539,7 @@ function upload(file, mode) {
     const xhr = new XMLHttpRequest();
     xhr.open("POST", "/api/upload");
     xhr.setRequestHeader("X-Frame-UI", UI_KEY);
+    if (window.connDevice) xhr.setRequestHeader("X-Frame-Device", window.connDevice);
     xhr.setRequestHeader("X-Filename", encodeURIComponent(file.name));
     xhr.setRequestHeader("X-Mode", mode);
     const bar = $("prog").firstElementChild;
@@ -2527,6 +2531,7 @@ function onConnection(s) {
   if (!link.live) return;
   renderPill(); renderConnDlg();
   const devId = s.device && s.device.id;
+  window.connDevice = devId || null;
   if (link.device !== null && devId !== link.device) {
     log(`Now using ${s.device.name}`, "ok");
     state = null;
@@ -2545,6 +2550,9 @@ function onConnection(s) {
       if ($(id)) $(id).innerHTML = `<div class="wait">Waiting for ${esc(s.device.name)}</div>`;
     });
     disp.list = []; disp.port = null;
+    // The lists behind those panels too, so filters can't bring the old ones back.
+    gm.owned = null; gm.byId = new Map(); gm.results = []; gm.store = []; gm.storeQ = null; gm.shown = 0; gm.seq++;
+    androidApps = []; shots.list = [];
     $("dispSel").innerHTML = "<option>Loading…</option>"; $("dispSel").disabled = true; $("dispCtl").hidden = true;
     link.reload = true;     // everything on the page was the other headset's
     $("battChip").hidden = true;

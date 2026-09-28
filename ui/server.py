@@ -1468,6 +1468,12 @@ class Handler(BaseHTTPRequestHandler):
         if not self.local_request():
             return
         path = urlparse(self.path).path
+        # A change the page made for a headset the app has since switched away from
+        # (its buttons were still showing): refuse it rather than do it to this one.
+        meant = self.headers.get("X-Frame-Device")
+        if LINK and meant and path != "/api/devices" and meant != LINK.active_device()["id"]:
+            self.send_json({"error": "Frame Control switched headsets; try again on this one"}, 409)
+            return
         try:
             if path == "/api/upload":
                 with working():

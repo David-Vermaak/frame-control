@@ -125,6 +125,11 @@ def probe(host, port, timeout=PROBE_TIMEOUT, update=None):
     return last or {"state": "timeout", "detail": "No answer"}
 
 
+def ssh_target(host, ip):
+    """Where ssh should go for an address whose probe answered from `ip`."""
+    return ip if ip and re.fullmatch(r"\d{1,3}(\.\d{1,3}){3}", ip) else host
+
+
 def probe_raw(host, port, result):
     """ssh's own wording for a failed probe, so the server's UNREACHABLE table explains it."""
     return {"unresolved": f"ssh: Could not resolve hostname {host}: not found",
@@ -269,7 +274,9 @@ class Link:
             self.apply(device["alias"], self.first_route(device))
             self.routed = None  # the next attempt routes again
         with self.cond:
-            self.state["phase"] = "connecting"
+            # Say so at once: the page clears the old headset's panels when the device changes.
+            self.state.update(phase="connecting", device=self.public_device(device), via=None, error=None,
+                              retry_at=None, probes=[], stages=[])
             self.kicks.append("switch")
             self.version += 1
             self.cond.notify_all()
@@ -650,8 +657,7 @@ class Link:
         # An IPv4 address that answered is used as is, so ssh doesn't look the name up
         # again and try an address that didn't answer (a dead IPv6 route, say). IPv6
         # answers keep the name: a link-local one needs its zone, which ssh adds itself.
-        ip = found.get("ip") or ""
-        opts = self.host_opts(device, ip if re.fullmatch(r"\d{1,3}(\.\d{1,3}){3}", ip) else a["host"])
+        opts = self.host_opts(device, ssh_target(a["host"], found.get("ip")))
         alias = device["alias"]
         with self.route_lock:
             if self.attempt_gen != self.gen:
@@ -818,7 +824,8 @@ class Link:
             rows[i]["ssh"] = "checking"
             put()
             argv = [*self.mux_base[:3], "-o", "ControlPath=none", "-o", "ConnectTimeout=8",
-                    *self.host_opts(device, a["host"]), "-o", "StrictHostKeyChecking=yes", device["alias"], "true"]
+                    *self.host_opts(device, ssh_target(a["host"], res.get("ip"))),
+                    "-o", "StrictHostKeyChecking=yes", device["alias"], "true"]
             try:
                 r = subprocess.run(argv, capture_output=True, stdin=subprocess.DEVNULL, text=True,
                                    errors="replace", timeout=20)

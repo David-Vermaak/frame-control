@@ -118,6 +118,16 @@ class Connecting(unittest.TestCase):
                             explain=explain)
         self.addCleanup(self.link.stop)
 
+    def listen6(self):
+        """A "different device": the same port on IPv6 loopback."""
+        try:
+            six = socket.socket(socket.AF_INET6)
+            self.addCleanup(six.close)
+            six.bind(("::1", self.port))
+            six.listen(4)
+        except OSError:
+            self.skipTest("no IPv6 loopback")
+
     def pin(self, device_id):
         fd.known_hosts(device_id).parent.mkdir(parents=True, exist_ok=True)
         fd.known_hosts(device_id).write_text(f"frame-control-{device_id} ssh-ed25519 AAAA\n")
@@ -139,13 +149,7 @@ class Connecting(unittest.TestCase):
 
     def test_falls_through_to_the_address_that_is_really_the_headset(self):
         # Tried in this order: a name that doesn't resolve, a different device, the headset.
-        try:  # the "different device": the same port on IPv6 loopback
-            six = socket.socket(socket.AF_INET6)
-            self.addCleanup(six.close)
-            six.bind(("::1", self.port))
-            six.listen(4)
-        except OSError:
-            self.skipTest("no IPv6 loopback")
+        self.listen6()
         d = self.device("nothing.invalid", "::1", "localhost")
         self.hosts({"::1": "wrong", "localhost": "ok"})
         self.link.connect(["start"])
@@ -258,13 +262,14 @@ class Connecting(unittest.TestCase):
         self.assertIn("Port=1", self.routes[-1][1])
 
     def test_test_now_checks_every_address_without_touching_the_connection(self):
-        d = self.device("127.0.0.1", "localhost", "nothing.invalid")
+        self.listen6()
+        d = self.device("::1", "127.0.0.1", "nothing.invalid")
         self.pin(d["id"])
-        self.hosts({"127.0.0.1": "wrong", "localhost": "ok"})
+        self.hosts({"::1": "wrong", "127.0.0.1": "ok"})
         self.link.test(d["id"])
         rows = {r["host"]: r for r in self.link.snapshot()["tests"][d["id"]]["rows"]}
-        self.assertEqual(rows["localhost"]["ssh"], "ok")
-        self.assertEqual(rows["127.0.0.1"]["ssh"], "wrong")
+        self.assertEqual(rows["127.0.0.1"]["ssh"], "ok")
+        self.assertEqual(rows["::1"]["ssh"], "wrong")
         self.assertEqual(rows["nothing.invalid"]["state"], "unresolved")
         self.assertEqual(self.routes, [])
         self.assertTrue(all("ControlPath=none" in c for c in self.calls()))
@@ -430,6 +435,15 @@ class ServerConnection(unittest.TestCase):
         line = r.fp.readline()
         self.assertTrue(line.startswith(b"data: "), line)
         self.assertIn("stages", json.loads(line[6:]))
+        conn.close()
+
+    def test_changes_meant_for_another_headset_are_refused(self):
+        conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=20)
+        conn.request("POST", "/api/launch", body=b'{"appid": "620"}',
+                     headers={"X-Frame-UI": "1", "Content-Type": "application/json", "X-Frame-Device": "someoneelse"})
+        r = conn.getresponse()
+        self.assertEqual(r.status, 409)
+        self.assertIn("switched headsets", json.loads(r.read())["error"])
         conn.close()
 
     def test_guards_and_validation(self):

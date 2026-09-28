@@ -562,15 +562,20 @@ class Registry:
         with self.lock:
             d = self._find(device_id)
             a = self._addr(d, host)
-            if new_host is not None and new_host != host:
+            # Check everything first: a rejected edit changes nothing.
+            moved = new_host is not None and new_host != host
+            if moved:
                 new_host = check_host(new_host)
                 if any(x["host"] == new_host for x in d["addresses"]):
                     raise DeviceError(f"{new_host} is already on the list")
+            kind = None if kind is None else check_kind(kind)
+            label = None if label is None else check_text(label, "label")
+            if moved:
                 a.update(host=new_host, networks=[], last_ok=None, last_rtt_ms=None)  # a new place: learn again
             if kind is not None:
-                a["kind"] = check_kind(kind)
+                a["kind"] = kind
             if label is not None:
-                a["label"] = check_text(label, "label")
+                a["label"] = label
             self.save()
             return copy.deepcopy(a)
 
