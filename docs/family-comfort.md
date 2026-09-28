@@ -4,6 +4,8 @@ Frame Control's Home tab has a **Family and comfort** card, on desktop and
 on iPhone. No third-party notification or parental-control app is needed.
 This is Frame Control code using Python, Steam and SteamVR already on the Frame.
 
+![Family and comfort controls in the desktop app](img/comfort-desktop.png)
+
 ## Sessions
 
 Set a limit of 1–240 minutes, optional break and check-in intervals, then
