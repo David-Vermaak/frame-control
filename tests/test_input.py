@@ -172,6 +172,24 @@ class Bundled(unittest.TestCase):
         with self.assertRaises(self.server.Failure):
             self.deliver(frame_has=False, damaged=True)
 
+    def test_a_failed_copy_is_removed(self):
+        calls = []
+
+        def ssh(remote, stdin=None, timeout=30, text=True):
+            calls.append(remote)
+            if "cat >" in remote and len([c for c in calls if "cat >" in c]) == 2:
+                raise self.server.Failure("Broken pipe")
+            return b"" if not text else ""
+        folder, packages = self.fake_bundle()
+        old = self.server.ssh, self.server.KDECONNECT, self.server.LOCAL
+        self.server.ssh, self.server.KDECONNECT, self.server.LOCAL = ssh, folder, False
+        try:
+            with self.assertRaises(self.server.Failure):
+                self.server.InputAgent(packages=packages).deliver(lambda m: None)
+        finally:
+            self.server.ssh, self.server.KDECONNECT, self.server.LOCAL = old
+        self.assertTrue(calls[-1].startswith("rm -rf .local/share/frame-control/kdeconnect/incoming/"), calls[-1])
+
     def lifecycle(self, agent_lines, deliver=None):
         """An InputAgent whose ssh and agent are fakes. Returns it, the folders each launch
         used, and the fake agents. A fake agent reports its lines, then keeps running
@@ -263,32 +281,62 @@ class Bundled(unittest.TestCase):
         agent.start()  # while the first launch is still copying
         self.assertTrue(entered.wait(5), "the second start didn't launch")
         gate.set()
-        self.wait_for(lambda: len(procs) == 2 and agent.status == {"state": "ready"})
-        # The stopped launch's agent was ended; the new one is the one in use.
-        self.wait_for(lambda: sum(p.ended.is_set() for p in procs) == 1)
-        self.assertFalse(agent.proc.ended.is_set())
+        self.wait_for(lambda: agent.status == {"state": "ready"})
+        time.sleep(0.1)
+        # The stopped launch started no agent; the new one is the one in use.
+        self.assertEqual(len(procs), 1)
+        self.assertIs(agent.proc, procs[0])
         agent.stop()
         self.wait_for(lambda: all(p.ended.is_set() for p in procs))
 
     def test_retry_and_a_new_start_never_run_two_agents(self):
         # A start() landing just as an agent that asked for the packages exits: exactly one
-        # of it and the retry launches, and stop() ends everything.
+        # of it and the retry launches, and stop() ends everything. The new start is held
+        # in its copy until the retry has decided, so neither can see the other's agent.
+        first, decided = [], threading.Event()
         agent, launches, procs = self.lifecycle([[b'{"state": "need-packages"}\n'], [b'{"state": "ready"}\n']])
-        watch, raced = agent._watch, []
+        watch, launch, deliver = agent._watch, agent._launch, agent.deliver
 
         def racing_watch(proc, errors, retry=False):
             wanted = watch(proc, errors, retry)
-            if wanted and not raced:
-                raced.append(True)
+            if wanted and not first:
+                first.append(threading.current_thread())
                 agent.start()  # lands between the agent exiting and the retry
             return wanted
-        agent._watch = racing_watch
+
+        def held_deliver(report, force=False):
+            if force:
+                decided.set()  # the retry went ahead
+            elif first and threading.current_thread() is not first[0]:
+                decided.wait(5)  # the new start waits until the retry has decided
+            return deliver(report, force)
+
+        def first_launch(generation, force=False):
+            try:
+                launch(generation, force)
+            finally:
+                if first and threading.current_thread() is first[0]:
+                    decided.set()  # the retry declined
+        agent._watch, agent._launch, agent.deliver = racing_watch, first_launch, held_deliver
         agent.start()
         self.wait_for(lambda: agent.status == {"state": "ready"})
-        time.sleep(0.2)
+        time.sleep(0.1)
         self.assertEqual(sum(not p.ended.is_set() for p in procs), 1, launches)
         agent.stop()
         self.wait_for(lambda: all(p.ended.is_set() for p in procs))
+
+    def test_stopped_during_the_copy_removes_it(self):
+        gate, entered = threading.Event(), threading.Event()
+        agent, launches, procs = self.lifecycle([], deliver=lambda: (entered.set(), gate.wait(5)))
+        removed = []
+        agent.discard = removed.append
+        agent.deliver = lambda report, force=False: (entered.set(), gate.wait(5), "~/incoming/x")[2]
+        agent.start()
+        self.assertTrue(entered.wait(5))
+        agent.stop()
+        gate.set()
+        self.wait_for(lambda: removed == ["incoming/x"])
+        self.assertEqual(procs, [])  # no agent started for it
 
     def test_copies_go_to_a_folder_of_their_own(self):
         first, _, _ = self.deliver(frame_has=False)

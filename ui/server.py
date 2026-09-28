@@ -648,13 +648,18 @@ class InputAgent:
                 quoted = shlex.quote(name)
                 ssh(f"cd {folder} && cat > {quoted}.part && mv {quoted}.part {quoted}",
                     stdin=path.read_bytes(), text=False, timeout=600)
-        except Failure:
-            try:
-                ssh(f"rm -rf {folder}", timeout=20)  # a partial copy is no use to anyone
-            except Failure:
-                pass  # the agent tidies it later
+        except (Failure, OSError):
+            self.discard(folder)  # a partial copy is no use to anyone
             raise
         return f"~/{folder}"
+
+    def discard(self, folder):
+        """Remove a copy no agent will take over (best effort; agents tidy up old ones too)."""
+        if folder and not LOCAL:
+            try:
+                ssh(f"rm -rf {folder}", timeout=20)
+            except Failure:
+                pass
 
     def start(self):
         with self.lock:
@@ -674,6 +679,11 @@ class InputAgent:
         try:
             ensure_master()
             folder = self.deliver(report, force)
+            with self.lock:
+                stopped = self.generation != generation
+            if stopped:  # turned off while copying: no agent will take the copy over
+                self.discard(folder.removeprefix("~/"))
+                raise Failure("stopped")
             proc = subprocess.Popen([*SSH, FRAME, self.command(folder)], stdin=subprocess.PIPE,
                                     stdout=subprocess.PIPE, stderr=errors)
         except (Failure, OSError) as e:
