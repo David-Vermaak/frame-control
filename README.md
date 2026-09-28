@@ -73,7 +73,7 @@ Drag files onto the window to send them. Drop a game's .zip, folder or .exe to a
 Browse the shots you take in the headset and save them to your Pictures folder.
 
 **⌨️ Keyboard and trackpad**<br>
-Type and point in the Frame's apps from your computer or phone, through KDE Connect on the Frame. Nothing to install on the device in your hand.
+Type and point in the Frame's apps from your computer or phone, through KDE Connect, which Frame Control brings along and sets up on the Frame. Nothing else to install, anywhere.
 
 </td>
 </tr>
@@ -244,5 +244,7 @@ into the release. See [building](docs/frame-control.md#building).
 
 ## License
 
-[MIT](LICENSE). Steam, Steam Frame and SteamVR are trademarks of Valve
+[MIT](LICENSE). The apps also ship other people's software under its own
+licence, notably KDE Connect (GPL) for the keyboard and trackpad; see
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Steam, Steam Frame and SteamVR are trademarks of Valve
 Corporation. This project isn't affiliated with or endorsed by Valve.

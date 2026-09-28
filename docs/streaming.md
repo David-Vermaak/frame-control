@@ -107,12 +107,34 @@ on the Frame, which talks KDE Connect's own LAN protocol to the Frame's
 
 **Verified 2026-09-28** (SteamOS 0.4.1, build 20260925.6191901):
 
-- KDE Connect isn't installed, but **Valve's package repository for the Frame
-  has it** (`kdeconnect` 24.02.2 in `extra`). The Frame lacks only `kpeople`,
-  `libfakekey`, `modemmanager-qt` and `pulseaudio-qt`. The agent fetches them
-  with `pacman -Sp` + `curl` into `~/.local/share/frame-control/kdeconnect`
-  (8 MB download, 82 MB unpacked, about 11 s), with no root and nothing on the
-  read-only system, so SteamOS updates leave it alone.
+- KDE Connect isn't installed on the Frame, so **Frame Control ships it**:
+  Valve's own build for the Frame (`kdeconnect` 24.02.2-1 from its `extra`
+  repository) plus the five libraries it links that the Frame lacks
+  (`kcontacts`, `kpeople`, `modemmanager-qt`, `pulseaudio-qt`, `libfakekey`),
+  pinned by SHA-256 in [`frame/kdeconnect/packages.json`](../frame/kdeconnect/packages.json).
+  The builds download them from the
+  [kdeconnect-frame-24.02.2-1 release](https://github.com/saphid/frame-control/releases/tag/kdeconnect-frame-24.02.2-1)
+  (`app/build/fetch-deps.js`, `frame/kdeconnect/fetch.py`). The address of
+  Valve's repository for the Frame isn't to be shared, and Valve's public
+  aarch64 preview repository has KDE Connect 25.08, built against newer KDE
+  libraries than the Frame has.
+- On first use, the computer copies them to the Frame over the SSH connection
+  it already has. The iPhone app's bundle, already copied to the Frame, has
+  them too. The agent checks each SHA-256 and unpacks them into
+  `~/.local/share/frame-control/kdeconnect` (3.6 MB copied, 18 MB unpacked,
+  about 2 s). There's no internet download on the Frame, no root, and nothing
+  on the read-only system, so SteamOS updates leave it alone. A stamp there
+  (`root/.frame-control-packages`) records which build it is; a newer Frame
+  Control replaces it.
+- `pacman -Sp kdeconnect …` also pulls in ModemManager, libqmi, libmbim,
+  libqrtr-glib and ppp (packaging dependencies). `kdeconnectd` and its plugins
+  don't link any of them (checked with `ldd` against the six packages alone),
+  so Frame Control leaves them out.
+- Licences: the packages are GPL and LGPL; Frame Control stays MIT because it
+  only starts `kdeconnectd` and speaks its protocol. The notice, licence texts
+  and complete source are in [`frame/kdeconnect`](../frame/kdeconnect/NOTICE.md),
+  [`THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md) and the app's
+  **About and licences** (Tools).
 - It pairs by itself: the agent asks to pair and accepts on KDE Connect's side
   over D-Bus (`qdbus6 … acceptPairing`). It keeps its identity in
   `…/kdeconnect/bridge`, so later connections are already paired. (A pair
@@ -134,7 +156,8 @@ on the Frame, which talks KDE Connect's own LAN protocol to the Frame's
   once exiting). Frame Control never unpairs. If its copy stops answering, the
   agent restarts it once (tested by freezing it with `kill -STOP`).
 - Moves from the iPhone app (Simulator) and the Mac's server moved the Frame's
-  X pointer by exactly the amount sent.
+  X pointer by exactly the amount sent, including with the bundled packages
+  copied over SSH (2026-09-28).
 - gamescope runs **two Xwayland displays**. `:0` holds Steam's VR bar and menus
   and ignores injected pointer motion; `:1` holds apps such as Chromium and
   takes it. KDE Connect runs on `:1`, so it reaches apps, not Steam's own menus.
@@ -148,7 +171,7 @@ on the Frame, which talks KDE Connect's own LAN protocol to the Frame's
 
 Our own `uinput` keyboard and mouse would also work (`steamos` is in the
 `input` group and `/dev/uinput` is group-writable, verified 2026-09-27), and
-remains the fallback if KDE Connect ever can't be fetched.
+remains the fallback if the bundled KDE Connect ever stops working on a new SteamOS.
 
 | Other option | Mac | iPhone | Why not |
 |---|---|---|---|

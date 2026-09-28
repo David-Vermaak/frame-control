@@ -5,3 +5,6 @@ apk-catalog/data/index-v2*.json*
 compat-db/.env.lakebed.server
 compat-db/.lakebed/
 tests/smoke/results/
+
+# Downloaded at build time (frame/kdeconnect/fetch.py, app/build/fetch-deps.js)
+frame/kdeconnect/packages/

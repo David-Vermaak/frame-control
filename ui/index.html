@@ -254,10 +254,13 @@
   .and-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 22px; align-items: start; }
   .and-col { display: grid; gap: 22px; align-content: start; }
   .rep-item .s { white-space: normal; }
-  #repDlg, #titleDlg, #wiDlg, #pwDlg, #apkAltDlg { background: #1e2329; color: var(--text); border: 1px solid rgba(255,255,255,.1); border-radius: 4px;
+  #repDlg, #titleDlg, #wiDlg, #pwDlg, #apkAltDlg, #aboutDlg { background: #1e2329; color: var(--text); border: 1px solid rgba(255,255,255,.1); border-radius: 4px;
             padding: 22px; width: min(560px, 92vw); box-shadow: 0 20px 60px rgba(0,0,0,.6); }
-  #repDlg::backdrop, #titleDlg::backdrop, #wiDlg::backdrop, #pwDlg::backdrop, #apkAltDlg::backdrop { background: rgba(0,0,0,.55); }
-  #repDlg h2, #titleDlg h2, #wiDlg h2, #pwDlg h2, #apkAltDlg h2 { margin: 0 0 14px; font-size: 15px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--bright); }
+  #repDlg::backdrop, #titleDlg::backdrop, #wiDlg::backdrop, #pwDlg::backdrop, #apkAltDlg::backdrop, #aboutDlg::backdrop { background: rgba(0,0,0,.55); }
+  #repDlg h2, #titleDlg h2, #wiDlg h2, #pwDlg h2, #apkAltDlg h2, #aboutDlg h2 { margin: 0 0 14px; font-size: 15px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--bright); }
+  .about-text { max-height: 55vh; overflow: auto; }
+  .about-text pre { white-space: pre-wrap; font-size: 12px; color: var(--muted); }
+  .about-text summary { cursor: pointer; margin: 8px 0; }
   #repForm label, #titleForm label { display: block; font-size: 12.5px; color: var(--muted); margin-top: 10px; }
   #repForm label input[type=text], #repForm textarea, #titleForm label input, #titleForm label select { margin-top: 5px; }
   #titleForm select { width: 100%; background: rgba(0,0,0,.28); color: var(--text); border: 1px solid transparent;
@@ -514,8 +517,9 @@
       </span>
     </div>
     <div class="hint">Types and points in apps on the Frame, such as Chromium or the desktop's Linux apps; Steam's own VR menus
-      don't take it. It works through KDE Connect on the Frame: the first time, Frame Control fetches Valve's build of it
-      (an 8 MB download, 82 MB unpacked) into your home folder there and pairs with it. Nothing to install on this device.</div>
+      don't take it. It works through KDE Connect, which comes with Frame Control: the first time, it copies Valve's build
+      for the Frame (3.6 MB, 18 MB unpacked) into your home folder there and pairs with it. No internet needed, and nothing
+      else to install. <a href="#" data-about>Licences</a></div>
   </section>
 
   <section id="shots">
@@ -683,6 +687,7 @@
       <div class="hint desk-only">Sleep, Restart and Shut down open a terminal window for the Developer Mode password.</div>
       <div class="hint mobile-only">Sleep, Restart and Shut down ask for the Developer Mode password. SSH, SFTP, Steam Link and remote desktop open in the app that handles them.</div>
       <div class="row mobile-only" style="margin-top:14px"><button class="small" id="changeHeadset">Change headset…</button></div>
+      <div class="row" style="margin-top:14px"><button class="small" data-about>About and licences</button></div>
       <div class="links desk-only">
         <div><a href="https://store.steampowered.com/remoteplay" target="_blank">Steam Link</a>: Valve's remote view of the headset</div>
         <div><a href="https://streamframe.app/" target="_blank">Stream Frame</a>: third-party recorder (macOS 14+)</div>
@@ -711,6 +716,14 @@
   <div id="apkAltLinks"></div>
   <p class="sub" id="apkAltErrors"></p>
   <div class="actions"><button id="apkAltClose">Close</button></div>
+</dialog>
+
+<dialog id="aboutDlg" aria-labelledby="aboutTitle">
+  <h2 id="aboutTitle">About and licences</h2>
+  <p>Frame Control is MIT-licensed. It ships other people's software, each under its own licence: the notices and
+    licence texts follow, with where to get the source.</p>
+  <div id="aboutText" class="about-text">Loading…</div>
+  <div class="actions"><button id="aboutClose">Close</button></div>
 </dialog>
 
 <dialog id="repDlg" aria-labelledby="repTitle">
@@ -1516,6 +1529,21 @@ function showApkAlternatives(reason, result) {
   if (!$("apkAltDlg").open) $("apkAltDlg").showModal();
 }
 $("apkAltClose").onclick = () => $("apkAltDlg").close();
+
+// ---- about and licences ----
+document.addEventListener("click", async e => {
+  if (!e.target.closest("[data-about]")) return;
+  e.preventDefault();
+  $("aboutDlg").showModal();
+  try {
+    const { notices } = await api("/api/licenses");
+    $("aboutText").innerHTML = notices.map((n, i) =>
+      `<details${i ? "" : " open"}><summary>${esc(n.title)}</summary><pre>${esc(n.text)}</pre></details>`).join("");
+  } catch (err) {
+    $("aboutText").textContent = `Couldn't load the licences: ${err.message}. They're also in THIRD_PARTY_NOTICES.md and frame/kdeconnect in Frame Control's source.`;
+  }
+});
+$("aboutClose").onclick = () => $("aboutDlg").close();
 
 const TITLE_EXT = /\.(zip|exe)$/i;
 async function sendFiles(files, dirs = new Set()) {

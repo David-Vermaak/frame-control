@@ -6,10 +6,14 @@ from stdin: one JSON object (or list of them) per line, each a KDE Connect
 "mousepad" request body such as {"dx": 4, "dy": -2} or {"key": "hello"}.
 KDE Connect does the typing and clicking.
 
-KDE Connect isn't installed on the Frame, but Valve's package repository for it
-has a build. The first run fetches that and the few libraries the Frame lacks
-into ~/.local/share/frame-control/kdeconnect: no root, and SteamOS updates
-leave it alone.
+KDE Connect isn't installed on the Frame. Frame Control ships Valve's build of it
+for the Frame and the few libraries the Frame lacks (frame/kdeconnect); the server
+copies them over the SSH connection and this unpacks them into
+~/.local/share/frame-control/kdeconnect: no root, no internet, and SteamOS
+updates leave it alone.
+
+argv: client id, client name, the folder holding the packages, and a JSON list
+of [file, sha256] naming them (see frame/kdeconnect/packages.json).
 
 Status goes to stdout, one JSON object per line:
 {"state": "installing" | "starting" | "pairing" | "ready" | "error", ...}.
@@ -17,6 +21,7 @@ Status goes to stdout, one JSON object per line:
 Standard library only: this runs on the Frame's own Python.
 """
 import fcntl
+import hashlib
 import json
 import os
 import selectors
@@ -32,9 +37,7 @@ from pathlib import Path
 BASE = Path.home() / ".local/share/frame-control/kdeconnect"
 ROOT = BASE / "root"
 BRIDGE = BASE / "bridge"
-# kdeconnect plus the dependencies the Frame's image doesn't have (checked 2026-09-28,
-# SteamOS 0.4.1); `pacman -Sp` adds any others still missing.
-PACKAGES = ["kdeconnect", "kpeople", "libfakekey", "modemmanager-qt", "pulseaudio-qt"]
+STAMP = ".frame-control-packages"  # in ROOT: which packages it was unpacked from
 PORT = int(os.environ.get("FRAME_INPUT_PORT", "1716"))
 UID = os.getuid()
 MOUSEPAD = "kdeconnect.mousepad.request"
@@ -50,32 +53,49 @@ def packet(kind, body):
 
 # ---- KDE Connect on the Frame ------------------------------------------------
 
-def daemon_path():
-    for path in (Path("/usr/lib/kdeconnectd"), ROOT / "usr/lib/kdeconnectd"):
-        if path.exists():
-            return path
-    return None
+SYSTEM_DAEMON = Path("/usr/lib/kdeconnectd")
 
 
-def install():
-    say("installing", message="Fetching KDE Connect from the Frame's package repository")
-    found = subprocess.run(["pacman", "-Sp", *PACKAGES], capture_output=True, text=True, timeout=120)
-    urls = [u for u in found.stdout.split() if u.startswith("https://")]
-    if found.returncode or not urls:
-        raise RuntimeError("Couldn't find KDE Connect in the Frame's package repository: "
-                           + (found.stderr.strip() or "no packages listed"))
-    download, stage = BASE / "download", BASE / "root.new"
-    for d in (download, stage):
-        shutil.rmtree(d, ignore_errors=True)
-        d.mkdir(parents=True)
-    for url in urls:
-        name = download / url.rsplit("/", 1)[1]
-        subprocess.run(["curl", "-fsSL", "--retry", "2", "-o", str(name), url], check=True, timeout=600)
-        if subprocess.run(["tar", "--zstd", "-xf", str(name), "-C", str(stage)], capture_output=True).returncode:
-            subprocess.run(["bsdtar", "-xf", str(name), "-C", str(stage)], check=True, capture_output=True)
+def stamp(packages):
+    """What ROOT/STAMP holds once these packages are unpacked (the server checks it too)."""
+    return "".join(f"{sha}  {name}\n" for name, sha in packages)
+
+
+def installed(packages):
+    try:
+        return (ROOT / STAMP).read_text() == stamp(packages)
+    except OSError:
+        return False
+
+
+def sha256(path):
+    digest = hashlib.sha256()
+    with open(path, "rb") as f:
+        for block in iter(lambda: f.read(1 << 20), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def install(folder, packages):
+    """Unpack the packages the server copied to `folder` into ROOT, checking each one first."""
+    if not packages:
+        raise RuntimeError("This copy of Frame Control doesn't include KDE Connect")
+    say("installing", message="Unpacking KDE Connect on the Frame")
+    stage = BASE / "root.new"
+    shutil.rmtree(stage, ignore_errors=True)
+    stage.mkdir(parents=True)
+    for name, sha in packages:
+        path = Path(folder) / name
+        if not path.is_file():
+            raise RuntimeError(f"{name} didn't reach the Frame")
+        if sha256(path) != sha:
+            raise RuntimeError(f"{name} arrived damaged (its SHA-256 doesn't match)")
+        if subprocess.run(["tar", "--zstd", "-xf", str(path), "-C", str(stage)], capture_output=True).returncode:
+            subprocess.run(["bsdtar", "-xf", str(path), "-C", str(stage)], check=True, capture_output=True)
+    (stage / STAMP).write_text(stamp(packages))
+    stop_daemon()  # an older copy may still be running from ROOT
     shutil.rmtree(ROOT, ignore_errors=True)
     stage.rename(ROOT)
-    shutil.rmtree(download, ignore_errors=True)
 
 
 def app_display():
@@ -133,14 +153,15 @@ def stop_daemon():
             time.sleep(0.1)
 
 
-def ensure_daemon():
+def ensure_daemon(folder, packages):
+    """Start KDE Connect: the Frame's own if it ever has one, else ours, unpacked first if needed."""
+    system = SYSTEM_DAEMON.exists()
+    if not system and not installed(packages):
+        install(folder, packages)
     if listening():
         return
     BASE.mkdir(parents=True, exist_ok=True)
-    daemon = daemon_path()
-    if not daemon:
-        install()
-        daemon = daemon_path()
+    daemon = SYSTEM_DAEMON if system else ROOT / "usr/lib/kdeconnectd"
     say("starting", message="Starting KDE Connect on the Frame")
     log = open(BASE / "kdeconnectd.log", "ab")
     # Its own session, so it outlives this connection and serves the next one.
@@ -273,15 +294,21 @@ def connect(device, cert, key, name):
 
 
 def client_args():
-    """argv: a folder-safe id for the computer or phone, and the name KDE Connect shows for it."""
+    """argv: a folder-safe id for the computer or phone, the name KDE Connect shows for it,
+    the folder holding the packages, and their [file, sha256] list."""
     client = sys.argv[1] if len(sys.argv) > 1 else "default"
     client = "".join(c for c in client if c.isalnum() or c in "-_")[:64] or "default"
     name = (sys.argv[2] if len(sys.argv) > 2 else "")[:60].strip()
-    return client, f"Frame Control ({name})" if name else "Frame Control"
+    folder = os.path.expanduser(sys.argv[3]) if len(sys.argv) > 3 else ""
+    try:
+        packages = [(str(f), str(h)) for f, h in json.loads(sys.argv[4])] if len(sys.argv) > 4 else []
+    except (ValueError, TypeError):
+        packages = []
+    return client, f"Frame Control ({name})" if name else "Frame Control", folder, packages
 
 
 def main():
-    client, name = client_args()
+    client, name, folder, packages = client_args()
     # A dropped ssh (the Frame slept, the app quit) hangs up on us: exit through the
     # clean-up below rather than dying on the spot.
     for sig in (signal.SIGHUP, signal.SIGTERM):
@@ -293,7 +320,7 @@ def main():
     clients = open(BASE / "clients.lock", "w")
     fcntl.flock(clients, fcntl.LOCK_SH)
     try:
-        return run(client, name)
+        return run(client, name, folder, packages)
     finally:
         # Finish the clean-up even if a second hang-up or TERM arrives meanwhile.
         for sig in (signal.SIGHUP, signal.SIGTERM):
@@ -319,10 +346,16 @@ class daemon_lock:
         self.file.close()
 
 
-def run(client, name):
+def run(client, name, folder, packages):
     try:
         with daemon_lock():
-            ensure_daemon()
+            ensure_daemon(folder, packages)
+        if folder.startswith(str(BASE / "incoming") + "/"):
+            shutil.rmtree(folder, ignore_errors=True)  # unpacked; the copy isn't needed again
+            try:
+                (BASE / "incoming").rmdir()
+            except OSError:
+                pass  # another device's copy is still there
         device, cert, key = identity(client)
         say("pairing")
         seen = our_daemons()
@@ -338,7 +371,7 @@ def run(client, name):
             with daemon_lock():
                 if set(our_daemons()) & set(seen):
                     stop_daemon()
-                ensure_daemon()
+                ensure_daemon(folder, packages)
             link = connect(device, cert, key, name)
     except (OSError, RuntimeError, subprocess.SubprocessError) as e:
         say("error", message=str(e))

@@ -71,12 +71,164 @@ class InputEvents(unittest.TestCase):
             del os.environ["FRAME_CLIENT"]
         self.assertTrue(cmd.startswith("python3 -u -c '"))
         self.assertIn(" test-client-1 ", cmd)
+        cmd = self.server.InputAgent(packages=[("a.pkg.tar.zst", "ab")]).command("~/in/x")
+        self.assertTrue(cmd.endswith(""" '~/in/x' '[["a.pkg.tar.zst","ab"]]'"""), cmd)
 
     def test_batch_limits(self):
         with self.assertRaises(self.server.Failure):
             self.server.remote_input({"events": "dx"})
         with self.assertRaises(self.server.Failure):
             self.server.remote_input({"events": [{"dx": 1}] * (self.server.INPUT_BATCH_LIMIT + 1)})
+
+
+class Bundled(unittest.TestCase):
+    """KDE Connect ships with Frame Control: the manifest, the notice, the copy to the Frame."""
+
+    @classmethod
+    def setUpClass(cls):
+        import server
+        cls.server = server
+        cls.manifest = json.loads((ROOT / "frame/kdeconnect/packages.json").read_text())
+
+    def test_manifest_pins_every_package(self):
+        packages = self.manifest["packages"]
+        self.assertEqual({p["name"] for p in packages},
+                         {"kdeconnect", "kcontacts", "kpeople", "libfakekey", "modemmanager-qt", "pulseaudio-qt"})
+        for p in packages:
+            self.assertRegex(p["sha256"], r"^[0-9a-f]{64}$")
+            self.assertTrue(p["file"].startswith(f"{p['name']}-{p['version']}-") and p["file"].endswith("-aarch64.pkg.tar.zst"), p)
+            self.assertTrue(p["source"].startswith(self.manifest["release"]), p)
+            self.assertRegex(p["source_sha256"], r"^[0-9a-f]{64}$")
+        self.assertTrue(self.manifest["release"].startswith("https://github.com/") and self.manifest["release"].endswith("/"))
+        self.assertNotIn("DO_NOT_SHARE", json.dumps(self.manifest))
+
+    def test_notice_names_each_version_and_its_licence_texts_ship(self):
+        notice = (ROOT / "frame/kdeconnect/NOTICE.md").read_text()
+        for p in self.manifest["packages"]:
+            self.assertIn(f"{p['name']} {p['version']}", notice)
+            self.assertIn(p["source"], notice)
+            self.assertIn(p["upstream"], notice)
+            for spdx in p["licenses"]:
+                self.assertTrue((ROOT / "frame/kdeconnect/LICENSES" / p["name"] / f"{spdx}.txt").is_file(), spdx)
+        self.assertIn("frame/kdeconnect/NOTICE.md", (ROOT / "THIRD_PARTY_NOTICES.md").read_text())
+
+    def test_about_dialog_has_the_licences(self):
+        titles = [n["title"] for n in self.server.licenses()]
+        self.assertIn("Frame Control (MIT)", titles)
+        self.assertIn("KDE Connect for the Frame", titles)
+        self.assertIn("kdeconnect: GPL-2.0-only", titles)
+
+    def test_both_apps_bundle_the_packages(self):
+        pkg = json.loads((ROOT / "app/package.json").read_text())["build"]["extraResources"]
+        kde = next(r for r in pkg if r["from"] == "../frame/kdeconnect")
+        self.assertIn("packages/*.pkg.tar.zst", kde["filter"])
+        self.assertIn("LICENSES/**/*", kde["filter"])
+        bundle = (ROOT / "ios/scripts/make_frame_bundle.py").read_text()
+        for pattern in ("frame/kdeconnect/packages/*.pkg.tar.zst", "frame/kdeconnect/LICENSES/*/*", "THIRD_PARTY_NOTICES.md"):
+            self.assertIn(pattern, bundle)
+
+    def fake_bundle(self, damaged=False):
+        folder = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, folder)
+        (folder / "packages").mkdir()
+        data = {"a-1-1-aarch64.pkg.tar.zst": b"first", "b-2-1-aarch64.pkg.tar.zst": b"second"}
+        packages = []
+        for name, body in data.items():
+            (folder / "packages" / name).write_bytes(b"x" + body if damaged else body)
+            packages.append((name, __import__("hashlib").sha256(body).hexdigest()))
+        return folder, packages
+
+    def deliver(self, frame_has, damaged=False):
+        folder, packages = self.fake_bundle(damaged)
+        calls = []
+
+        def ssh(remote, stdin=None, timeout=30, text=True):
+            calls.append((remote, stdin))
+            return "yes\n" if remote.startswith("{ test -x") and frame_has else ""
+        old = self.server.ssh, self.server.KDECONNECT, self.server.LOCAL
+        self.server.ssh, self.server.KDECONNECT, self.server.LOCAL = ssh, folder, False
+        try:
+            agent = self.server.InputAgent(packages=packages)
+            return agent.deliver(lambda m: calls.append(("report", m))), calls, packages
+        finally:
+            self.server.ssh, self.server.KDECONNECT, self.server.LOCAL = old
+
+    def test_copies_nothing_when_the_frame_has_them(self):
+        folder, calls, packages = self.deliver(frame_has=True)
+        self.assertEqual(folder, "")
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0][1], "".join(f"{sha}  {name}\n" for name, sha in packages))
+
+    def test_copies_each_package_over_ssh(self):
+        folder, calls, packages = self.deliver(frame_has=False)
+        self.assertTrue(folder.startswith("~/.local/share/frame-control/kdeconnect/incoming/"))
+        copies = [c for c in calls if c[0] != "report" and "cat >" in c[0]]
+        self.assertEqual([c[1] for c in copies], [b"first", b"second"])
+        self.assertIn("a-1-1-aarch64.pkg.tar.zst.part", copies[0][0])
+
+    def test_refuses_a_damaged_bundle(self):
+        with self.assertRaises(self.server.Failure):
+            self.deliver(frame_has=False, damaged=True)
+
+
+@unittest.skipIf(sys.platform == "win32", "the agent runs on the Frame (Linux)")
+class AgentInstall(unittest.TestCase):
+    """The agent unpacks what the server copied, after checking each SHA-256."""
+
+    @classmethod
+    def setUpClass(cls):
+        import frame_input_agent
+        cls.agent = frame_input_agent
+
+    def setUp(self):
+        self.dir = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.dir)
+        saved = self.agent.BASE, self.agent.ROOT, self.agent.stop_daemon, self.agent.say
+        self.addCleanup(lambda: setattr_all(self.agent, saved))
+        self.agent.BASE, self.agent.ROOT = self.dir / "base", self.dir / "base/root"
+        self.agent.stop_daemon, self.agent.say = lambda: None, lambda *a, **k: None
+        self.agent.BASE.mkdir()
+
+    def package(self):
+        src = self.dir / "src"
+        (src / "usr/lib").mkdir(parents=True)
+        (src / "usr/lib/kdeconnectd").write_text("#!/bin/sh\n")
+        out = self.dir / "incoming/kdeconnect-24.02.2-1-aarch64.pkg.tar.zst"
+        out.parent.mkdir()
+        if subprocess.run(["tar", "--zstd", "-cf", str(out), "-C", str(src), "usr"], capture_output=True).returncode:
+            self.skipTest("this tar can't write zstd")
+        return out, [(out.name, self.agent.sha256(out))]
+
+    def test_unpacks_and_stamps(self):
+        path, packages = self.package()
+        self.assertFalse(self.agent.installed(packages))
+        self.agent.install(path.parent, packages)
+        self.assertTrue((self.agent.ROOT / "usr/lib/kdeconnectd").is_file())
+        self.assertTrue(self.agent.installed(packages))
+        self.assertFalse(self.agent.installed([(path.name, "0" * 64)]))
+
+    def test_refuses_a_damaged_package(self):
+        path, packages = self.package()
+        with open(path, "ab") as f:
+            f.write(b"!")
+        with self.assertRaisesRegex(RuntimeError, "damaged"):
+            self.agent.install(path.parent, packages)
+        self.assertFalse(self.agent.ROOT.exists())
+
+    def test_missing_package_and_empty_manifest(self):
+        with self.assertRaisesRegex(RuntimeError, "didn't reach"):
+            self.agent.install(self.dir, [("nope.pkg.tar.zst", "0" * 64)])
+        with self.assertRaisesRegex(RuntimeError, "doesn't include"):
+            self.agent.install(self.dir, [])
+
+    def test_server_and_agent_agree_on_the_stamp(self):
+        import server
+        packages = [("a.pkg.tar.zst", "1" * 64), ("b.pkg.tar.zst", "2" * 64)]
+        self.assertEqual(server.kdeconnect_stamp(packages), self.agent.stamp(packages))
+
+
+def setattr_all(module, saved):
+    module.BASE, module.ROOT, module.stop_daemon, module.say = saved
 
 
 class FakeKdeConnect:
@@ -171,9 +323,11 @@ class AgentProtocol(unittest.TestCase):
         old = sys.argv
         try:
             sys.argv = ["-c", "../../etc x", "Alex's Mac"]
-            self.assertEqual(self.agent.client_args(), ("etcx", "Frame Control (Alex's Mac)"))
+            self.assertEqual(self.agent.client_args(), ("etcx", "Frame Control (Alex's Mac)", "", []))
             sys.argv = ["-c"]
-            self.assertEqual(self.agent.client_args(), ("default", "Frame Control"))
+            self.assertEqual(self.agent.client_args(), ("default", "Frame Control", "", []))
+            sys.argv = ["-c", "mac", "Mac", "~/x", '[["a.pkg.tar.zst", "ab"]]']
+            self.assertEqual(self.agent.client_args()[2:], (os.path.expanduser("~/x"), [("a.pkg.tar.zst", "ab")]))
         finally:
             sys.argv = old
 
