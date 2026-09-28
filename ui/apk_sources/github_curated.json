@@ -1,0 +1,29 @@
+[
+  {
+    "repo": "KhronosGroup/OpenXR-SDK-Source",
+    "name": "hello_xr",
+    "summary": "Khronos OpenXR sample (Vulkan and OpenGL ES)",
+    "license": "Apache-2.0",
+    "vr": true,
+    "asset_pattern": "hello_xr-Vulkan-*.apk",
+    "allow_prerelease": false
+  },
+  {
+    "repo": "icosa-foundation/open-brush",
+    "name": "Open Brush",
+    "summary": "Open source spatial painting",
+    "license": "Apache-2.0",
+    "vr": true,
+    "asset_pattern": "*Quest*.apk",
+    "allow_prerelease": true
+  },
+  {
+    "repo": "SgtBilko76/SuperTux-3D",
+    "name": "SuperTux 3D",
+    "summary": "OpenXR stereoscopic platform game for Quest and PICO",
+    "license": "GPL-3.0",
+    "vr": true,
+    "asset_pattern": "*Quest*.apk",
+    "allow_prerelease": true
+  }
+]

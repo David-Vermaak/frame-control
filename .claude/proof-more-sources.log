@@ -1,0 +1,36 @@
+org.khronos.openxr.hello_xr.vulkan · 1.1.63 (code 1063)
+Minimum: Android 7.0 (API 24)
+ABIs: arm64-v8a, armeabi-v7a, x86, x86_64
+Lepton can install this APK. Features may still need services Lepton lacks.
+VR app
+Uses OpenXR (good).
+GitHub search: [{"source": "github", "id": "KhronosGroup/OpenXR-SDK-Source", "package": null, "name": "hello_xr", "summary": "Khronos OpenXR sample (Vulkan and OpenGL ES)", "icon": null, "images": {"icon": null, "banner": null, "screenshots": []}, "page": "https://github.com/KhronosGroup/OpenXR-SDK-Source", "version": null, "version_code": null, "min_sdk": null, "abis": null, "vr": true, "size": null, "free": true, "license": "Apache-2.0", "updated": null, "downloadable": true}]
+GitHub download: {"apk": "/Users/saphid/projects/steam-frame-moresrc/.claude/proof-cache/f24bbe8ba6f6339fca658628868ba8189cbc33390d6ac508f69d76fb67b5fa34.apk", "obb": [], "sha256": "f24bbe8ba6f6339fca658628868ba8189cbc33390d6ac508f69d76fb67b5fa34", "verified": true}
+info exit: 0
+Traceback (most recent call last):
+  File "/Users/saphid/projects/steam-frame-moresrc/ui/apk_sources/_web.py", line 47, in read
+    with open_url(url, hosts, headers) as r:
+  File "/Users/saphid/projects/steam-frame-moresrc/ui/apk_sources/_web.py", line 37, in open_url
+    return urllib.request.build_opener(Redirect(hosts)).open(
+  File "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 523, in open
+    response = meth(req, response)
+  File "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 632, in http_response
+    response = self.parent.error(
+  File "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 561, in error
+    return self._call_chain(*args)
+  File "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 494, in _call_chain
+    result = func(*args)
+  File "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 641, in http_error_default
+    raise HTTPError(req.full_url, code, msg, hdrs, fp)
+urllib.error.HTTPError: HTTP Error 429: Too Many Requests
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/saphid/projects/steam-frame-moresrc/.claude/prove-more-sources.py", line 18, in <module>
+    entries = itch.search(itch.sources()[0], 'off nominal')
+  File "/Users/saphid/projects/steam-frame-moresrc/ui/apk_sources/itch.py", line 58, in search
+    for entry in _parse(source, _web.read(url, ('itch.io',))):
+  File "/Users/saphid/projects/steam-frame-moresrc/ui/apk_sources/_web.py", line 62, in read
+    raise SourceError('Source refused access or reached its rate limit; try later (GitHub accepts FRAME_GITHUB_TOKEN)') from e
+apk_sources.SourceError: Source refused access or reached its rate limit; try later (GitHub accepts FRAME_GITHUB_TOKEN)

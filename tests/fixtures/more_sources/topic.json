@@ -1,0 +1,19 @@
+{
+  "items": [
+    {
+      "full_name": "LWJGL/lwjgl3",
+      "name": "lwjgl3",
+      "description": "LWJGL is a Java library that enables cross-platform access to popular native APIs useful in the development of graphics (OpenGL, Vulkan, bgfx), audio (OpenAL, Opus), parallel computing (OpenCL, CUDA) and XR (OpenVR, LibOVR, OpenXR) applications."
+    },
+    {
+      "full_name": "sahibzada-allahyar/YC-Killer",
+      "name": "YC-Killer",
+      "description": "A library of enterprise-grade AI agents designed to democratize artificial intelligence and provide free, open-source alternatives to overvalued Y Combinator startups."
+    },
+    {
+      "full_name": "bjornbytes/lovr",
+      "name": "lovr",
+      "description": "Lua Virtual Reality Framework"
+    }
+  ]
+}
