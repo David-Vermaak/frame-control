@@ -1,0 +1,47 @@
+Frame client feasibility, 2026-09-28
+SteamOS VERSION_ID=0.4.1 BUILD_ID=20260925.6191901; uname -m=aarch64
+SteamVR: vrserver log reports 2.18.1; process 2256 remained alive across checks.
+Base: dcf9689f6459e576d35fc507eb702ca6b2bf4dad (main).
+Unmodified upstream release APKs; installed with ui/frame_android.py install APK --vr.
+No Linux host attached. No pairing, streamed video, input, audio or worn-headset checks.
+Selected logcat lines only; timestamps in Android logs are UTC.
+
+WiVRn-release.apk
+https://github.com/WiVRn/WiVRn/releases/tag/v26.9
+sha256=1df6649ec77224fcc821af0ab4897222bdf3d7eb6ce6ad636461336724111331
+E/OpenXR-Loader( 1140): Error [GENERAL | xrCreateInstance | OpenXR-Loader] : LoaderInstance::CreateInstance, no support found for requested extension: XR_KHR_convert_timespec_time
+I/WiVRn   ( 1140): [2026-09-28 12:07:58.987] [WiVRn] [info] Failed to create OpenXR instance version 1.1.58: XR_ERROR_EXTENSION_NOT_PRESENT
+E/OpenXR-Loader( 1140): Error [GENERAL | xrCreateInstance | OpenXR-Loader] : LoaderInstance::CreateInstance, no support found for requested extension: XR_KHR_convert_timespec_time
+I/WiVRn   ( 1140): [2026-09-28 12:07:59.034] [WiVRn] [info] Failed to create OpenXR instance version 1.0.58: XR_ERROR_EXTENSION_NOT_PRESENT
+E/WiVRn   ( 1140): [2026-09-28 12:07:59.035] [WiVRn] [error] Error during initialization: Failed to create OpenXR instance: XR_ERROR_EXTENSION_NOT_PRESENT
+
+alvr_client_android.apk
+https://github.com/alvr-org/ALVR/releases/tag/v20.14.1
+sha256=be68feeb02665e3d69f1cdbcabf38ea4d15c42868a7ec6b5e698dbefee4e4e36
+E/OpenXR-Loader( 1139): Error [GENERAL | xrCreateInstance | OpenXR-Loader] : LoaderInstance::CreateInstance, no support found for requested extension: XR_KHR_convert_timespec_time
+I/RustStdoutStderr( 1139): Error [GENERAL | xrCreateInstance | OpenXR-Loader] : LoaderInstance::CreateInstance, no support found for requested extension: XR_KHR_convert_timespec_time
+E/[ALVR NATIVE-RUST]( 1139): ALVR panicked: What happened:
+E/[ALVR NATIVE-RUST]( 1139): panicked at alvr/client_openxr/src/lib.rs:220:10:
+E/[ALVR NATIVE-RUST]( 1139): called `Result::unwrap()` on an `Err` value: ERROR_EXTENSION_NOT_PRESENT
+
+Cleanup verified: both app directories, compatdata directories and Steam shortcuts absent.
+Both test containers stopped and removed. No Steam/SteamVR restart or global setting changes.
+
+Valve release notes fetched from ISteamNews/GetNewsForApp/v2 (appid=250820).
+
+SteamVR Beta Updated - 2.18.1
+https://steamstore-a.akamaihd.net/news/externalpost/steam_community_announcements/1844751498219787
+Added tethered Quest support over USB (must be used with Steam Link Beta)
+
+Introducing SteamVR 2.17
+https://steamstore-a.akamaihd.net/news/externalpost/steam_community_announcements/1843481262693486
+Adds initial support for USB streaming. Note: Requires new Steam Client Beta.
+Fix crash using Steam Link on Linux when games submit invalid textures.
+Improve streaming recovery when using Steam Link on Linux.
+
+SteamVR Beta Updated - 2.17.8
+https://steamstore-a.akamaihd.net/news/externalpost/steam_community_announcements/1842212951314598
+Fix crash using Steam Link on Linux when games submit invalid textures.
+Improve streaming recovery when using Steam Link on Linux.
+Adds initial support for USB streaming.
+USB streaming can be used without WiFi by opting into the Steam Client Beta.
