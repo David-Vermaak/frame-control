@@ -153,6 +153,7 @@ class Link:
     def __init__(self, registry, *, env_alias, mux_base, control, apply, explain):
         self.reg = registry
         self.override = env_alias       # FRAME_ALIAS, if set: the headset this server starts on
+        self.session_alias = env_alias  # ...and stays selectable after switching away
         self.mux_base = list(mux_base)  # ["ssh", "-o", "BatchMode=yes", ControlPath...]
         self.control = control          # ControlPath, or None where ssh can't share connections
         self.apply = apply              # apply(alias, host_opts): point every ssh command at the headset
@@ -216,8 +217,10 @@ class Link:
             self.version += 1
             self.cond.notify_all()
 
-    def probe_update(self, index, **fields):
+    def probe_update(self, index, attempt=None, **fields):
         with self.cond:
+            if attempt is not None and attempt != self.state["attempt"]:
+                return  # a probe from an earlier attempt, still finishing: not this one's row
             if index < len(self.state["probes"]):
                 self.state["probes"][index].update(fields)
             self.version += 1
@@ -270,9 +273,13 @@ class Link:
                                                         self.state["phase"] != "connecting"), wait)
 
     def use(self, device_id):
-        """Switch to another headset."""
-        self.reg.set_active(device_id)
-        self.override = None
+        """Switch to another headset: one from the registry, or back to FRAME_ALIAS."""
+        if self.session_alias and device_id == self.bare(self.session_alias)["id"] \
+                and not self.reg.by_alias(self.session_alias):
+            self.override = self.session_alias
+        else:
+            self.reg.set_active(device_id)
+            self.override = None
         self.invalidate()
 
     def invalidate(self):
@@ -535,11 +542,13 @@ class Link:
         results = [None] * len(ranked)
         done = threading.Condition()
 
+        attempt_no = self.state["attempt"]
+
         def run_probe(i, host):
-            res = probe(host, port, update=lambda **f: self.probe_update(i, **f))
+            res = probe(host, port, update=lambda **f: self.probe_update(i, attempt_no, **f))
             res.setdefault("ip", None)
             res.setdefault("rtt_ms", None)
-            self.probe_update(i, **{k: res[k] for k in ("state", "detail", "ip", "rtt_ms")})
+            self.probe_update(i, attempt_no, **{k: res[k] for k in ("state", "detail", "ip", "rtt_ms")})
             with done:
                 if results[i] is None:  # not already given up on
                     results[i] = dict(res, t=time.monotonic())
@@ -888,8 +897,11 @@ def devices_view(link):
     active = link.active_device()
     names = {nid: link.reg.network_name(dict(n, id=nid)) for nid, n in snap["networks"].items()}
     devices = []
-    if active.get("transient") and not active.get("none"):
-        devices.append(dict(link.public_device(active), active=True, addresses=[], managed=False, pinned=False))
+    bare = link.bare(link.session_alias) if link.session_alias and not link.reg.by_alias(link.session_alias) else None
+    for extra in ([active] if active.get("transient") and not active.get("none") else []) + \
+            ([bare] if bare and bare["id"] != active["id"] else []):
+        devices.append(dict(link.public_device(extra), active=extra["id"] == active["id"], addresses=[],
+                            managed=False, pinned=False))
     for d in snap["devices"]:
         view = {k: v for k, v in d.items() if k not in ("config_host", "addresses")}
         view["active"] = d["id"] == active["id"]
@@ -916,7 +928,8 @@ def devices_action(link, body, open_setup, busy=lambda: 0):
         raise frame_devices.DeviceError(
             f"Wait for what's running on {active['name']} to finish (see the activity bar), then try again")
     if action == "use":
-        d = reg.get(did)
+        sa = link.session_alias
+        d = link.bare(sa) if sa and did == link.bare(sa)["id"] and not reg.by_alias(sa) else reg.get(did)
         link.use(did)
         msg = f"Switched to {d['name']}"
     elif action == "update":

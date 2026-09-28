@@ -1642,20 +1642,24 @@ function candLabel(c) {
 // Inspect (upload, or the local path in the app), confirm in the dialog, then install with progress.
 // One at a time, so a second drop doesn't take over the dialog of the first.
 let sideloadQueue = Promise.resolve();
-function sideload(...args) {
-  const run = sideloadQueue.then(() => sideloadOne(...args));
+function sideload(file, path, isDir = false) {
+  const dev = window.connDevice;  // for the headset it was dropped on, even if it waits its turn
+  const run = sideloadQueue.then(() => {
+    if (window.connDevice !== dev) return toast(`Switched headsets: didn't add ${file.name}`, true);
+    return sideloadOne(file, path, isDir, dev);
+  });
   sideloadQueue = run.catch(() => {});
   return run;
 }
-async function sideloadOne(file, path, isDir = false) {
+async function sideloadOne(file, path, isDir = false, dev = window.connDevice) {
   const canPush = !isDir && file.size > 0;
   log(`Reading ${file.name}…`);
   let r;
-  try { r = path ? await api("/api/titles", { action: "inspect", path }) : await upload(file, "title"); }
+  try { r = path ? await api("/api/titles", { action: "inspect", path }) : await upload(file, "title", dev); }
   catch (e) {
     log(`${file.name}: ${e.message}`, "e");
     if (canPush && confirm(`${file.name}: ${e.message}\n\nCopy it to ~/Downloads instead?`))
-      await act(`Copy ${file.name} to ~/Downloads`, () => upload(file, "push"));
+      await act(`Copy ${file.name} to ~/Downloads`, () => upload(file, "push", dev));
     return;
   }
   // Its own fresh list, so the dialog can say whether this replaces an installed title.
@@ -1664,7 +1668,7 @@ async function sideloadOne(file, path, isDir = false) {
   const choice = await confirmTitle(r.plan, canPush, installed);
   if (choice === "push") {
     api("/api/titles", { action: "discard", token: r.token }).catch(() => {});
-    await act(`Copy ${file.name} to ~/Downloads`, () => upload(file, "push"));
+    await act(`Copy ${file.name} to ~/Downloads`, () => upload(file, "push", dev));
     return;
   }
   if (!choice) { api("/api/titles", { action: "discard", token: r.token }).catch(() => {}); return; }

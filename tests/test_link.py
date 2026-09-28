@@ -252,6 +252,22 @@ class Connecting(unittest.TestCase):
         self.assertEqual((s["phase"], s["retry_at"]), ("failed", None))
         self.assertIn("no addresses", s["error"]["message"])
 
+    def test_switching_back_to_the_frame_alias_the_server_started_with(self):
+        self.link.override = self.link.session_alias = "frame-bare"
+        other = self.device("localhost")
+        ids = [d["id"] for d in fl.devices_view(self.link)["devices"]]
+        self.assertEqual(ids, ["alias-frame-bare", other["id"]])
+        fl.devices_action(self.link, {"action": "use", "id": other["id"]}, None)
+        self.assertIn("alias-frame-bare", [d["id"] for d in fl.devices_view(self.link)["devices"]])  # still there
+        fl.devices_action(self.link, {"action": "use", "id": "alias-frame-bare"}, None)
+        self.assertEqual(self.link.active_device()["alias"], "frame-bare")
+        self.assertEqual(self.routes[-1], ("frame-bare", []))
+
+    def test_probes_from_an_earlier_attempt_leave_the_new_rows_alone(self):
+        self.link.state.update(attempt=2, probes=[{"host": "b", "state": "waiting"}])
+        self.link.probe_update(0, 1, state="answered", ip="10.0.0.2")
+        self.assertEqual(self.link.state["probes"][0], {"host": "b", "state": "waiting"})
+
     def test_a_bare_alias_lets_ssh_config_decide(self):
         self.link.override = "frame-bare"
         self.hosts({"frame-bare": "ok"})  # the stand-in ssh has no config: the alias is the host
