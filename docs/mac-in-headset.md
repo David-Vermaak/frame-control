@@ -204,7 +204,7 @@ about 5 ms to scroll compared with the baseline's way of measuring:
 | Scenario | Content | Input to drawn | fps drawn | Grades |
 |---|---|---|---|---|
 | test | 10.5 / 16.7 | 29.6 / 36.3 | 60 | all within target |
-| scroll | 19.8 / 27.4 | – | 55.9 | fps, late frames (4.8%) and worst gap (222 ms) only "acceptable": Wi-Fi stalls and ScreenCaptureKit's 46–53 fps from virtual displays |
+| scroll | 19.8 / 27.4 | – | 55.9 | fps, late frames (4.8%) and worst gap (222 ms) only "acceptable": Wi-Fi stalls (the Mac captured 57 fps in this run; earlier runs got 46–53 from virtual displays) |
 | type | 15.0 / 21.4 | 43.0 / 60.5 | – | all within target |
 
 Of the targets, click to photon is met without the Frame's compositor (the

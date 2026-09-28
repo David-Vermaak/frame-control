@@ -19,6 +19,7 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest import mock
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -81,6 +82,22 @@ class Helpers(unittest.TestCase):
         with self.assertRaises(frame_macview.MacViewError) as cm:
             mv.show("display:1")
         self.assertIn("Screen Recording", str(cm.exception))
+
+    def test_stop_all_ends_the_viewer_browser_unless_shown_again(self):
+        calls = []
+        mv = frame_macview.MacView(["ssh"], lambda remote, **kw: calls.append(remote) or "", "frame")
+        mv.agent = mock.Mock(poll=lambda: None)
+        mv.call = lambda path, **kw: {"closed": 1}
+        mv.shown = {"window:5"}
+        with mock.patch.object(frame_macview.time, "sleep"):
+            gen = mv.shows
+            mv.shown.clear()
+            mv._end_viewer_browser(gen)
+            self.assertEqual(len(calls), 1)
+            self.assertIn("pkill -f '[f]rame-control/mac-view", calls[0])
+            mv.shows += 1  # Show pressed during the wait: leave the new viewer alone
+            mv._end_viewer_browser(gen)
+            self.assertEqual(len(calls), 1)
 
 
 class WS:

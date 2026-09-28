@@ -128,6 +128,7 @@ class MacView:
         self.remote_port = None
         self.supervisor = None
         self.closing = False
+        self.shows = 0  # counts Show presses, so a late cleanup can't close a new viewer
         self.shown = set()  # sources with a viewer out there, connected or retrying
         self.browser_flags = list(BROWSER_FLAGS)
 
@@ -281,6 +282,7 @@ class MacView:
     def show(self, src, quality="balanced", width=None, height=None):
         if src != "test" and not src.startswith(("window:", "display:", "separate:")):
             raise MacViewError("Pick a window or display to show.")
+        self.shows += 1
         q = QUALITY.get(quality) or QUALITY["balanced"]
         state = self.call("/status")
         if src != "test" and not state.get("screen"):
@@ -325,7 +327,22 @@ class MacView:
             self.shown.clear()
         if not (self.agent and self.agent.poll() is None):
             return {"closed": 0}
-        return self.call("/close", method="POST", **({"src": src} if src else {}))
+        out = self.call("/close", method="POST", **({"src": src} if src else {}))
+        if not self.shown:
+            threading.Thread(target=self._end_viewer_browser, args=(self.shows,), daemon=True).start()
+        return out
+
+    def _end_viewer_browser(self, shows):
+        """Chromium on the Frame outlives its last viewer window (verified
+        2026-09-28), so once nothing is shown, end it. It runs with a profile
+        of its own, so nothing else is touched."""
+        time.sleep(2)  # the viewers close their windows first
+        if self.shown or self.shows != shows:
+            return
+        try:
+            self.run("pkill -f '[f]rame-control/mac-view|[d]ata/frame-mac-view' || true", timeout=10)
+        except Exception:
+            pass
 
     def state(self):
         reason = self.unavailable()

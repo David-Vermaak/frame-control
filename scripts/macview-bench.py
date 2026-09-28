@@ -172,11 +172,18 @@ class Relay:
                 await writer.drain()
             writer.close()
 
-        sender = asyncio.ensure_future(send())
-        while data := await reader.read(65536):
-            await queue.put((self.loop.time() + self.delay, data))
-        await queue.put((0, None))
-        await sender
+        async def pump():
+            while data := await reader.read(65536):
+                await queue.put((self.loop.time() + self.delay, data))
+            await queue.put((0, None))
+
+        sender, pumper = asyncio.ensure_future(send()), asyncio.ensure_future(pump())
+        done, _ = await asyncio.wait({sender, pumper}, return_when=asyncio.FIRST_COMPLETED)
+        if sender in done:  # the agent's side went away: stop reading, so the connection closes
+            pumper.cancel()
+            writer.close()
+            return
+        await sender  # the viewer's side ended: deliver what's queued first
 
     async def _shaped(self, reader, writer):  # agent -> Frame
         queue = asyncio.Queue()
@@ -461,7 +468,7 @@ def run_scenario(args, scenario, agent_port, token, frame_ssh):
             relay.loop.call_soon_threadsafe(relay.loop.stop)
         if chrome:
             chrome.terminate()
-        time.sleep(1.5)
+        time.sleep(3)  # Stop ends the Frame's viewer browser 2 s later
 
 
 def composited(f):
