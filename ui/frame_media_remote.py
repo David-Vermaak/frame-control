@@ -63,7 +63,9 @@ def run(body):
     if action == 'status':
         return status()
     if action == 'stop':
-        subprocess.run(['systemctl', '--user', 'stop', UNIT], check=True, timeout=15)
+        # --collect unloads the unit after it exits; stopping it then is a no-op, not an error.
+        if active():
+            subprocess.run(['systemctl', '--user', 'stop', UNIT], check=True, timeout=15)
         return {'message': 'Media player stopped', **status()}
     if action != 'play':
         raise ValueError('Media action must be list, status, play or stop')
@@ -87,7 +89,9 @@ def run(body):
                '--layout', plan['layout'], '--status', str(STATUS)]
     if body.get('theatre'):
         command.append('--theatre')
-    subprocess.run(command, check=True, capture_output=True, text=True, timeout=15)
+    started = subprocess.run(command, capture_output=True, text=True, timeout=15)
+    if started.returncode:
+        raise RuntimeError('Could not start the media player: ' + (started.stderr.strip() or 'systemd-run exited %s' % started.returncode))
     return {'message': 'Starting Frame Control media', 'plan': plan}
 
 

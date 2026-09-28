@@ -83,9 +83,26 @@ class Media(unittest.TestCase):
             ssh.assert_not_called()
 
     def test_fake_frame_stop_only_owns_our_unit(self):
-        with patch.object(remote.subprocess, 'run') as run, patch.object(remote, 'status', return_value={}):
+        with patch.object(remote.subprocess, 'run') as run, patch.object(remote, 'status', return_value={}), \
+                patch.object(remote, 'active', return_value=True):
             remote.run({'action': 'stop'})
             self.assertEqual(run.call_args.args[0], ['systemctl', '--user', 'stop', 'frame-control-media.service'])
+        # A finished player is already collected; Stop is then a no-op, not an error.
+        with patch.object(remote.subprocess, 'run') as run, patch.object(remote, 'status', return_value={}), \
+                patch.object(remote, 'active', return_value=False):
+            remote.run({'action': 'stop'})
+            run.assert_not_called()
+
+    def test_upload_rejects_unplayable_names_and_keeps_copy_error(self):
+        with patch.object(server, 'ssh') as ssh, patch.object(server, 'push_file') as push:
+            for name in ('.hidden.mp4', 'a\\b_SBS.mp4'):
+                with self.assertRaises(server.Failure):
+                    server.push_media(Path('/tmp')/name)
+            ssh.assert_not_called()
+            push.side_effect = server.Failure('copy failed')
+            ssh.side_effect = [None, server.Failure('link down')]
+            with self.assertRaisesRegex(server.Failure, 'copy failed'):
+                server.push_media(Path('/tmp/film_SBS.mp4'))
 
     def test_splat_invalid_records_and_stereo_parallax(self):
         with tempfile.TemporaryDirectory() as d:

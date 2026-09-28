@@ -1262,7 +1262,7 @@ for name, source in json.load(sys.stdin).items():
         ssh("python3 -c " + shlex.quote(installer), stdin=json.dumps(sources))
         try:
             out = ssh("python3 ~/.local/share/frame-control/media/frame_media_remote.py",
-                      stdin=json.dumps(body), timeout=45)
+                      stdin=json.dumps(body), timeout=60)
         except Failure as e:
             for line in reversed(getattr(e, "stdout", "").splitlines()):
                 try:
@@ -1278,17 +1278,23 @@ for name, source in json.load(sys.stdin).items():
 def push_media(path):
     # Validate the format, but leave layout selection until playback (ffprobe
     # can then read metadata on the Frame, where it is installed).
-    frame_media.plan(Path(path).name, "mono")
+    name = Path(path).name
+    frame_media.plan(name, "mono")
+    if name.startswith(".") or "\\" in name:
+        raise Failure("Rename the file: media names can't start with a dot or contain a backslash", 400)
     token = secrets.token_hex(16)
     dest = "Videos/FrameControl/" + token + "/"
     ssh("mkdir -p ~/" + dest)
     try:
         push_file(path, dest)
     except Exception:
-        ssh("rm -rf ~/" + dest)
+        try:
+            ssh("rm -rf ~/" + dest)
+        except Failure:
+            pass  # keep the copy error; an empty folder isn't listed as media
         raise
     return {"message": "Media sent. Choose its layout and press Play.",
-            "id": token + "/" + Path(path).name}
+            "id": token + "/" + name}
 
 
 POST = {"/api/media": media, "/api/android/display": android_display, "/api/android": android, "/api/titles": titles, "/api/launch": launch, "/api/steam": steam, "/api/volume": set_volume, "/api/clipboard": clipboard,
