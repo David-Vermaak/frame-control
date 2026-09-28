@@ -34,7 +34,7 @@ class AndroidApps(harness.FrameTestCase):
         self.assertEqual(shortcut['exe'], f'{APP_DIR}/launch.sh')
         self.assertEqual(shortcut['start_dir'], APP_DIR)
         self.assertEqual(shortcut['icon'], f'{APP_DIR}/artwork/icon.png')
-        for f in ('app.apk', 'launch.sh', 'instance.id', 'meta.json', 'icon.png', 'lepton-show-flatscreen'):
+        for f in ('app.apk', 'launch.sh', 'instance.id', 'meta.json', 'artwork/icon.png', 'lepton-show-flatscreen'):
             self.assertTrue(exists(f'{APP_DIR}/{f}'), f)
         self.assertEqual(meta['game_id'], (meta['shortcut'] << 32) | 0x02000000)
 
