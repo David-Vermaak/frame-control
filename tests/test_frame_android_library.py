@@ -189,6 +189,57 @@ class ArtworkTests(unittest.TestCase):
         with self.assertRaises(SourceError):
             art.fetch('file:///etc/passwd')
 
+    def trickle(self, head, seconds):
+        # A server that answers one byte every 20 ms, over a socketpair standing in for the network.
+        import socket
+        import threading
+        from apk_sources import _images
+        client, server = socket.socketpair()
+        def serve():
+            try:
+                server.recv(65536)
+                for byte in head + b'x' * 1000:
+                    server.sendall(bytes([byte]))
+                    time.sleep(0.02)
+            except OSError:
+                pass
+            finally:
+                server.close()
+        threading.Thread(target=serve, daemon=True).start()
+        public = [(2, 1, 6, '', ('93.184.216.34', 80))]
+        with patch.object(_images.socket, 'getaddrinfo', return_value=public), \
+                patch.object(_images.socket, 'create_connection', return_value=client):
+            start = time.monotonic()
+            with self.assertRaisesRegex(_images.SourceError, 'too long'):
+                _images.get('http://example.org/a.png', deadline=start + seconds)
+            return time.monotonic() - start
+
+    def test_deadline_bounds_trickling_headers_and_body(self):
+        self.assertLess(self.trickle(b'HTTP/1.1 200 OK\r\nContent-Length: 1000\r\n\r\n', 0.15), 0.4)
+        self.assertLess(self.trickle(b'HTTP/1.1 200 OK\r\n', 0.15), 0.4)  # headers never finish
+
+    def test_deadline_covers_name_resolution(self):
+        import threading
+        from apk_sources import _images
+        gate = threading.Event()
+        with patch.object(_images.socket, 'getaddrinfo', side_effect=lambda *a, **k: gate.wait(5) and []):
+            start = time.monotonic()
+            with self.assertRaisesRegex(_images.SourceError, 'too long'):
+                _images.get('https://example.org/a.png', deadline=start + 0.1)
+            self.assertLess(time.monotonic() - start, 0.4)
+        gate.set()
+        with self.assertRaisesRegex(_images.SourceError, 'too long'):
+            _images.get('https://example.org/a.png', deadline=time.monotonic() - 1)
+
+    def test_steamgriddb_uses_the_bounded_fetch_without_redirects(self):
+        import frame_steamgriddb as sgdb
+        from apk_sources import _images
+        with patch.object(_images, 'get', return_value=b'{"success": true, "data": [1]}') as get:
+            self.assertEqual(sgdb._get('/search/x', 'secret', time.monotonic() + 5), [1])
+        self.assertEqual(get.call_args.kwargs['redirects'], 0)
+        self.assertEqual(get.call_args.args[1]['Authorization'], 'Bearer secret')
+        self.assertLessEqual(get.call_args.kwargs['deadline'] - time.monotonic(), 5)
+
     def test_supplied_jpeg(self):
         data = (FIXTURES / 'icon.jpg').read_bytes()
         self.assertEqual(art.image_type(data), 'jpg')
