@@ -1,4 +1,4 @@
-import hashlib, io, json, os, sys, tempfile, unittest, urllib.error, urllib.request, zipfile
+import hashlib, io, json, os, sys, tempfile, time, unittest, urllib.error, urllib.request, zipfile
 from pathlib import Path
 from unittest.mock import patch
 
@@ -172,6 +172,30 @@ class PublisherSources(unittest.TestCase):
             _web.prune()
         self.assertEqual([p.exists() for p in (oldest, old, kept, recent)], [False, False, True, True])
         self.assertEqual([p.exists() for p in (orphan, busy, listing, fresh, tmpdir)], [False, True, False, True, False])
+
+    def test_prune_rechecks_before_deleting_and_spares_apks_in_use(self):
+        self.root.mkdir(parents=True)
+        old = time.time() - 7200
+        reused, claimed, stale = self.root / 'a.apk', self.root / 'b.apk', self.root / 'c.apk'
+        for path in (reused, claimed, stale):
+            path.write_bytes(b'x' * 40)
+        _web.claim(claimed)
+        self.addCleanup(_web.release, claimed)
+        for path in (reused, claimed, stale):
+            os.utime(str(path), (old, old))
+        real = os.listdir
+        def listdir(folder):
+            if folder == self.tmp.name:  # scanning the second folder: a download reuses a.apk meanwhile
+                self.assertTrue(_web.touch(reused))
+            return real(folder)
+        with patch.object(_web, 'APK_CAP', 10), patch.object(_web.os, 'listdir', listdir):
+            _web.prune()
+        self.assertEqual([p.exists() for p in (reused, claimed, stale)], [True, True, False])
+        _web.release(claimed)
+        with patch.object(_web, 'APK_CAP', 10):
+            _web.prune()
+        self.assertFalse(claimed.exists())
+        self.assertFalse(_web.touch(stale))  # a pruned APK is reported gone, so it's downloaded again
 
     def test_backoff_honours_retry_after_per_host(self):
         from apk_sources import SourceLimited

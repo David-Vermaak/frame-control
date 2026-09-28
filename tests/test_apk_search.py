@@ -33,6 +33,12 @@ class SettingsTest(unittest.TestCase):
         self.addCleanup(p.stop)
         for state in (search._running, search._pending, search._status, search._game_data):
             state.clear()
+        from apk_sources import _web
+        self.claims = []
+        for name in ('claim', 'release'):  # fake downloads aren't real files
+            p = patch.object(_web, name, side_effect=lambda path, name=name: self.claims.append((name, path)))
+            p.start()
+            self.addCleanup(p.stop)
 
 
 class SearchTests(SettingsTest):
@@ -203,6 +209,17 @@ class SearchTests(SettingsTest):
             with self.assertRaisesRegex(SourceError, 'OBB'):
                 search.install('one', 'brush')
             install.assert_not_called()
+
+    def test_downloaded_apk_is_protected_from_pruning_while_installing(self):
+        mod = fake()
+        def install(apk, **kwargs):
+            self.assertEqual(self.claims, [('claim', '/fake.apk')])
+            raise server.frame_android.FrameError('adb failed')
+        with patch.object(search, 'modules', return_value=([mod], [])), \
+                patch.object(server.frame_android, 'install', install):
+            with self.assertRaises(server.frame_android.FrameError):
+                search.install('one', 'brush')
+        self.assertEqual(self.claims, [('claim', '/fake.apk'), ('release', '/fake.apk')])
 
     def test_listing_cannot_download(self):
         mod = fake()

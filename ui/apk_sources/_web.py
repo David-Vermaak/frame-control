@@ -7,6 +7,36 @@ from . import SourceError, SourceLimited
 
 UA = 'FrameControl/0.1'
 APK_CAP = 2 * 1024 ** 3  # cached APKs across all sources, least recently used go first
+RECENT = 3600  # an APK used this recently may be about to be installed; never pruned
+_use_lock = threading.Lock()  # pruning's final check and delete vs touch()/claim()
+_in_use = {}  # APK path -> installs using it
+
+
+def touch(path):
+    """Mark a cached APK as just used; False if pruning already removed it."""
+    with _use_lock:
+        try:
+            os.utime(str(path))
+            return True
+        except FileNotFoundError:
+            return False
+
+
+def claim(path):
+    """Protect a downloaded APK from pruning until release(path)."""
+    path = os.path.abspath(str(path))
+    with _use_lock:
+        os.utime(path)  # raises if it has gone
+        _in_use[path] = _in_use.get(path, 0) + 1
+
+
+def release(path):
+    path = os.path.abspath(str(path))
+    with _use_lock:
+        if _in_use.get(path, 0) > 1:
+            _in_use[path] -= 1
+        else:
+            _in_use.pop(path, None)
 BACKOFF = 600  # seconds to leave a host alone after 403/429 without Retry-After
 _limited = {}  # host -> time.time() before which we don't contact it
 _limited_lock = threading.Lock()
@@ -77,16 +107,17 @@ def prune():
             except OSError:
                 pass
     total = sum(size for _, size, _ in apks)
-    for mtime, size, path in sorted(apks):
+    for _, size, path in sorted(apks):
         if total <= APK_CAP:
             break
-        if now - mtime < 3600:  # may be about to be installed
-            continue
-        try:
-            os.remove(path)
-            total -= size
-        except OSError:
-            pass
+        with _use_lock:  # the scan is old news: check again right before deleting
+            try:
+                if os.path.abspath(path) in _in_use or time.time() - os.stat(path).st_mtime < RECENT:
+                    continue
+                os.remove(path)
+                total -= size
+            except OSError:
+                pass
 
 
 def checked_url(url, hosts):

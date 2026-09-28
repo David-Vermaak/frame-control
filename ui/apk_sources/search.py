@@ -314,7 +314,15 @@ def install(source_id, entry_id, version_code=None, progress=None):
         kwargs['artwork'] = downloaded.get('artwork') or entry.get('artwork')
     if progress:
         progress('Installing', None)
-    result = frame_android.install(downloaded['apk'], **kwargs)
+    from apk_sources import _web
+    try:
+        _web.claim(downloaded['apk'])  # no cache pruning while it installs
+    except OSError as e:
+        raise SourceError('The downloaded APK disappeared before installing; try again') from e
+    try:
+        result = frame_android.install(downloaded['apk'], **kwargs)
+    finally:
+        _web.release(downloaded['apk'])
     if obb:
         # OBB files go into the app's own instance, which only exists while the app runs.
         with _lock:
