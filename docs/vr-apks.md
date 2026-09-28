@@ -140,10 +140,12 @@ refresh covers both. The API is `POST /api/android` with
 `POST /api/titles` with `{"action":"refresh-art","id":…}`; each returns a
 background job. Batch results retain per-item errors, and the CLIs exit
 nonzero if any failed. Apps and titles without complete artwork show **Add
-artwork**, `list` prints the command, and when Frame Control lists them while
-Steam is running it re-applies their art in the background (at most every
-five minutes), for example for a title Steam registered after an install made
-while it wasn't running.
+artwork** and `list` prints the command. Only entries marked `art_pending` at
+install (a title Steam registered after an install made while it wasn't
+running) are backfilled automatically, when Frame Control lists them with
+Steam running (at most every five minutes), and that backfill only fills
+slots Steam has no art for: names, icons, flags and any art the user set are
+kept. Older installs without the flag are refreshed only on request.
 
 Steam's app overviews carry no `devkit_gameid` (checked 2026-09-28, build
 20260925.6191901, on every non-Steam shortcut). A title's shortcut is found by
@@ -176,7 +178,8 @@ The launcher supervises Lepton and handles TERM/INT/HUP and normal exit by
 stopping its own container and child process group. A lock refuses duplicate launches;
 a container still running while the lock is free was orphaned by a killed
 launcher and is stopped before the new launch. Lepton doesn't inherit the
-lock. Removing an app or title still deletes its files when Steam isn't
+lock; the launcher records Lepton's process group and a later launch ends a
+recorded group still running this APK. Removing an app or title still deletes its files when Steam isn't
 running; tidying Steam's collections and artwork is best effort. Steam Stop uses `TerminateApp` with the exact
 64-bit game ID string. Frame Control's Stop additionally has a direct-container
 fallback. The stable instance ID and compatdata paths remain unchanged.
