@@ -309,6 +309,9 @@ class Link:
         address by name, not the IP it answered from. A zone's % can't be passed through
         Windows' console, and ssh resolves the name itself."""
         device = self.active_device()
+        routed = self.routed_device
+        if self.routed is not None and routed and routed["alias"] == device["alias"]:
+            device = routed  # as every command has it now (a frozen route, a login change deferred)
         via = self.state.get("via") if self.state.get("phase") == "connected" else None
         host = via["host"] if via else (device["addresses"][0]["host"] if device.get("addresses") else None)
         return device["alias"], self.host_opts(device, host)
@@ -454,8 +457,8 @@ class Link:
             if device.get("transient") and not device.get("none") and "frozen" not in device:
                 # A bare alias: pin down where ~/.ssh/config sends it now, so an edit to that
                 # file can't move the commands of an install that's running.
-                h, p, u, _ = ssh_g(device["alias"])
-                device = dict(device, user=device.get("user") or u, port=p, frozen=[
+                h, p, u, proxied = ssh_g(device["alias"])
+                device = dict(device, user=device.get("user") or u, port=p, frozen_host=h, proxied=proxied, frozen=[
                     "-o", f"HostName={frame_devices.ssh_host(h)}", "-o", f"Port={p}",
                     *(["-o", f"User={u}"] if u else [])])
             if self.routed and self.routed_device and device["alias"] == self.routed_device["alias"] \
@@ -558,7 +561,11 @@ class Link:
         self.stage("find", "active")
         port = device.get("port") or 22
         if device.get("transient"):
-            host, port, user, proxied = ssh_g(device["alias"])
+            # Where the route was pinned (connect), so the probe checks what commands use.
+            if "frozen_host" in device:
+                host, port, user, proxied = device["frozen_host"], device["port"], device.get("user"), device["proxied"]
+            else:
+                host, port, user, proxied = ssh_g(device["alias"])
             if user and not device.get("user"):
                 device["user"] = user
             a = {"host": host, "kind": frame_network.guess_kind(host), "label": "from ~/.ssh/config"}

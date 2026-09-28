@@ -159,9 +159,9 @@ class ConfigRewrite(Base):
         self.assertTrue(fd.rewrite_block("frame", port=2200, user="deck"))
         block = fd.parse_blocks(cfg.read_text())[0]
         self.assertEqual((block["port"], block["user"], block["hostname"]), (2200, "deck", "192.168.1.237"))
-        self.assertTrue(fd.rewrite_block("frame-2", port=22))  # back to the default: the line goes
+        self.assertTrue(fd.rewrite_block("frame-2", port=22))  # back to the default: said explicitly
         self.assertEqual(fd.parse_blocks(cfg.read_text())[1]["port"], 22)
-        self.assertNotIn("Port 22\n", cfg.read_text())
+        self.assertIn("  Port 22\n", cfg.read_text())
         self.assertIn("HostName 192.168.1.109", cfg.read_text())  # other hosts untouched
         if os.name != "nt":
             self.assertEqual(cfg.stat().st_mode & 0o777, 0o600)

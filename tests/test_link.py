@@ -321,6 +321,21 @@ class Connecting(unittest.TestCase):
         self.assertEqual(self.routes[-1], ("frame-bare", ["-o", "HostName=localhost", "-o", f"Port={self.port}",
                                                           "-o", "User=tester"]))
 
+    def test_a_bare_alias_keeps_its_pinned_route_for_reconnects_and_terminals(self):
+        self.link.override = "frame-bare"
+        self.hosts({"localhost": "ok"})
+        with mock.patch.object(fl, "ssh_g", return_value=("localhost", self.port, "tester", False)):
+            self.link.connect(["start"])
+        pinned = self.routes[-1][1]
+        # ~/.ssh/config now sends the alias elsewhere, but an install is running.
+        self.link.work = lambda: 1
+        with mock.patch.object(fl, "ssh_g", return_value=("elsewhere.invalid", 2222, "other", False)):
+            self.link.close_master()
+            self.link.connect(["dropped"])
+            self.assertEqual(self.link.snapshot()["probes"][0]["host"], "localhost")  # probed where commands go
+            self.assertEqual(self.link.snapshot()["phase"], "connected")
+            self.assertEqual(self.link.named_route(), ("frame-bare", pinned))  # terminals go there too
+
     def test_a_bare_alias_behind_a_jump_host_is_left_to_ssh(self):
         self.link.override = "frame-jump"
         self.hosts({"10.99.99.99": "ok"})  # ssh's ProxyJump would get there

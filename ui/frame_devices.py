@@ -300,12 +300,12 @@ def _rewritten(lines, alias, hostname, user, port):
         key = f[0].lower() if f else ""
         if key in want and want[key] is not None and key not in seen:
             seen.add(key)
-            if key == "port" and want[key] == "22":
-                continue  # the default; connect.sh leaves it out
+            # An existing Port line is kept, even for 22: dropping it could let a later
+            # `Host *` Port apply to Terminal but not to the app.
             out.append(f"  {f[0]} {want[key]}")
         else:
             out.append(line)
-    if want["port"] and want["port"] != "22" and "port" not in seen:
+    if want["port"] and want["port"] != "22" and "port" not in seen:  # 22 needs no line (as connect.sh writes it)
         at = next((n + 1 for n, line in enumerate(out) if line.split(None, 1)[:1] == ["HostName"]), 2)
         out.insert(at, f"  Port {want['port']}")
     new = lines[:i] + out + lines[j:]
