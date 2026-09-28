@@ -1,0 +1,89 @@
+# VR APKs and Quest games in Lepton
+
+What it takes to run an immersive (OpenXR) Android app, including Meta Quest
+builds, on the Frame. Checked on SteamOS BUILD_ID 20260925.6191901, Lepton
+v2.8.14 (rootfs v2.8.11), SteamVR 2.18.1, on 2026-09-28, unless marked
+**inferred**.
+
+## How a VR APK reaches SteamVR (verified)
+
+- Lepton ships a standard Khronos system runtime manifest,
+  `/vendor/etc/openxr/1/active_runtime.json`, pointing at SteamVR's Android
+  client, `/data/steamvr/runtime/bin/androidarm64/vrclient.so`. That is the
+  host's `/opt/steamvr/bin/androidarm64/`, bind-mounted in.
+- An APK's own Khronos-style `libopenxr_loader.so` tries the runtime brokers
+  (`org.khronos.openxr.runtime_broker`, `…system_runtime_broker`), finds
+  neither, then falls back to that manifest. Nothing in the APK has to change
+  for discovery.
+- Install the APK without the flatscreen marker
+  (`python3 ui/frame_android.py install app.apk --vr`). The marker only
+  controls Lepton's 2D Android surface; the app itself has to start an
+  OpenXR session.
+- Lepton also loads Valve's `XR_APILAYER_VALVE_fdm_injection` layer from
+  `/vendor/etc/openxr/1/api_layers/implicit.d/`. Only layers in Valve's own
+  directories are picked up (`liblepton/vulkan_layers.sh`), so a third-party
+  layer has to ship inside the APK.
+
+**Open Brush 2.32.29, the Quest APK from its GitHub release (Unity OpenXR,
+Vulkan), works unmodified.** Its manifest already has `LAUNCHER` next to
+`com.oculus.intent.category.VR`. Unity asked for OpenXR 1.1, got
+`XR_ERROR_API_VERSION_UNSUPPORTED`, retried with 1.0 and succeeded. SteamVR
+took it as the scene app, created Touch, simple-controller and Frame-controller
+bindings, and the session reached `XR_SESSION_STATE_FOCUSED`. A headset capture
+(`ui/frame_vrshot.py`, after waking the compositor and closing the dashboard)
+showed a dark sky over a mountain horizon; nobody wore the headset to confirm
+it was Open Brush's scene or to try drawing.
+
+**Khronos `hello_xr` (Vulkan, 1.1.63 release APK) works unmodified:**
+`Instance RuntimeName=SteamVR/OpenXR RuntimeVersion=2.18.1`, 1728×1728
+swapchains per eye, session `IDLE → READY → SYNCHRONIZED` (the headset was
+not being worn, so it did not reach `FOCUSED`).
+
+## What SteamVR's Android runtime supports (verified, from `vrclient.so`)
+
+- **OpenXR 1.0 only.** An app requesting `XR_API_VERSION_1_0` works; one
+  requesting 1.1 (`XR_CURRENT_API_VERSION` in a 1.1 SDK) gets
+  `XR_ERROR_API_VERSION_UNSUPPORTED` from the runtime.
+- Extensions include `XR_KHR_opengl_es_enable`, `XR_KHR_vulkan_enable{,2}`,
+  `XR_KHR_composition_layer_depth`, `XR_KHR_locate_spaces`,
+  `XR_EXT_local_floor`, `XR_EXT_uuid`, `XR_EXT_palm_pose`,
+  `XR_EXT_hand_tracking`, `XR_EXT_eye_gaze_interaction`, and these Meta ones:
+  `XR_FB_display_refresh_rate`, `XR_FB_foveation{,_configuration,_vulkan}`,
+  `XR_FB_space_warp`, `XR_FB_swapchain_update_state`,
+  `XR_META_foveation_eye_tracked`, `XR_META_recommended_layer_resolution`,
+  `XR_META_vulkan_swapchain_create_info`, `XR_META_performance_metrics`.
+- Not present: `XR_FB_passthrough`, `XR_FB_hand_tracking_*`,
+  `XR_FB_spatial_entity*`, `XR_FB_color_space`,
+  `XR_KHR_android_thread_settings`, `XR_OCULUS_*`.
+- Interaction profiles include `oculus/touch_controller`, `khr/simple_controller`,
+  `valve/frame_controller` and the usual PC controllers. Valve documents Touch
+  bindings as a working fallback on the Frame controllers.
+
+## What stops a Quest APK (verified with Wolvic 1.9, `oculusvr` build)
+
+1. **Lepton won't start it.** Lepton's `apk-info-extractor` only accepts an
+   activity whose intent filter has `android.intent.action.MAIN` and
+   `android.intent.category.LAUNCHER`. Quest apps use
+   `com.oculus.intent.category.VR` instead, so Lepton logs `APP_ACTIVITY is
+   empty` and exits. There is no override. **Fix:** add the `LAUNCHER`
+   category to that intent filter and re-sign. After that, Wolvic started.
+2. **OpenXR 1.1.** Wolvic's Quest build then requested OpenXR 1.1 and aborted
+   on `XR_ERROR_API_VERSION_UNSUPPORTED`. Unity's OpenXR plugin retries with
+   1.0 (Open Brush, above), so this mostly bites native and non-Unity apps. **Fix (inferred):** an API layer
+   inside the APK that asks the runtime for 1.0 and maps the 1.1 core
+   functions to the extensions the runtime does have (`XR_KHR_locate_spaces`,
+   `XR_EXT_local_floor`, `XR_EXT_uuid`, `XR_EXT_palm_pose`).
+3. **Not yet reached:** required Meta-only extensions (each app differs),
+   swapchain formats (the Lynx Wolvic build needed `GL_SRGB8_ALPHA8`), and
+   Meta platform services.
+
+The loader was never the problem: Wolvic's Quest `libopenxr_loader.so` is a
+Khronos-style loader and found SteamVR through `/vendor`.
+
+## Out of scope
+
+- **Meta entitlement.** Apps that call the Oculus Platform SDK
+  (`libovrplatformloader.so`) to check the Quest store licence need Meta's
+  services. Frame Control won't work around that.
+- **VrApi-era apps** (`libvrapi.so`, before OpenXR) need an API translator,
+  not a patch.
