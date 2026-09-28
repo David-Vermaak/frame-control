@@ -258,6 +258,29 @@ ipcMain.on("devices:changed", (e, list) => {
   buildMenu();
 });
 const activeAlias = () => (devices.find(d => d.active) || {}).alias || FRAME;
+
+// SSH through the server, so it goes to the headset and address the app is using
+// (with its own pinned identity), and refuses when there's none.
+function openSsh() {
+  if (!url) return dialog.showErrorBox("Couldn't open SSH", "Frame Control's server isn't running.");
+  const body = JSON.stringify({ what: "terminal" });
+  const req = http.request(new URL("/api/open", url), {
+    method: "POST", timeout: 15000,
+    headers: { "Content-Type": "application/json", "X-Frame-UI": "1", "Content-Length": Buffer.byteLength(body) },
+  }, (res) => {
+    let data = "";
+    res.on("data", (c) => { data += c; });
+    res.on("end", () => {
+      if (res.statusCode === 200) return;
+      let why = `HTTP ${res.statusCode}`;
+      try { why = JSON.parse(data).error || why; } catch {}
+      dialog.showErrorBox("Couldn't open SSH", why);
+    });
+  });
+  req.on("error", (e) => dialog.showErrorBox("Couldn't open SSH", e.message));
+  req.on("timeout", () => req.destroy(new Error("the server didn't answer")));
+  req.end(body);
+}
 function showDevices() {
   if (win && url) win.webContents.executeJavaScript('location.hash = "devices"').catch(() => {});
 }
@@ -362,7 +385,7 @@ function buildMenu() {
       label: "Frame",
       submenu: [
         { label: "Set Up Connection…", click: () => setUpConnection() },
-        { label: IS_MAC ? "Open SSH in Terminal" : "Open SSH in a Terminal", click: () => runInTerminal(["ssh", activeAlias()]) },
+        { label: IS_MAC ? "Open SSH in Terminal" : "Open SSH in a Terminal", click: openSsh },
         { type: "separator" },
         ...(devices.length > 1 ? [{
           label: "Headset",

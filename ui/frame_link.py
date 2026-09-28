@@ -413,6 +413,7 @@ class Link:
             if before.get("transient") and not before.get("none") and self.routed is not None:
                 # A bare alias is in use: a headset set up now doesn't take over by itself.
                 self.override = self.override or before["alias"]
+                self.session_alias = self.session_alias or before["alias"]  # and stays on the list
             if self.reg.sync_from_config():
                 self.devices_changed()
                 after = self.active_device()
@@ -435,9 +436,15 @@ class Link:
         why = self.describe(reasons)
         self.last_attempt = now()
         self.close_master()
-        with self.route_lock:
+        with self.work_lock, self.route_lock:
             gen = self.attempt_gen = self.gen
             device = self.active_device()
+            if self.routed and self.routed[0] == device["id"] and self.route_key(device) != self.routed \
+                    and self.work():
+                # Its login changed in ~/.ssh/config while an install runs: reconnect with the
+                # one it started with; the change applies once it's done (see watch_config).
+                device = dict(device, user=self.routed[1], port=self.routed[2])
+                self.deferred = True
             if self.route_key(device) != self.routed:
                 # Another headset, or a new user or port: nothing may go on using the old
                 # route, even if this attempt fails.

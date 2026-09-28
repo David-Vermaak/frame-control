@@ -278,6 +278,8 @@ class Connecting(unittest.TestCase):
         self.link.config_mtime = None
         self.link.watch_config()
         self.assertEqual(len(self.routes), routes)  # an install is running: not yet
+        self.link.connect(["dropped"])  # a reconnect meanwhile keeps the login it started with
+        self.assertIn("User=steamos", self.routes[-1][1])
         running[0] = 0
         self.link.watch_config()
         self.assertIn("User=deck", self.routes[-1][1])
