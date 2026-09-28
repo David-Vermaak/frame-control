@@ -68,7 +68,7 @@ code { font: 14px ui-monospace, SFMono-Regular, Menlo, monospace; background: rg
            color: var(--link); background: rgba(26,159,255,.1); border: 1px solid rgba(102,192,244,.22); margin-bottom: 26px; }
 .eyebrow b { color: var(--bright); font-weight: 600; }
 .eyebrow .plats { white-space: nowrap; }
-@media (max-width: 520px) { .eyebrow { border-radius: 16px; } .eyebrow .sep { display: none; } .eyebrow .plats { display: block; } }
+@media (max-width: 520px) { .eyebrow { border-radius: 16px; } .eyebrow .sep { display: none; } .eyebrow .plats { display: block; white-space: normal; } }
 .hero h1 { max-width: 880px; margin: 0 auto; }
 .hero h1 span { background: linear-gradient(90deg, #66c0f4, #1a9fff 45%, #8a6cff); -webkit-background-clip: text; background-clip: text; color: transparent; }
 .lede { max-width: 680px; margin: 22px auto 0; font-size: 19px; color: var(--text); }
