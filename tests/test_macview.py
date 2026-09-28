@@ -18,6 +18,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import threading
 import unittest
 from unittest import mock
 from pathlib import Path
@@ -101,6 +102,23 @@ class Helpers(unittest.TestCase):
             mv.launching = 1  # a Show replacing its own stream is still launching
             mv._end_viewer_browser(mv.shows)
             self.assertEqual(len(calls), 1)
+        # A Show waits while the cleanup checks and runs pkill.
+        mv.launching = 0
+        mv._show = lambda *a: "shown"
+        started = threading.Event()
+
+        def slow_pkill(remote, **kw):
+            started.set()
+            time.sleep(0.3)
+            calls.append("after " + remote)
+        mv.run = slow_pkill
+        with mock.patch.object(frame_macview.time, "sleep"):
+            t = threading.Thread(target=mv._end_viewer_browser, args=(mv.shows,))
+            t.start()
+            started.wait(2)
+            self.assertEqual(mv.show("window:5"), "shown")  # blocked until the pkill finished
+            self.assertTrue(calls[-1].startswith("after "))
+            t.join()
 
 
 class WS:
