@@ -584,6 +584,31 @@ class Link:
             ranked = [(a, "from ~/.ssh/config")]
         else:
             ranked = frame_devices.order_addresses(device["addresses"], net.get("id"), bool(ts.get("up")))
+            if ssh_g(device["alias"])[3]:
+                # ~/.ssh/config sends this alias through a jump host: a direct probe says
+                # nothing, so let ssh (through the jump host) try each address in turn.
+                with self.cond:
+                    self.state["probes"] = [dict(a, why=why, state="waiting", detail="Through a jump host", ip=None,
+                                                 rtt_ms=None, label=a.get("label") or "") for a, why in ranked]
+                self.stage("find", "done", f"{device['alias']} goes through a jump host; ssh finds it")
+                for i, (a, why) in enumerate(ranked):
+                    if i:
+                        for sid in ("ssh", "identity", "login"):
+                            self.stage(sid, "pending", "")
+                    outcome = self.handshake(device, a, {"ip": None, "rtt_ms": None}, device.get("user"))
+                    if outcome == "ok":
+                        self.probe_update(i, state="answered", detail="Reached through the jump host")
+                        self.publish(via={"host": a["host"], "kind": a["kind"], "ip": None, "rtt_ms": None,
+                                          "why": "through a jump host", "network": net.get("id"),
+                                          "network_name": net["name"]})
+                        self.learn(device, a["host"], net, None)
+                        return True
+                    with self.cond:
+                        why_not = (self.state["error"] or {}).get("message") or "SSH failed"
+                    self.probe_update(i, state="sshfailed", detail=why_not)
+                    if outcome != "next":
+                        return False
+                return False
         with self.cond:
             self.state["probes"] = [{"host": a["host"], "kind": a["kind"], "label": a.get("label") or "",
                                      "why": why, "state": "waiting", "detail": "Waiting", "ip": None,

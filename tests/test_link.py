@@ -344,6 +344,15 @@ class Connecting(unittest.TestCase):
             self.assertEqual(self.link.snapshot()["phase"], "connected")
             self.assertEqual(self.link.named_route(), ("frame-bare", pinned))  # terminals go there too
 
+    def test_a_set_up_headset_behind_a_jump_host_is_left_to_ssh(self):
+        d = self.device("10.99.99.98", "10.99.99.99")  # neither answers directly
+        self.hosts({"10.99.99.98": "wrong", "10.99.99.99": "ok"})
+        with mock.patch.object(fl, "ssh_g", return_value=("frame-t", 22, "steamos", True)):
+            self.link.connect(["start"])
+        s = self.link.snapshot()
+        self.assertEqual((s["phase"], s["via"]["host"]), ("connected", "10.99.99.99"), s["error"])
+        self.assertIn(f"HostKeyAlias=frame-control-{d['id']}", self.routes[-1][1])  # still pinned per headset
+
     def test_a_bare_alias_behind_a_jump_host_is_left_to_ssh(self):
         self.link.override = "frame-jump"
         self.hosts({"10.99.99.99": "ok"})  # ssh's ProxyJump would get there
