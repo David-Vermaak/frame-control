@@ -101,6 +101,7 @@
   .shelf-head .count { color: var(--muted); font-size: 13px; }
   .shelf-head .spacer { flex: 1; }
   .sub { color: var(--muted); font-size: 12.5px; }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .hint { color: var(--muted); font-size: 12.5px; margin-top: 11px; line-height: 1.5; }
 
   /* ---- buttons ---- */
@@ -483,20 +484,22 @@
         <label>Check in after <input id="stillMinutes" type="number" min="0" max="240" value="30" required style="width:75px"> active minutes</label>
       </div>
       <div class="row" style="flex-wrap:wrap;margin:14px 0;gap:14px">
-        <label><input id="batteryAlert" type="checkbox" checked> Low battery</label>
-        <label><input id="heatAlert" type="checkbox" checked> Overheating</label>
+        <label><input id="batteryAlert" type="checkbox" checked> Alert on low battery</label>
+        <label><input id="heatAlert" type="checkbox" checked> Alert on overheating</label>
         <button class="action small" id="sessionStart" type="submit">Start session</button>
         <button class="small" id="sessionCancel" type="button" disabled>Cancel session</button>
         <button class="small" id="testNotification" type="button">Enable / test notifications</button>
       </div>
     </form>
     <p id="comfortStatus" role="status">Checking session…</p>
+    <p id="comfortNotificationStatus" class="hint" role="status" hidden></p>
     <p class="hint">A one-minute warning, then Steam Home. Games stay running: save and pause first. Keep this app open and connected for notifications.</p>
     <details class="hint"><summary>How sessions and alerts work</summary>
       <p>This is a reminder, not a parental lock. The timer continues on the Frame if you disconnect; a headset restart cancels it. Cancel before changing settings. Set break/check-in to 0 to turn them off.</p>
-      <p>Alerts run during a session. iOS may suspend phone notifications in the background. Breaks and check-ins count SteamVR activity, not confirmed wear time.</p>
+      <p>Battery, heat and check-in alerts appear on connected companions during a session. Headset warnings and break reminders continue without a companion. iOS may suspend phone notifications in the background. Breaks and check-ins count SteamVR activity, not confirmed wear time.</p>
     </details>
-    <div id="comfortEvents" class="hint" aria-live="polite"></div>
+    <div id="comfortEvents" class="hint"></div>
+    <span id="comfortAnnouncement" class="sr-only" aria-live="polite"></span>
   </section>
 
   <section id="shots">
@@ -926,15 +929,27 @@ function refresh() {
 }
 
 // The Frame owns the clock. Poll independently of status and the selected tab.
-let comfortBusy = false, comfortSeen = new Set(), comfortSession = null;
+let comfortBusy = false, comfortSeen = new Set(), comfortSession = null, comfortHydrated = false;
 async function localNotification(message, request = false) {
-  if (window.frameApp?.notify) return window.frameApp.notify(message, request);
-  if (!("Notification" in window)) throw new Error("This browser has no notifications; use the Frame Control app.");
-  const permission = request ? await Notification.requestPermission() : Notification.permission;
-  if (permission !== "granted") throw new Error("Notifications are off. Enable them in system settings.");
-  new Notification("Frame Control", {body: message});
+  try {
+    if (window.frameApp?.notify) await window.frameApp.notify(message, request);
+    else {
+      if (!("Notification" in window)) throw new Error("This browser has no notifications; use the Frame Control app.");
+      const permission = request ? await Notification.requestPermission() : Notification.permission;
+      if (permission !== "granted") throw new Error("Notifications are off. Enable them in system settings.");
+      new Notification("Frame Control", {body: message});
+    }
+    $("comfortNotificationStatus").hidden = true;
+  } catch (e) {
+    $("comfortNotificationStatus").hidden = false;
+    $("comfortNotificationStatus").textContent = "Notifications aren't available on this device. Check system notification settings, then use Enable / test notifications. Headset reminders continue during an active session.";
+    throw e;
+  }
 }
+
 function renderComfort(s) {
+  const firstSnapshot = !comfortHydrated;
+  comfortHydrated = true;
   $("sessionStart").disabled = !!s.active;
   for (const id of ["sessionMinutes", "breakMinutes", "stillMinutes", "batteryAlert", "heatAlert"])
     $(id).disabled = !!s.active;
@@ -944,30 +959,41 @@ function renderComfort(s) {
     comfortSeen.clear();
     if (s.options) for (const [key, value] of Object.entries(s.options)) {
       const el = $(key === "minutes" ? "sessionMinutes" : key);
+      if (!el) continue;
       if (el.type === "checkbox") el.checked = value; else el.value = value;
     }
   }
-  $("comfortStatus").textContent = s.error || (s.active
+  let statusText = s.error || (s.active
     ? `${Math.ceil(s.remaining / 60)} min until Steam Home · ${s.activity == null ? "activity unknown" : s.activity === 3 ? "headset in standby" : "monitoring"}`
     : "No session running.");
   if (s.active && s.unavailable?.length)
-    $("comfortStatus").textContent += " · No readings: " + s.unavailable.join(", ");
+    statusText += " · No readings: " + s.unavailable.join(", ");
+  if ($("comfortStatus").textContent !== statusText) $("comfortStatus").textContent = statusText;
+  let latest = null;
   for (const e of s.events || []) {
     if (comfortSeen.has(e.id)) continue;
     comfortSeen.add(e.id);
     // Historical events remain visible but never produce a burst on reconnect.
-    if (s.time - e.time >= 0 && s.time - e.time < 30 && !["started", "cancelled"].includes(e.kind)) {
+    if (!firstSnapshot && s.time - e.time >= 0 && s.time - e.time < 30 && !["started", "cancelled"].includes(e.kind)) {
+      latest = e.message;
       log(e.message); toast(e.message, e.kind === "error");
-      localNotification(e.message).catch(err => { $("comfortStatus").textContent += " · " + err.message; });
+      localNotification(e.message).catch(() => {});  // the notification status keeps the failure visible
     }
   }
-  $("comfortEvents").textContent = (s.events || []).slice(-3).map(e => e.message).join(" · ");
+  // Keep only the server's bounded history; a new page seeds it without replay.
+  comfortSeen = new Set((s.events || []).map(e => e.id));
+  if (latest !== null) $("comfortAnnouncement").textContent = latest;
+  const history = (s.events || []).slice(-3).map(e => e.message).join(" · ");
+  if ($("comfortEvents").textContent !== history) $("comfortEvents").textContent = history;
 }
 async function pollComfort() {
   if (!comfortBusy) {
     comfortBusy = true;
     try { renderComfort(await api("/api/comfort", {action: "status"})); }
-    catch (e) { $("comfortStatus").textContent = "Session status unavailable: " + e.message; }
+    catch (e) {
+      const message = "Session status unavailable: " + e.message;
+      if ($("comfortStatus").textContent !== message) $("comfortStatus").textContent = message;
+    }
     finally { comfortBusy = false; }
   }
   setTimeout(pollComfort, 5000);

@@ -175,7 +175,10 @@ def thermal_alerts():
 def activity_level():
     try:
         rows = json.loads(run("/opt/steamvr/bin/linuxarm64/vrcmd", "--stats"))
-        return next((r.get("activity_level") for r in rows if r.get("operation") == "status"), None)
+        if not isinstance(rows, list):
+            return None
+        return next((r.get("activity_level") for r in rows
+                     if isinstance(r, dict) and r.get("operation") == "status"), None)
     except (ValueError, TypeError):
         return None
 

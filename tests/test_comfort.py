@@ -23,7 +23,7 @@ class SessionTests(unittest.TestCase):
         self.warn, self.home = Mock(), Mock()
 
     def step(self, now, **sample):
-        comfort.tick(self.s, now, sample, self.warn, self.home)
+        comfort.tick(self.s, now, sample, self.warn, self.home, read_clock=lambda: now)
 
     def test_warning_then_home_never_closes_a_game(self):
         self.step(119)
@@ -44,6 +44,16 @@ class SessionTests(unittest.TestCase):
         self.step(459)
         self.home.assert_not_called()
         self.step(460)
+        self.home.assert_called_once()
+
+    def test_slow_warning_still_leaves_a_full_minute(self):
+        comfort.tick(self.s, 120, {}, self.warn, self.home, read_clock=lambda: 140)
+        self.assertEqual(self.s['warned'], 140)
+        self.step(180)
+        self.home.assert_not_called()
+        self.step(199)
+        self.home.assert_not_called()
+        self.step(200)
         self.home.assert_called_once()
 
     def test_failed_warning_never_stops_session(self):
@@ -144,6 +154,56 @@ class SessionTests(unittest.TestCase):
             spawn.assert_called_once()
             self.assertEqual((Path(tmp) / 'session.json').stat().st_mode & 0o777, 0o600)
 
+    @unittest.skipUnless(os.name == "posix", "on-headset state uses POSIX flock")
+    def test_cancel_clears_stale_worker_error(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.object(comfort, 'ROOT', Path(tmp)), \
+             patch.object(comfort, 'boot', return_value='boot-one'), \
+             patch.object(comfort, 'clock', return_value=200):
+            with comfort.locked():
+                comfort.save(self.s)
+            self.assertIn('not responding', comfort.command({'action': 'status'})['error'])
+            cancelled = comfort.command({'action': 'cancel'})
+            self.assertFalse(cancelled['active'])
+            self.assertIsNone(cancelled['error'])
+            self.assertIsNone(comfort.command({'action': 'status'})['error'])
+
+    @unittest.skipUnless(os.name == "posix", "on-headset state uses POSIX flock")
+    def test_failed_spawn_leaves_session_inactive_and_retryable(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.object(comfort, 'ROOT', Path(tmp)), \
+             patch.object(comfort, 'boot', return_value='boot-one'), \
+             patch.object(comfort, 'clock', return_value=0), patch.object(comfort.subprocess, 'Popen') as spawn:
+            spawn.side_effect = OSError('process limit')
+            with self.assertRaises(OSError):
+                comfort.command(OPTIONS)
+            failed = comfort.command({'action': 'status'})
+            self.assertFalse(failed['active'])
+            self.assertIn('Could not start', failed['error'])
+            spawn.side_effect = None
+            self.assertTrue(comfort.command(OPTIONS)['active'])
+
+    @unittest.skipUnless(os.name == "posix", "on-headset state uses POSIX flock")
+    def test_unreadable_state_is_preserved_and_can_be_replaced(self):
+        for contents in (b'{broken', b'\xff', b'null', b'[]', b'42', b'"x"'):
+            with self.subTest(contents=contents):
+                with tempfile.TemporaryDirectory() as tmp, patch.object(comfort, 'ROOT', Path(tmp)), \
+                     patch.object(comfort, 'boot', return_value='boot-one'), \
+                     patch.object(comfort, 'clock', return_value=0), patch.object(comfort.subprocess, 'Popen'):
+                    (Path(tmp) / 'session.json').write_bytes(contents)
+                    failed = comfort.command({'action': 'status'})
+                    self.assertFalse(failed['active'])
+                    self.assertIn('unreadable', failed['error'])
+                    backups = list(Path(tmp).glob('session-unreadable-*.json'))
+                    self.assertEqual(len(backups), 1)
+                    self.assertEqual(backups[0].read_bytes(), contents)
+                    self.assertTrue(comfort.command(OPTIONS)['active'])
+
+    def test_home_has_total_process_deadline_and_propagates_timeout(self):
+        with patch.object(comfort.subprocess, 'run', side_effect=subprocess.TimeoutExpired('home', 15)) as run:
+            with self.assertRaises(subprocess.TimeoutExpired):
+                comfort.home()
+            self.assertEqual(run.call_args.kwargs['timeout'], 15)
+            self.assertEqual(run.call_args.args[0][-1], '--home')
+
     def test_native_warning_reports_failures_and_quotes_as_one_argument(self):
         with patch.object(comfort.subprocess, 'run') as run:
             run.return_value = subprocess.CompletedProcess([], 0, 'Notification succeeded', '')
@@ -190,5 +250,8 @@ class SensorTests(unittest.TestCase):
             self.assertIsNone(status.thermal_alerts())
         with patch.object(status, 'run', return_value='unavailable'):
             self.assertIsNone(status.activity_level())
+        for malformed in ('{}', '[null, 42, "bad"]'):
+            with patch.object(status, 'run', return_value=malformed):
+                self.assertIsNone(status.activity_level())
         with patch.object(status, 'run', return_value='[{"operation":"status","activity_level":3}]'):
             self.assertEqual(status.activity_level(), 3)

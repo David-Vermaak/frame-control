@@ -71,6 +71,15 @@ def notify(message):
 
 
 def home():
+    # A total process deadline also bounds a CDP peer that keeps sending events
+    # without completing the request. Keep cancellation ordered after this action.
+    r = subprocess.run([sys.executable, str(Path(__file__).resolve()), '--home'],
+                       capture_output=True, text=True, timeout=15)
+    if r.returncode:
+        raise RuntimeError('Steam Home failed: ' + (r.stdout or r.stderr)[-300:])
+
+
+def open_home():
     page = Page()
     try:
         result = page.eval(HOME_JS)
@@ -80,7 +89,7 @@ def home():
         page.sock.close()
 
 
-def tick(s, now, sample, warn=notify, go_home=home):
+def tick(s, now, sample, warn=notify, go_home=home, read_clock=clock):
     """One deterministic step; injected actions/samples also exercise a fake Frame."""
     if not s.get('active'):
         return
@@ -107,7 +116,7 @@ def tick(s, now, sample, warn=notify, go_home=home):
     # Missing samples never count as time worn. No catch-up burst after a disconnect.
     if now >= s['deadline'] - 60 and s['warned'] is None:
         warn('One minute left. Save your progress; Steam Home will open.')
-        s['warned'] = now
+        s['warned'] = max(now, read_clock())
         event(s, 'warning', 'One minute left. Save your progress; Steam Home will open.')
     if s['warned'] is not None and now >= max(s['deadline'], s['warned'] + 60):
         go_home()
@@ -126,7 +135,7 @@ def tick(s, now, sample, warn=notify, go_home=home):
     for kind, enabled, value, message in (
         ('battery', o['batteryAlert'], low if b else None, 'Frame battery is low (15% or less).'),
         ('heat', o['heatAlert'], bool(hot) if hot is not None else None,
-         'Frame reports a hot/critical thermal trip or battery overheat. Take a break.')):
+         'Frame reports a hot/critical thermal trip or battery overheat. Ask the wearer to take a break.')):
         if enabled and value and kind not in s['latched']:
             event(s, kind, message)
             s['latched'].append(kind)
@@ -147,9 +156,17 @@ def locked(name='state.lock', nonblocking=False):
 
 def read_state():
     try:
-        return json.loads((ROOT / 'session.json').read_text())
+        state = json.loads((ROOT / 'session.json').read_text())
+        if not isinstance(state, dict):
+            raise ValueError('Saved session must be an object')
+        return state
     except FileNotFoundError:
         return {'active': False, 'events': []}
+    except (ValueError, UnicodeDecodeError):
+        # Preserve the unreadable state for diagnosis, then allow a new session.
+        (ROOT / 'session.json').replace(ROOT / ('session-unreadable-' + uuid.uuid4().hex + '.json'))
+        return {'active': False, 'events': [],
+                'error': 'Saved session was unreadable. Start a new session.'}
 
 
 def save(s):
@@ -213,13 +230,21 @@ def command(body):
             event(s, 'started', 'Session started. Steam Home opens at the limit; games are not closed.')
         elif body['action'] == 'cancel':
             s['active'] = False
+            s['error'] = None
             if s.get('id'):
                 event(s, 'cancelled', 'Session timer and monitoring cancelled.')
         save(s)
         if body['action'] == 'start':
-            subprocess.Popen([sys.executable, str(Path(__file__).resolve()), '--watch'],
-                             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                             start_new_session=True, close_fds=True)
+            try:
+                subprocess.Popen([sys.executable, str(Path(__file__).resolve()), '--watch'],
+                                 stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                 start_new_session=True, close_fds=True)
+            except OSError as e:
+                s['active'] = False
+                s['error'] = 'Could not start session worker: ' + str(e)
+                event(s, 'error', s['error'])
+                save(s)
+                raise
         return current(s, clock())
 
 
@@ -228,7 +253,11 @@ if __name__ == '__main__':
         watch()
     else:
         try:
-            print(json.dumps(command(json.loads(sys.argv[1]))))
+            if sys.argv[1:] == ['--home']:
+                open_home()
+                print(json.dumps({'home': True}))
+            else:
+                print(json.dumps(command(json.loads(sys.argv[1]))))
         except Exception as e:
             print(json.dumps({'error': str(e)}))
             sys.exit(1)

@@ -21,7 +21,8 @@ account restriction or parental lock. The wearer can return to the game.
 **Documented implementation:** the timer is a single, opt-in Python worker in
 the Frame user's account. Desktop and iPhone share its state. It keeps going
 when the companion disconnects, closes or is suspended. It exits after
-completion or cancellation (normally within five seconds); it is not a boot
+completion or cancellation (normally within five seconds). Cancellation waits
+for any in-flight SteamVR action to finish within its timeout; it is not a boot
 service. A Frame reboot invalidates the session. Suspend counts toward the
 limit, using Linux's boot-time clock. If a warning was delayed by suspend or a
 SteamVR failure, Home waits until at least a full minute after a successful
@@ -30,7 +31,8 @@ shown in the companion. A stale worker is reported as unverified enforcement.
 
 ## Alerts and breaks
 
-During a session:
+During a session, battery, overheating and check-in alerts go to connected
+companions. Break reminders and session warnings also appear on the headset.
 
 - **Low battery:** 15% or below while discharging. One alert until charging or
   recovery to 20%, so values around 15% do not produce repeated notifications.
@@ -109,3 +111,12 @@ success. Successful macOS/Windows/Linux notification display remains unverified.
 one low-battery event during a short session; the test then cancelled the
 session. Overheating alerts use fake sensor samples in tests: the shared
 headset was not deliberately overheated.
+
+**Verified 2026-09-29 on the same Frame:** a fresh one-minute session opened
+Home more than 60 seconds after the successful warning. The test restored the
+previous page and dashboard visibility. Local regression coverage now includes
+slow notification delivery, a total Home-action timeout, failed worker startup,
+unreadable saved state, malformed activity samples and notification UX: 173
+Python tests passed. Desktop and 390-pixel layouts were checked again; system
+notification-denial guidance stayed visible across polls. Initial event history
+did not replay notifications, and only the latest new event was announced.
