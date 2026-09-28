@@ -42,3 +42,28 @@ Final verification:
 - Final artifact: docs/apk-sources.md plus two source modules, a private HTTPS
   helper, curated JSON, recorded fixtures and tests. Evidence scripts/logs stay
   in .claude; research HTML and APK cache are explicitly ignored there.
+
+## Artwork follow-up
+
+Added curated icon/images metadata and plain-language summaries. Icons use
+publisher repository assets pinned to inspected commits. Open Brush's banner
+is its README image; three screenshots are from its README-linked Steam page.
+SuperTux's banner/screenshot is the upstream gameplay preview in the port's
+README, not a Quest capture. hello_xr has its actual Vulkan launcher icon and
+repository social banner; no real screenshot was found in its repository or
+README, so screenshots stays empty rather than mislabeling branding.
+
+Topic search uses owner.avatar_url and the requested GitHub social-preview
+pattern, retaining curated artwork when a curated app is discovered by topic.
+Unknown repository details use GitHub's owner.png avatar endpoint and the same
+social banner without an extra API request. Existing itch cover behavior is
+unchanged; tests now assert icon/banner equality and empty screenshots because
+the recorded RSS provides no separate screenshots.
+
+Validation: all nine distinct curated artwork URLs returned HTTP 200, image
+Content-Type and image magic. Of six topic artwork URLs, five returned images
+and LWJGL's social preview returned HTTP 429. Recorded in
+`tests/fixtures/more_sources/artwork-check.json`; no repeated retry.
+`python3 -m unittest discover -s tests`: 176 passed in 5.879s, real exit 0.
+`git diff --check`: exit 0. No UI rendering/headset testing or independent
+review; parent retains integration/review, and delegation remains prohibited.

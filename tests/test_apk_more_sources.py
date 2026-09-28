@@ -23,6 +23,33 @@ class PublisherSources(unittest.TestCase):
         self.assertEqual(github.search(github.sources()[0], 'hello')[0]['id'], 'KhronosGroup/OpenXR-SDK-Source')
         self.assertEqual(github.search(github.sources()[0], '', 0), [])
 
+    def test_curated_artwork_has_recorded_image_evidence(self):
+        evidence = {r['url']: r for r in json.loads((FIX / 'artwork-check.json').read_text())}
+        entries = github.search(github.sources()[0], '')
+        self.assertEqual(len(entries), 3)
+        for entry in entries:
+            self.assertTrue(entry['summary'])
+            images = entry['images']
+            self.assertEqual(entry['icon'], images['icon'])
+            for url in [images['icon'], images['banner']] + images['screenshots']:
+                self.assertTrue(url.startswith('https://'))
+                self.assertEqual(evidence[url]['status'], 200)
+                self.assertTrue(evidence[url]['image'])
+        self.assertTrue(entries[1]['images']['screenshots'])
+        self.assertTrue(entries[2]['images']['screenshots'])
+
+    def test_topic_keeps_curated_artwork(self):
+        curated = github._curated()[1]
+        repo = {'full_name': curated['repo'], 'name': 'open-brush',
+                'owner': {'avatar_url': 'https://avatars.githubusercontent.com/u/1'}}
+        with patch.object(github, '_api', return_value={'items': [repo]}):
+            entry = github.search(github.sources()[0], 'topic:openxr')[0]
+        self.assertEqual(entry['images'], curated['images'])
+        unknown = github.details(github.sources()[0], 'unknown/project')
+        self.assertEqual(unknown['icon'], 'https://github.com/unknown.png')
+        self.assertEqual(unknown['images']['banner'],
+                         'https://opengraph.githubassets.com/1/unknown/project')
+
     def test_real_releases(self):
         for key, repo in [('khronos', 'KhronosGroup/OpenXR-SDK-Source'),
                           ('brush', 'icosa-foundation/open-brush'), ('tux', 'SgtBilko76/SuperTux-3D')]:
@@ -31,6 +58,9 @@ class PublisherSources(unittest.TestCase):
                 self.assertTrue(e['downloadable'])
                 self.assertTrue(e['versions'][0]['name'].endswith('.apk'))
                 self.assertIsNone(e['version_code'])
+                search_entry = github.search(github.sources()[0], repo)[0]
+                self.assertEqual(e['images'], search_entry['images'])
+                self.assertEqual(e['icon'], e['images']['icon'])
                 with self.assertRaises(SourceError):
                     github.download(github.sources()[0], repo, 123)
 
@@ -40,6 +70,12 @@ class PublisherSources(unittest.TestCase):
             entries = github.search(github.sources()[0], 'topic:openxr')
         self.assertTrue(entries)
         self.assertTrue(any(not e['downloadable'] for e in entries))
+        for entry, repo in zip(entries, data['items']):
+            self.assertEqual(entry['icon'], repo['owner']['avatar_url'])
+            self.assertEqual(entry['images']['icon'], entry['icon'])
+            self.assertEqual(entry['images']['banner'],
+                             'https://opengraph.githubassets.com/1/' + repo['full_name'])
+            self.assertEqual(entry['images']['screenshots'], [])
         self.assertFalse(github.details(github.sources()[0], 'unknown/project')['downloadable'])
         with self.assertRaises(SourceError):
             github.search(github.sources()[0], 'topic:piracy')
@@ -51,6 +87,10 @@ class PublisherSources(unittest.TestCase):
             e = itch.details(itch.sources()[0], entries[0]['id'])
             self.assertTrue(e['vr'])
             self.assertTrue(e['images']['banner'])
+            for item in entries:
+                self.assertEqual(item['icon'], item['images']['icon'])
+                self.assertEqual(item['icon'], item['images']['banner'])
+                self.assertEqual(item['images']['screenshots'], [])
             self.assertFalse(e['downloadable'])
             self.assertEqual(itch.search(itch.sources()[0], 'off nominal')[0]['name'], 'Off Nominal')
         with self.assertRaises(SourceError):

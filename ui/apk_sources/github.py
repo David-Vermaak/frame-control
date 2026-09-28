@@ -31,9 +31,14 @@ def _api(path):
 
 
 def _entry(source, c, approved=True):
+    artwork = c.get('images') or {}
+    icon = artwork.get('icon') or c.get('icon') or 'https://github.com/' + c['repo'].split('/')[0] + '.png'
+    images = {'icon': icon,
+              'banner': artwork.get('banner') or 'https://opengraph.githubassets.com/1/' + c['repo'],
+              'screenshots': list(artwork.get('screenshots') or [])}
     return {'source': source['id'], 'id': c['repo'], 'package': None,
-            'name': c['name'], 'summary': c.get('summary') or '', 'icon': None,
-            'images': {'icon': None, 'banner': None, 'screenshots': []},
+            'name': c['name'], 'summary': c.get('summary') or '', 'icon': icon,
+            'images': images,
             'page': 'https://github.com/' + c['repo'], 'version': None, 'version_code': None,
             'min_sdk': None, 'abis': None, 'vr': c.get('vr'), 'size': None,
             'free': True if approved else None, 'license': c.get('license'), 'updated': None,
@@ -55,8 +60,8 @@ def search(source, query, limit=50):
         for repo in data.get('items', []):
             c = curated.get(repo['full_name'].lower())
             entry = _entry(source, c or {'repo': repo['full_name'], 'name': repo['name'],
-                           'summary': repo.get('description'), 'vr': True}, bool(c))
-            # Repository owners' avatars are not app artwork.
+                           'summary': repo.get('description'), 'vr': True,
+                           'icon': (repo.get('owner') or {}).get('avatar_url')}, bool(c))
             out.append(entry)
         return out
     words = query.lower().split()

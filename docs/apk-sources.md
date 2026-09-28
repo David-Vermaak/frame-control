@@ -60,8 +60,15 @@ does not suppress the other at the aggregator level. Queries filter the current
 feed window locally: this is not an exhaustive historical itch search. Only
 explicit zero-price Android entries are returned. Covers are exposed in
 `images`; absent screenshots, APK version, ABI and minimum SDK stay unknown.
-GitHub's release metadata has no standard app artwork field, so artwork stays
-empty rather than presenting a repository-owner avatar as an app icon. VR is
+Curated GitHub entries include publisher artwork and plain-language summaries.
+Repository image URLs are pinned to inspected commits. Open Brush screenshots
+come from its README-linked Steam listing; SuperTux uses the upstream gameplay
+preview embedded in the port's README (not a headset capture). The hello_xr
+sample has a launcher icon and GitHub social banner; no published screenshot
+was found in the inspected repository/README, so its screenshot list is empty.
+Uncurated topic results use the owner's avatar and GitHub's repository social
+preview. These are repository placeholders, not app screenshots. Itch's recorded
+RSS includes only covers, so screenshot lists remain empty without page scraping. VR is
 based on curated evidence or a VR-specific feed/topic, not a compatibility claim.
 
 Downloads stream to unique temporary files, require an APK manifest entry,
