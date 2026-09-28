@@ -70,7 +70,9 @@ window resize/minimize, and non-US keyboard layouts.
   `rx`/`fd` timing reports and input messages are unchanged.
 - `desktop/controller.c` is the rate controller shared by the Mac Swift
   binding and the PC Python binding. Capture is gated **before** encoding;
-  encoded reference frames are never discarded. It keeps the Mac's bitrate
+  encoded reference frames are never discarded. A bounded raw-frame queue
+  keeps the newest picture, including the last update of an idle window,
+  until the gate opens. A native one-frame-source test covers that case. It keeps the Mac's bitrate
   demand protection and tier hysteresis.
 - PC records use the existing `Stats.swift` JSON schema, with bounded
   4096-frame/512-input storage in `ui/frame_stream_stats.py`. The benchmark's
@@ -146,13 +148,13 @@ same bounded shaping relay, without administrator privileges.
 - **Verified, Mac:** all 600 states in a 60-second congestion/recovery trace
   matched the original Swift controller. `tests/test_pc_controller.py` retains
   the original trace digest as a regression check.
-- **Verified, real Frame, current agent at `cd20243`:** the repeated synthetic
+- **Verified, real Frame, agent at `cd20243`:** the repeated synthetic
   probe drew 400 frames at 39.3 fps, content p50/p95 15.1/28.6 ms, and synthetic
   input-to-drawn p50 76.6 ms. Test clicks now change the pattern color before
   injection is timestamped. The frame-rate/late-frame targets still failed;
   this remains a Frame-hosted x264 test through a Mac relay, not a desktop or
   physical-laser measurement. Helper exit 0 and cleanup succeeded.
-  [Current probe result](../bench/results/2026-09-28-cd20243-pc-agent-frame-arm64-final.json).
+  [Latest device probe result](../bench/results/2026-09-28-cd20243-pc-agent-frame-arm64-final.json).
 - **Untested:** real Windows WGC → Media Foundation → Frame; real Linux
   portal → PipeWire → VA-API/x264 → Frame; physical laser input on either.
   No benchmark numbers for those desktop paths are claimed.

@@ -126,7 +126,7 @@ def pipeline(source, platform, encoder, w, h, fps, bitrate, codec='h264'):
         capture = 'pipewiresrc fd=%d path=%d do-timestamp=true' % (source['fd'], source['node'])
     # The source gate runs before conversion/encoding. There is no leaky queue
     # of H.264 frames; every encoded reference frame reaches the socket.
-    raw = '%s ! video/x-raw,framerate=%d/1 ! identity name=gate ! videoconvert ! videoscale add-borders=false ! video/x-raw,width=%d,height=%d' % (capture, fps, w, h)
+    raw = '%s ! video/x-raw,framerate=%d/1 ! queue name=raw_queue leaky=downstream max-size-buffers=1 max-size-bytes=0 max-size-time=0 ! identity name=gate ! videoconvert ! videoscale add-borders=false ! video/x-raw,width=%d,height=%d' % (capture, fps, w, h)
     if codec == 'jpeg':
         enc = 'jpegenc name=enc quality=80'
         parse = ''

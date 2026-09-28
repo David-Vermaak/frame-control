@@ -210,6 +210,46 @@ lib.pw_main_loop_destroy(loop)
         result = subprocess.run([sys.executable, '-c', code], env=env, capture_output=True, text=True, timeout=15)
         self.assertEqual(result.returncode, 0, result.stderr)
 
+    def test_last_raw_picture_survives_a_closed_gate(self):
+        # A source sends ONE changed frame, then becomes idle. It must reach
+        # the encoder after congestion clears, without needing another update.
+        code = """
+import ctypes as C, sys, time
+from frame_pc_capture import Native, GATE, Encoded, pipeline
+native = Native()
+start = None
+closing = False
+phases = []
+def gate(stage, pts, capture, arrived):
+    global start
+    phases.append(stage)
+    if closing: return -1
+    if start is None: start = time.monotonic()
+    return int(stage == 1 or time.monotonic()-start >= .15)
+callback = GATE(gate)
+p = pipeline(dict(src='test'), sys.platform, 'x264enc', 320, 180, 30, 300000)
+p = p.replace('is-live=true', 'is-live=true num-buffers=1')
+error = C.create_string_buffer(1024)
+handle = native.lib.fc_capture_open(p.encode(), callback, error, len(error))
+assert handle, error.value
+try:
+    frame = Encoded()
+    result = 0
+    deadline = time.monotonic()+5
+    while not result and time.monotonic() < deadline:
+        result = native.lib.fc_capture_pull(handle, C.byref(frame))
+    assert result == 1, native.lib.fc_capture_error(handle)
+    assert frame.key and frame.size > 17
+    assert phases.count(0) == 1 and 2 in phases, phases
+finally:
+    closing = True
+    native.lib.fc_capture_close(handle)
+"""
+        env = frame_pcview.PCView([], lambda *a: None, 'frame').agent_environment()
+        env['PYTHONPATH'] = str(ROOT / 'ui')
+        result = subprocess.run([sys.executable, '-c', code], env=env, capture_output=True, text=True, timeout=10)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_auth_and_real_h264_stats(self):
         self.assertEqual(self.request('/status')[0], 403)
         status, body = self.request('/ticket?src=test&k='+self.token, 'POST')

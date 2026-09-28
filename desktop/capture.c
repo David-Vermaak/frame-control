@@ -8,7 +8,7 @@
 
 typedef int (*Gate)(int stage, int64_t pts, int64_t capture, int64_t arrived);
 typedef struct {
-    GstElement *pipeline, *encoder, *sink;
+    GstElement *pipeline, *encoder, *sink, *raw_queue;
     Gate gate;
     GstSample *sample;
     GstMapInfo map;
@@ -34,7 +34,19 @@ static GstPadProbeReturn probe(GstPad *pad,GstPadProbeInfo *info,gpointer data) 
     }
     if(clock)gst_object_unref(clock);
     int stage=GPOINTER_TO_INT(g_object_get_data(G_OBJECT(pad),"stage"));
-    return c->gate(stage,(int64_t)GST_BUFFER_PTS(b),cap,now) ? GST_PAD_PROBE_OK : GST_PAD_PROBE_DROP;
+    if(stage==1) return c->gate(stage,(int64_t)GST_BUFFER_PTS(b),cap,now)>0 ? GST_PAD_PROBE_OK : GST_PAD_PROBE_DROP;
+    int phase=0;
+    for(;;) {
+        /* While congested, prefer a newer raw picture queued upstream. If
+         * nothing changed, retain this last picture until the gate opens;
+         * an idle window must not stay stale after a dropped final update. */
+        guint queued=0;
+        if(phase && c->raw_queue)g_object_get(c->raw_queue,"current-level-buffers",&queued,NULL);
+        if(queued)return GST_PAD_PROBE_DROP;
+        int decision=c->gate(phase,(int64_t)GST_BUFFER_PTS(b),cap,now);
+        if(decision)return decision>0 ? GST_PAD_PROBE_OK : GST_PAD_PROBE_DROP;
+        phase=2;g_usleep(2000);
+    }
 }
 FC_API Capture *fc_capture_open(const char *pipeline,Gate gate,char *error,int capacity) {
     GError *e=NULL;Capture *c=g_new0(Capture,1);c->gate=gate;
@@ -51,6 +63,7 @@ FC_API Capture *fc_capture_open(const char *pipeline,Gate gate,char *error,int c
         if(raw)gst_object_unref(raw);if(c->encoder)gst_object_unref(c->encoder);
         if(c->sink)gst_object_unref(c->sink);gst_object_unref(c->pipeline);g_free(c);return NULL;
     }
+    c->raw_queue=gst_bin_get_by_name(GST_BIN(c->pipeline),"raw_queue");
     GstPad *p=gst_element_get_static_pad(raw,"src");
     g_object_set_data(G_OBJECT(p),"stage",GINT_TO_POINTER(0));
     gst_pad_add_probe(p,GST_PAD_PROBE_TYPE_BUFFER,probe,c,NULL);gst_object_unref(p);gst_object_unref(raw);
@@ -64,7 +77,7 @@ FC_API int fc_capture_pull(Capture *c,Encoded *out) {
     if(c->mapped) {gst_buffer_unmap(gst_sample_get_buffer(c->sample),&c->map);c->mapped=0;}
     if(c->sample){gst_sample_unref(c->sample);c->sample=NULL;}
     GstBus *bus=gst_element_get_bus(c->pipeline);
-    GstMessage *m=gst_bus_pop_filtered(bus,GST_MESSAGE_ERROR|GST_MESSAGE_EOS);gst_object_unref(bus);
+    GstMessage *m=gst_bus_pop_filtered(bus,GST_MESSAGE_ERROR);gst_object_unref(bus);
     if(m) {
         if(GST_MESSAGE_TYPE(m)==GST_MESSAGE_ERROR) {
             GError *e=NULL;char *debug=NULL;gst_message_parse_error(m,&e,&debug);
@@ -73,7 +86,12 @@ FC_API int fc_capture_pull(Capture *c,Encoded *out) {
         gst_message_unref(m);return -1;
     }
     c->sample=gst_app_sink_try_pull_sample(GST_APP_SINK(c->sink),100*GST_MSECOND);
-    if(!c->sample)return 0;
+    if(!c->sample) {
+        if(gst_app_sink_is_eos(GST_APP_SINK(c->sink))) {
+            g_strlcpy(c->error,"The capture source closed",sizeof(c->error));return -1;
+        }
+        return 0;
+    }
     GstBuffer *b=gst_sample_get_buffer(c->sample);
     if(!gst_buffer_map(b,&c->map,GST_MAP_READ))return 0;
     c->mapped=1;out->data=c->map.data;out->size=(int)c->map.size;
@@ -102,5 +120,6 @@ FC_API void fc_capture_close(Capture *c) {
     gst_element_set_state(c->pipeline,GST_STATE_NULL);
     if(c->mapped)gst_buffer_unmap(gst_sample_get_buffer(c->sample),&c->map);
     if(c->sample)gst_sample_unref(c->sample);
+    if(c->raw_queue)gst_object_unref(c->raw_queue);
     gst_object_unref(c->sink);gst_object_unref(c->encoder);gst_object_unref(c->pipeline);g_free(c);
 }

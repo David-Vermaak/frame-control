@@ -150,24 +150,27 @@ class Session:
         # Exceptions cannot cross a ctypes callback boundary.
         try:
             with self.lock:
-                if self.stop_event.is_set():
-                    return 0
+                if self.stop_event.is_set() or self.reconfiguring:
+                    return -1
                 if stage == 1:
                     if pts in self.pending:
                         self.pending[pts]['e0'] = self.native.now()
                     return 1
-                self.stats.captured += 1
-                self.controller.call('capture', arrived)
+                if stage == 0:
+                    self.stats.captured += 1
+                    self.controller.call('capture', arrived)
+                now = self.native.now()
                 state = self.controller.state()
-                if self.reconfiguring or len(self.pending) >= 3 or arrived-self.last_submit < 1000000/state['fps'] or not self.controller.call('gate', arrived, 1):
-                    self.stats.skipped += 1
+                if len(self.pending) >= 3 or now-self.last_submit < 1000000/state['fps'] or not self.controller.call('gate', now, int(stage == 0)):
+                    if stage == 0:
+                        self.stats.skipped += 1
                     return 0
-                self.pending[pts] = dict(cap=capture, arr=arrived, e0=arrived, tier=state['tier'], br=state['target'])
-                self.last_submit = arrived
+                self.pending[pts] = dict(cap=capture, arr=arrived, e0=now, tier=state['tier'], br=state['target'])
+                self.last_submit = now
                 return 1
         except Exception:
             self.stop_event.set()
-            return 0
+            return -1
 
     def fresh_pipewire(self):
         if 'portal' not in self.source:
