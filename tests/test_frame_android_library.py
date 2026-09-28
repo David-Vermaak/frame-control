@@ -232,6 +232,17 @@ class ArtworkTests(unittest.TestCase):
             time.sleep(0.01)
         _images._resolvers.release()  # the stuck lookups finished and gave their slots back
 
+    def test_resolver_slot_released_when_thread_cannot_start(self):
+        from apk_sources import _images
+        with patch.object(_images.threading.Thread, 'start', side_effect=RuntimeError("can't start new thread")):
+            for _ in range(6):
+                with self.assertRaises(RuntimeError):
+                    _images.get('https://example.org/a.png', deadline=time.monotonic() + 1)
+        for _ in range(4):  # every slot came back
+            self.assertTrue(_images._resolvers.acquire(blocking=False))
+        for _ in range(4):
+            _images._resolvers.release()
+
     def test_deadline_covers_name_resolution(self):
         import threading
         from apk_sources import _images
@@ -286,6 +297,17 @@ class ArtworkTests(unittest.TestCase):
         for cut in range(len(one) - 1):  # every truncation before the image's last block
             with self.subTest(cut=cut), self.assertRaises(ValueError):
                 art.gif_frame(one[:cut])
+
+    def test_gif_control_block_and_empty_image(self):
+        image = self.FRAME[8:]  # the image without its graphic control block
+        head = b'GIF89a' + struct.pack('<HHBBB', 1, 1, 0x80, 0, 0) + b'\xff\xff\xff\x00\x00\x00'
+        good = b'\x21\xf9\x04\x00\x00\x00\x00\x00'
+        self.assertEqual(art.gif_frame(head + good + image + b'\x3b'), head + good + image + b'\x3b')
+        bad = b'\x21\xf9\x02\x00\x00\x00'  # wrong payload size: dropped, not passed on
+        self.assertEqual(art.gif_frame(head + bad + image + b'\x3b'), head + image + b'\x3b')
+        empty = b'\x2c' + struct.pack('<HHHHB', 0, 0, 1, 1, 0) + b'\x02\x00'
+        with self.assertRaises(ValueError):
+            art.gif_frame(head + empty + b'\x3b')
 
     def test_png_variants_left_to_chromium_and_limits(self):
         def png(w, h, depth, color, interlace):

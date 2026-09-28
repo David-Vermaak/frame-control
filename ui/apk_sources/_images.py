@@ -86,8 +86,12 @@ def _resolve(host, port, timeout):
             found['error'] = e
         finally:
             _resolvers.release()
-    worker = threading.Thread(target=run, daemon=True)
-    worker.start()
+    try:
+        worker = threading.Thread(target=run, daemon=True)
+        worker.start()
+    except BaseException:
+        _resolvers.release()  # the worker never ran, so it can't release its slot
+        raise
     worker.join(timeout)
     if 'error' in found:
         raise found['error']

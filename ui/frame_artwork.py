@@ -56,7 +56,7 @@ def gif_frame(data):
             raise ValueError('truncated GIF')
         if data[pos] == 0x21 and pos + 1 < len(data):  # extension: keep the frame's graphic control
             end = _gif_blocks(data, pos + 2)
-            if data[pos + 1] == 0xf9:
+            if data[pos + 1] == 0xf9 and end - pos == 8 and data[pos + 2] == 4:  # GIF89a: fixed 4-byte payload
                 control = data[pos:end]
             pos = end
         elif data[pos] == 0x2c and pos + 10 <= len(data):  # the first image
@@ -70,6 +70,8 @@ def gif_frame(data):
             if pos >= len(data) or not 2 <= data[pos] <= 8:  # the LZW minimum code size
                 raise ValueError('invalid GIF image data')
             end = _gif_blocks(data, pos + 1)
+            if end - pos <= 2:  # code size then the terminator: no pixels at all
+                raise ValueError('invalid GIF image data')
             return head + control + data[start:end] + b'\x3b'
         else:
             raise ValueError('invalid GIF block')
