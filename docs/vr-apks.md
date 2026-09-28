@@ -178,8 +178,9 @@ The launcher supervises Lepton and handles TERM/INT/HUP and normal exit by
 stopping its own container and child process group. A lock refuses duplicate launches;
 a container still running while the lock is free was orphaned by a killed
 launcher and is stopped before the new launch. Lepton doesn't inherit the
-lock; the launcher records Lepton's process group and a later launch ends a
-recorded group still running this APK. Removing an app or title still deletes its files when Steam isn't
+lock. Orphan recovery only stops the app's own, deterministically named
+container; a Lepton host process whose launcher was killed before it created
+the container may linger briefly. Removing an app or title still deletes its files when Steam isn't
 running; tidying Steam's collections and artwork is best effort. Steam Stop uses `TerminateApp` with the exact
 64-bit game ID string. Frame Control's Stop additionally has a direct-container
 fallback. The stable instance ID and compatdata paths remain unchanged.
