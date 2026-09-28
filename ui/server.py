@@ -43,7 +43,9 @@ import frame_android  # noqa: E402
 import frame_apk_versions  # noqa: E402
 import frame_catalog  # noqa: E402
 import frame_host  # noqa: E402
+import frame_report  # noqa: E402
 import frame_store  # noqa: E402
+import frame_telemetry  # noqa: E402
 import frame_titles  # noqa: E402
 import frame_webinstall  # noqa: E402
 
@@ -165,8 +167,10 @@ def start_job(label, work):
             fields = {"message": result.get("message") or f"{label}: done", "result": result}
         except (Failure, frame_android.FrameError) as e:
             fields = {"error": unreachable(str(e)) or str(e)}
+            frame_telemetry.diagnostic(f"job {label.split()[0]}", e)
         except Exception as e:
             fields = {"error": f"{type(e).__name__}: {e}"}
+            frame_telemetry.diagnostic(f"job {label.split()[0]}", e)
         finally:
             with _jobs_lock:
                 _jobs[job].update(fields, done=True, time=time.time())
@@ -252,7 +256,12 @@ def terminal(argv):
 # ---- actions ---------------------------------------------------------------
 
 def status(_body):
-    return json.loads(ssh("python3 -", stdin=(HERE / "frame_status.py").read_text(), timeout=20))
+    s = json.loads(ssh("python3 -", stdin=(HERE / "frame_status.py").read_text(), timeout=20))
+    osr = s.get("os") if isinstance(s, dict) else None
+    if isinstance(osr, dict):
+        frame_telemetry.frame_seen(osr.get("build"), osr.get("version"))
+        frame_report.frame.update(build=osr.get("build"), version=osr.get("version"))
+    return s
 
 
 def headset_view():
@@ -434,7 +443,16 @@ def steam(body):
         raise Failure("bad appid", 400)
     if action not in ("install", "store"):
         raise Failure("action must be install or store", 400)
-    return steam_frame(action, appid)
+    if action == "store":
+        return steam_frame(action, appid)
+    # Starts Steam's download; Steam reports the rest in the headset.
+    try:
+        res = steam_frame(action, appid)
+    except Failure as e:
+        frame_telemetry.install_finished("steam", False, error=e, steam_appid=appid)
+        raise
+    frame_telemetry.install_finished("steam", True, steam_appid=appid)
+    return res
 
 
 def steam_search(query):
@@ -508,10 +526,16 @@ def flatpak(body):
         raise Failure("bad Flatpak app ID", 400)
     if action == "install":
         def work():
-            # Per-user, so it survives SteamOS updates and needs no sudo (as install-apps.sh).
-            ssh("flatpak remote-add --user --if-not-exists flathub "
-                "https://dl.flathub.org/repo/flathub.flatpakrepo && "
-                f"flatpak install --user -y --noninteractive flathub {shlex.quote(app)}", timeout=1800)
+            start = time.time()
+            try:
+                # Per-user, so it survives SteamOS updates and needs no sudo (as install-apps.sh).
+                ssh("flatpak remote-add --user --if-not-exists flathub "
+                    "https://dl.flathub.org/repo/flathub.flatpakrepo && "
+                    f"flatpak install --user -y --noninteractive flathub {shlex.quote(app)}", timeout=1800)
+            except Failure as e:
+                frame_telemetry.install_finished("flatpak", False, time.time() - start, e, flatpak_id=app)
+                raise
+            frame_telemetry.install_finished("flatpak", True, time.time() - start, flatpak_id=app)
             return {"message": f"Installed {app}"}
         return start_job(f"Install {app}", work)
     if action == "uninstall":
@@ -608,11 +632,35 @@ def android(body):
                                          runtime=body.get("runtime") or "instance",
                                          label=body.get("label"), source=body.get("source"))
             name = r.get("label") or pkg
-            where = "" if frame_catalog.compat_db.shared() else " on this computer"
+            where = ("" if frame_catalog.compat_db.shared() else
+                     " and shared it" if frame_telemetry.enabled("compat") else " on this computer")
             return {"message": f"Saved your report for {name}{where}", "report": r}
     except frame_android.FrameError as e:
         raise Failure(str(e))
     raise Failure("unknown action", 400)
+
+
+# Errors that are the APK's own fault, so they belong in the compatibility
+# database as install_failed. Connection trouble and the like don't.
+APK_FAULTS = {"android_installer", "apk_needs_newer_android", "apk_wrong_abi"}
+
+
+def apk_installed(info, meta, error, seconds):
+    """Every APK install (catalogue, dropped file, web link): usage analytics, and an
+    install_failed report when the APK itself wouldn't install."""
+    pkg = (info or {}).get("package")
+    by_pkg = frame_catalog._cache.get("by_pkg") or {}
+    in_catalog = bool(pkg) and pkg in by_pkg
+    # Package names only for catalogue apps, which are public; a private APK's name stays here.
+    # No version: a local rebuild can share a catalogue app's package name but carry anything in its version.
+    frame_telemetry.install_finished("apk", error is None, seconds, error, catalog=in_catalog,
+                                     package=pkg if in_catalog else None)
+    if error is not None and pkg and frame_telemetry.categorize(error)[0] in APK_FAULTS:
+        frame_catalog.add_report(pkg, info.get("version"), result="install_failed", notes=str(error)[:300],
+                                 via="install", label=info.get("label"))
+
+
+frame_android.install_hooks.append(apk_installed)
 
 
 # ---- Sideloaded titles (Linux/Windows builds as Steam Devkit Games) --------
@@ -668,14 +716,18 @@ def _run_title_install(token, entry, name, exe, runtime):
         with _titles_lock:
             _title_jobs[token].update(fields)
 
+    start = time.time()
     try:
         m = frame_titles.install_plan(entry["plan"], name=name, exe=exe, runtime=runtime,
                                       progress=lambda stage, fraction: update(stage=stage, fraction=fraction))
         update(title=m, message=f"Installed {m['id']} in the Steam library ({m['runtime_label']})")
+        frame_telemetry.install_finished("title", True, time.time() - start, runtime=m.get("runtime"))
     except frame_android.FrameError as e:
         update(error=str(e))
+        frame_telemetry.install_finished("title", False, time.time() - start, e)
     except Exception as e:
         update(error=f"{type(e).__name__}: {e}")
+        frame_telemetry.install_finished("title", False, time.time() - start, e)
     finally:
         _drop_staged(entry)
         update(done=True, time=time.time())
@@ -1128,10 +1180,16 @@ def _webinstall_run(plan, job):
         ensure_master()
         res = frame_webinstall.dispatch(path, name=plan["name"], exe=plan["exe"], progress=detail, source=plan["url"])
         job["message"], job["phase"] = res["message"], "done"
+        if res.get("kind") != "apk":  # APKs are counted by apk_installed
+            frame_telemetry.install_finished("web", True, kind_detail=res.get("kind"))
     except Exception as e:
+        stage = job.get("phase")  # download or install, before it becomes "error"
         known = (frame_webinstall.WebInstallError, Failure, frame_android.FrameError)
         job["error"] = str(e) if isinstance(e, known) else f"{type(e).__name__}: {e}"
         job["phase"] = "error"
+        # An APK that failed to install was counted by apk_installed.
+        if not isinstance(e, frame_webinstall.Cancelled) and not (stage == "install" and plan.get("kind") == "apk"):
+            frame_telemetry.install_finished("web", False, error=e, stage=stage, kind_detail=plan.get("kind"))
     finally:
         with _web_lock:
             job.pop("_conn", None)
@@ -1230,6 +1288,20 @@ def _sweep_one(prefix, d):
         pass
 
 
+# ---- Report a problem (frame_report.py) --------------------------------------
+
+def report_preview(body):
+    """Exactly the diagnostics a report would include, for the dialog to show first."""
+    return {"text": frame_report.diagnostics(body.get("activity") or (), include_logs=bool(body.get("includeLogs")))}
+
+
+def report_send(body):
+    try:
+        return frame_report.send(body)
+    except frame_report.ReportError as e:
+        raise Failure(str(e))
+
+
 def agent_call(body):
     return frame_agent.call(sys.modules[__name__], body)
 
@@ -1246,10 +1318,18 @@ POST = {"/api/agent/call": agent_call, "/api/agent/approval": agent_approval,
         "/api/assistant/chat": assistant_chat, "/api/android/display": android_display, "/api/android": android, "/api/titles": titles, "/api/launch": launch, "/api/steam": steam, "/api/volume": set_volume, "/api/clipboard": clipboard,
         "/api/flatpak": flatpak, "/api/open": open_thing, "/api/shots/save": save_shots,
         "/api/webinstall/check": webinstall_check, "/api/webinstall/start": webinstall_start,
-        "/api/webinstall/cancel": webinstall_cancel}
+        "/api/webinstall/cancel": webinstall_cancel,
+        "/api/telemetry": frame_telemetry.update_settings, "/api/telemetry/event": frame_telemetry.page_event,
+        "/api/report/preview": report_preview, "/api/report": report_send}
 
 
 # ---- HTTP ------------------------------------------------------------------
+
+def action_of(body):
+    """The action a request asked for, for diagnostics: a short word, never user data."""
+    a = body.get("action") if isinstance(body, dict) else None
+    return a if isinstance(a, str) and re.fullmatch(r"[a-z]{1,20}", a) else ""
+
 
 def _pipe_reader(pipe):
     """Chunks from a pipe via a thread; select() can't wait on pipes on Windows."""
@@ -1376,6 +1456,8 @@ class Handler(BaseHTTPRequestHandler):
                                 "shared": frame_catalog.compat_db.shared()})
             elif path == "/api/android/catalog":
                 self.send_json({"apps": frame_catalog.catalog()})
+            elif path == "/api/telemetry":
+                self.send_json(frame_telemetry.state())
             elif path == "/api/computer/state":
                 self.send_json(json.loads(ssh("python3 -", stdin=(HERE / "frame_computer.py").read_text(), timeout=20)))
             elif path == "/api/status":
@@ -1406,12 +1488,14 @@ class Handler(BaseHTTPRequestHandler):
         except frame_android.FrameError as e:
             self.send_error_json(str(e), 502)
         except Exception as e:
+            frame_telemetry.diagnostic(f"GET {path}", e)
             self.send_json({"error": f"{type(e).__name__}: {e}"}, 500)
 
     def do_POST(self):
         if not self.local_request():
             return
         path = urlparse(self.path).path
+        body = None
         try:
             if path == "/api/upload":
                 self.send_json(self.upload())
@@ -1428,12 +1512,16 @@ class Handler(BaseHTTPRequestHandler):
                 raise Failure("request body must be a JSON object", 400)
             self.send_json(handler(body))
         except Failure as e:
+            if e.status >= 500:
+                frame_telemetry.diagnostic(f"POST {path} {action_of(body)}", e)
             self.send_error_json(str(e), e.status, e.apk)
         except (ValueError, TypeError) as e:
             self.send_json({"error": f"bad request: {e}"}, 400)
         except frame_android.FrameError as e:
+            frame_telemetry.diagnostic(f"POST {path} {action_of(body)}", e)
             self.send_error_json(str(e), 502)
         except Exception as e:
+            frame_telemetry.diagnostic(f"POST {path} {action_of(body)}", e)
             self.send_json({"error": f"{type(e).__name__}: {e}"}, 500)
 
     def stream_video(self, query):
@@ -1533,13 +1621,18 @@ class Handler(BaseHTTPRequestHandler):
                 keep = True  # stage_title owns tmp now, and removes it on failure
                 return stage_title(str(dest), temp_dir=str(tmp))
             if mode == "apk":
+                # Checked here, before install(), to hand the page a blocker it can offer
+                # alternatives for; report these failures the way install() would have.
+                start = time.time()
                 try:
                     info = frame_android.apk_info(str(dest))
                 except frame_android.FrameError as e:
+                    frame_android._after_install(None, None, e, start)
                     raise Failure(str(e), 400)
                 try:
                     frame_android.check_installable(info)
                 except frame_android.FrameError as e:
+                    frame_android._after_install(info, None, e, start)
                     raise Failure(str(e), 400, {"package": info["package"], "version_code": info.get("version_code"), "blocker": str(e)})
                 ensure_master()
                 try:
@@ -1571,6 +1664,7 @@ def main():
     args = ap.parse_args()
     httpd = LoopbackServer(("127.0.0.1", args.port), Handler)
     sweep_tmp()
+    frame_telemetry.start()
     if not frame_host.WINDOWS:
         signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(KeyboardInterrupt))
     if args.exit_on_eof:

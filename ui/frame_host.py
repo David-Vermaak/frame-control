@@ -33,8 +33,11 @@ class HostError(RuntimeError):
 
 
 def data_dir(*parts):
-    """Per-user app data: ~/Library/Application Support, %APPDATA% or $XDG_DATA_HOME."""
-    if MAC:
+    """Per-user app data: ~/Library/Application Support, %APPDATA% or $XDG_DATA_HOME
+    (or $FRAME_CONTROL_DATA_DIR, which the tests point at a throwaway directory)."""
+    if os.environ.get("FRAME_CONTROL_DATA_DIR"):
+        base = Path(os.environ["FRAME_CONTROL_DATA_DIR"])
+    elif MAC:
         base = Path.home() / "Library" / "Application Support" / "Frame Control"
     elif WINDOWS:
         base = Path(os.environ.get("APPDATA") or Path.home() / "AppData" / "Roaming") / "Frame Control"
