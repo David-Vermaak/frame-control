@@ -696,7 +696,9 @@ def _install(plan, step, artwork=None):
         reply = _json_out(ssh(f'{PY}steam-client-create-shortcut --parms {shlex.quote(json.dumps(parms))}',
                               timeout=90), 'steam-client-create-shortcut')
         meta = {'id': gid, 'name': plan['name'], 'target': plan['target'], 'runtime': plan['runtime'],
-                'source': plan['source'], 'size': plan['size'], 'installed': time.strftime('%Y-%m-%dT%H:%M:%S')}
+                'source': plan['source'], 'size': plan['size'], 'installed': time.strftime('%Y-%m-%dT%H:%M:%S'),
+                # Until art is applied: the only entries automatic backfill may touch.
+                'art_pending': True}
         ssh(f'cat > {GAMES}/{gid}-framecontrol.json', input=json.dumps(meta, indent=1), timeout=30)
         registered = True                    # the files stay: Steam registers them once it's running
         if 'error' in reply:
@@ -709,7 +711,7 @@ def _install(plan, step, artwork=None):
             raise FrameError('Steam registered the title but its shortcut is not available for mandatory artwork; retry install')
         result = frame_android.apply_library(shortcut, plan['name'], directory + '/.frame-artwork', images,
                                              category='Sideloaded', details={'source': plan['source']})
-        meta.update(shortcut=shortcut, artwork=result.get('artwork', {}),
+        meta.update(shortcut=shortcut, artwork=result.get('artwork', {}), art_pending=False,
                     library_warnings=warnings + result.get('warnings', []))
         ssh(f'cat > {GAMES}/{gid}-framecontrol.json', input=json.dumps(meta, indent=1), timeout=30)
         library_ready = True
@@ -768,8 +770,10 @@ def _home():
     return ssh('echo $HOME', timeout=30).strip()
 
 
-def refresh_art(gid=None, artwork=None):
-    """Render and apply Steam artwork for Frame Control's titles (all of them when gid is None)."""
+def refresh_art(gid=None, artwork=None, fill_only=False):
+    """Render and apply Steam artwork for Frame Control's titles (all of them when gid is None).
+
+    fill_only: the automatic backfill; it only fills empty Steam slots (see apply_library)."""
     if gid is None:
         results = []
         for t in list_titles():
@@ -809,8 +813,9 @@ print(json.dumps({{'artwork': cached, 'icon': icon}}))
         if not shortcut:
             raise FrameError(f"Steam hasn't registered {gid} yet; with Steam running on the Frame, refresh again")
         result = frame_android.apply_library(shortcut, name, directory + '/.frame-artwork', images,
-                                             category='Sideloaded', details={'source': meta.get('source')})
-        meta.update(shortcut=shortcut, artwork=result.get('artwork', {}),
+                                             category='Sideloaded', details={'source': meta.get('source')},
+                                             fill_only=fill_only)
+        meta.update(shortcut=shortcut, artwork=result.get('artwork', {}), art_pending=False,
                     library_warnings=warnings + result.get('warnings', []),
                     artwork_refreshed=time.strftime('%Y-%m-%dT%H:%M:%S'))
         ssh(f'cat > {GAMES}/{gid}-framecontrol.json', input=json.dumps(meta, indent=1), timeout=30)
@@ -852,7 +857,9 @@ def list_titles():
                        'runtime': alias, 'runtime_label': RUNTIMES.get(alias, {}).get('label', alias or 'not set'),
                        'source': str(meta.get('source') or ''), 'size': meta.get('size'),
                        'installed': meta.get('installed'), 'registered': t.get('settings') is not None,
-                       'frame_control': bool(meta), 'art_missing': bool(meta) and frame_android.art_missing(meta)})
+                       'frame_control': bool(meta),
+                       # Only a title whose install couldn't apply art; older installs have no flag and keep theirs.
+                       'art_pending': bool(meta.get('art_pending')), 'art_missing': bool(meta.get('art_pending'))})
     return titles
 
 

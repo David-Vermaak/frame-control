@@ -92,21 +92,34 @@ class EntryPoints(unittest.TestCase):
             server.titles({'action':'refresh-art', 'id':'G'})
             title_refresh.assert_called_with('G')
 
-    def test_backfill_applies_missing_art_once_steam_answers(self):
+    def test_backfill_fills_only_entries_pending_since_install(self):
         import threading
         ran = threading.Event()
         with patch.dict(server._backfill, {'running': False, 'last': 0.0}), \
                 patch.object(android, 'refresh_art', side_effect=[RuntimeError('odd'), None]) as refresh, \
-                patch.object(titles, 'refresh_art', side_effect=lambda gid: ran.set()) as title_refresh:
-            apps = [{'package':'org.a.x','art_missing':True}, {'package':'org.b.x','art_missing':True},
-                    {'package':'org.c.x','art_missing':False}]
+                patch.object(titles, 'refresh_art', side_effect=lambda gid, **kw: ran.set()) as title_refresh:
+            apps = [{'package':'org.a.x','art_pending':True}, {'package':'org.b.x','art_pending':True},
+                    {'package':'org.c.x','art_missing':True}]  # legacy: no record of art, but not pending
             with contextlib.redirect_stderr(io.StringIO()):
-                self.assertTrue(server.backfill_art(apps=apps, titles=[{'id':'G','art_missing':True}]))
+                self.assertTrue(server.backfill_art(apps=apps, titles=[{'id':'G','art_pending':True}]))
                 self.assertTrue(ran.wait(5))
             self.assertFalse(server.backfill_art(apps=apps))  # throttled
         self.assertEqual([c.args for c in refresh.call_args_list], [('org.a.x',), ('org.b.x',)])
-        title_refresh.assert_called_once_with('G')
-        self.assertFalse(server.backfill_art(apps=[{'package':'org.c.x','art_missing':False}]))
+        self.assertTrue(all(c.kwargs == {'fill_only': True} for c in refresh.call_args_list))
+        title_refresh.assert_called_once_with('G', fill_only=True)
+
+    def test_upgrade_leaves_legacy_customised_titles_alone(self):
+        # A title installed before art_pending existed, whose art the user has customised in Steam.
+        legacy = [{'id':'Game','settings':{'compat_tool':'proton-experimental'},'argv':['game.exe'],
+                   'meta':{'name':'Game','target':'game.exe','source':'game.zip'}}]
+        with patch.object(titles, 'ssh', return_value=json.dumps(legacy)):
+            listed = titles.list_titles()
+        self.assertEqual((listed[0]['art_pending'], listed[0]['art_missing']), (False, False))
+        with patch.dict(server._backfill, {'running': False, 'last': 0.0}), \
+                patch.object(titles, 'refresh_art') as refresh, patch.object(android, 'refresh_art') as app_refresh:
+            self.assertFalse(server.backfill_art(apps=[{'package':'org.old.app','library_version':1}], titles=listed))
+        refresh.assert_not_called(); app_refresh.assert_not_called()
+        self.api.assert_not_called()
 
     def test_art_missing_flags(self):
         self.assertTrue(android.art_missing({'artwork': {}}))

@@ -369,6 +369,44 @@ class InstallTests(unittest.TestCase):
                                         '.local/share/Steam/steamapps/shadercache/2800000001')
             self.assertIn('Steam client running', result['library_warnings'][0])
 
+    def test_remove_waits_for_refresh_and_is_never_undone(self):
+        import threading
+        state = {'meta': dict(self.existing, flatscreen=False), 'shortcuts': {3346865537}}
+        in_refresh, release, added = threading.Event(), threading.Event(), []
+        def meta(pkg):
+            if not state['meta']:
+                raise android.FrameError(pkg + ' is not installed')
+            return dict(state['meta'])
+        def ssh(cmd, input=None, **kw):
+            if cmd.startswith('rm -rf Applications/Android/org.test.vr'):
+                state['meta'] = None
+            return json.dumps({'icon_png': ''}) if cmd == 'python3 -' else '/home/steamos'
+        def tool(*args, **kw):
+            if args[0] == 'list': return json.dumps([{'appid': a} for a in state['shortcuts']])
+            if args[0] == 'remove': state['shortcuts'].discard(int(args[1])); return '{"warnings": []}'
+            if args[0] == 'add': added.append(args); return '99'
+            if args[0] == 'render': return json.dumps({'paths': {s: '/tmp/' + s + '.png' for s in art.SLOTS}})
+            return '{"warnings": []}'
+        def prepare(*args, **kw):
+            in_refresh.set(); release.wait(5)
+            return self.images, []
+        with patch.object(android, '_meta_or_fail', side_effect=meta), patch.object(android, 'ssh', side_effect=ssh), \
+                patch.object(android, 'shortcut_tool', side_effect=tool), patch.object(android, 'stop'), \
+                patch.object(android, '_write_meta', side_effect=lambda d, m: state.__setitem__('meta', m)), \
+                patch.object(android.frame_artwork, 'prepare', side_effect=prepare):
+            refresh = threading.Thread(target=android.refresh_art, args=('org.test.vr',), kwargs={'fill_only': True})
+            refresh.start()
+            self.assertTrue(in_refresh.wait(5))
+            remove = threading.Thread(target=android.remove, args=('org.test.vr',))
+            remove.start()
+            remove.join(0.3)
+            self.assertTrue(remove.is_alive(), 'remove ran while a refresh was writing')
+            release.set(); refresh.join(5); remove.join(5)
+            self.assertIsNone(state['meta']); self.assertEqual(state['shortcuts'], set())
+            with self.assertRaisesRegex(android.FrameError, 'not installed'):
+                android.refresh_art('org.test.vr', fill_only=True)  # a queued backfill after removal
+        self.assertEqual(added, [])
+
     def test_stop_requests_steam_and_has_container_fallback(self):
         with patch.object(android, '_meta_or_fail', return_value=self.existing), \
                 patch.object(android, 'shortcut_tool', side_effect=android.FrameError('offline')) as api, \
@@ -405,7 +443,7 @@ class SteamAPITests(unittest.TestCase):
         with patch.object(shortcuts, 'evaluate', return_value={'warnings': []}) as evaluate:
             shortcuts.configure(42, 'Game', '', '', '/icon', None, slots, {'category': 'Sideloaded'})
         js = evaluate.call_args.args[0]
-        self.assertIn('if (null !== null)', js)
+        self.assertIn('if (null !== null && !fill)', js)
         self.assertIn('const wanted = ["Sideloaded"]', js)
         with patch.object(sys, 'argv', ['steam_shortcuts.py', 'configure', '42', 'Game', '', '', '/icon', '',
                                         json.dumps(slots), '{}']), \
@@ -483,6 +521,36 @@ class SteamContextTests(unittest.TestCase):
             shortcuts.remove(42)
             self.assertEqual(steam['shortcuts'], [])
             self.assertEqual(steam['collections'][0]['apps'], [999])
+
+    @unittest.skipUnless(__import__('shutil').which('node'), 'optional V8 fixture check requires node')
+    def test_fill_only_keeps_customised_name_icon_and_art(self):
+        custom = {'0': {'data': 'mine-grid', 'ext': 'png'}, '1': {'data': 'mine-hero', 'ext': 'jpg'}}
+        steam = {'apps': [], 'compat_tools': {}, 'collections': [],
+                 'shortcuts': [{'appid': 42, 'name': 'My Name', 'icon': '/mine.png', 'vr': True, 'artwork': dict(custom)}]}
+        def evaluate(expression, timeout=20):
+            nonlocal steam
+            proc = subprocess.run(['node', str(ROOT / 'tests/fakeframe/rootfs/usr/local/lib/fakeframe/cef_shim.js')],
+                                  input=json.dumps({'id': 1, 'expression': expression, 'awaitPromise': True,
+                                                    'steam': steam}) + '\n',
+                                  text=True, capture_output=True, timeout=10, check=True)
+            reply = json.loads(proc.stdout)
+            self.assertNotIn('exceptionDetails', reply['result'])
+            steam = reply['steam']
+            return reply['result']['result'].get('value')
+        with tempfile.TemporaryDirectory() as home:
+            grid = Path(home, '.local/share/Steam/userdata/1/config/grid')
+            grid.mkdir(parents=True)
+            (grid / '42p.png').write_bytes(b'mine')
+            (grid / '42_hero.jpg').write_bytes(b'mine')
+            with patch.dict(os.environ, {'HOME': home, 'USERPROFILE': home}), patch.object(shortcuts, 'evaluate', side_effect=evaluate):
+                self.assertEqual(shortcuts.custom_art(42), {0, 1})
+                shortcuts.configure(42, 'Generated', '/exe', '/dir', '/generated.png', False,
+                                    {slot: str(FIXTURES / 'icon.png') for slot in art.SLOTS},
+                                    {'category': 'Sideloaded', 'fill_only': True})
+        s = steam['shortcuts'][0]
+        self.assertEqual((s['name'], s['icon'], s['vr']), ('My Name', '/mine.png', True))
+        self.assertEqual({k: s['artwork'][k] for k in ('0', '1')}, custom)
+        self.assertEqual(set(s['artwork']), {'0', '1', '2', '3'})
 
     @unittest.skipUnless(__import__('shutil').which('node'), 'optional V8 fixture check requires node')
     def test_remove_without_collections_or_artwork_api_still_removes(self):
