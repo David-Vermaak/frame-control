@@ -39,6 +39,7 @@ import frame_host
 import frame_network
 
 PROBE_TIMEOUT = 4      # seconds for a TCP answer on port 22
+RESOLVE_GRACE = 6      # ...after however long the name lookup took, up to this much
 PREFER = 0.35          # how long an answer waits for a better-ranked address still trying
 HANDSHAKE_TIMEOUT = 25
 TICK = 2               # the loop's heartbeat
@@ -93,11 +94,13 @@ def probe(host, port, timeout=PROBE_TIMEOUT, update=None):
     reports progress (resolving, trying) as it happens."""
     update = update or (lambda **_: None)
     update(state="resolving", detail="Looking up the name")
-    deadline = now() + timeout
     try:
         infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
     except (socket.gaierror, UnicodeError, OSError) as e:
         return {"state": "unresolved", "detail": "Can't find this name on the network", "error": str(e)}
+    # The time out is for connecting: macOS can take 5 s to look up a .local name
+    # (it waits for an IPv6 answer that never comes), which says nothing about the headset.
+    deadline = now() + timeout
     last = None
     infos = infos[:4]
     for n, (family, kind, proto, _, addr) in enumerate(infos):
@@ -491,30 +494,34 @@ class Link:
         try:
             ok = self.attempt(device)
         finally:
-            with self.cond:
-                if gen != self.gen:
-                    # The headset changed meanwhile: this attempt's result is about the
-                    # old one. Leave "connecting"; the queued switch starts the next.
-                    self.state["phase"] = "connecting"
-                    self.version += 1
-                    self.cond.notify_all()
-                    ok = None
-            if ok is None:
-                self.close_master()
-                return
-            with self.cond:
-                self.state["finished"] = now()
-                if ok:
-                    self.fails = 0
-                    self.state.update(phase="connected", retry_at=None, error=None)
-                else:
-                    self.fails += 1
-                    self.state.update(phase="failed", retry_at=None if device.get("none") or not (device.get("transient") or device["addresses"]) else
-                                      now() + RETRY[min(self.fails, len(RETRY)) - 1])
-                    if not self.state["error"]:
-                        self.state["error"] = {"stage": "find", "message": "Couldn't connect", "raw": ""}
+            self.finish(gen, ok, device)
+
+    def finish(self, gen, ok, device):
+        """Publish how an attempt ended (connected, or failed with a retry time)."""
+        with self.cond:
+            if gen != self.gen:
+                # The headset changed meanwhile: this attempt's result is about the
+                # old one. Leave "connecting"; the queued switch starts the next.
+                self.state["phase"] = "connecting"
                 self.version += 1
                 self.cond.notify_all()
+                ok = None
+        if ok is None:
+            self.close_master()
+            return
+        with self.cond:
+            self.state["finished"] = now()
+            if ok:
+                self.fails = 0
+                self.state.update(phase="connected", retry_at=None, error=None)
+            else:
+                self.fails += 1
+                self.state.update(phase="failed", retry_at=None if device.get("none") or not (device.get("transient") or device["addresses"]) else
+                                  now() + RETRY[min(self.fails, len(RETRY)) - 1])
+                if not self.state["error"]:
+                    self.state["error"] = {"stage": "find", "message": "Couldn't connect", "raw": ""}
+            self.version += 1
+            self.cond.notify_all()
 
     @staticmethod
     def describe(reasons):
@@ -634,7 +641,7 @@ class Link:
 
         tried = set()
         user = device.get("user") or "the headset's user"
-        deadline = time.monotonic() + PROBE_TIMEOUT + 1
+        deadline = time.monotonic() + PROBE_TIMEOUT + RESOLVE_GRACE
         while True:
             pick = self.pick(results, tried, done, deadline)
             if pick is None:
@@ -684,7 +691,7 @@ class Link:
         address has failed, or once it has waited PREFER seconds for them. None when
         nothing (else) answered. Probes still going at `deadline` (a name lookup can
         take longer than the connect timeout) count as no answer."""
-        deadline = deadline or time.monotonic() + PROBE_TIMEOUT + 1
+        deadline = deadline or time.monotonic() + PROBE_TIMEOUT + RESOLVE_GRACE
         with done:
             while True:
                 if time.monotonic() >= deadline:
@@ -873,7 +880,7 @@ class Link:
                 self.stage("identity", "done")
                 step = "login"
                 self.stage("login", "active", f"Logging in as {user}")
-            elif AUTHED.search(line):
+            elif AUTHED.search(line) and self.is_target(line, opts, alias):
                 authed = True
                 if step != "login":
                     self.stage("identity", "done")
@@ -893,6 +900,14 @@ class Link:
             self.master = proc
         return "ok"
 
+    @staticmethod
+    def is_target(line, opts, alias):
+        """Whether an "Authenticated to X" line is about the headset, not a jump host
+        (ssh -v passes its verbosity on to ProxyJump's own ssh)."""
+        host = next((o.split("=", 1)[1].replace("%%", "%") for o in opts if o.startswith("HostName=")), alias)
+        m = re.search(r"Authenticated to (\S+)", line)
+        return not m or m.group(1) in (host, alias) or "Authentication succeeded" in line
+
     def failed(self, step, said, mismatch, alias):
         text = "\n".join(said).strip()
         if mismatch:
@@ -904,7 +919,7 @@ class Link:
             return "stop"
         if step == "connected":
             self.fail("login", "Logged in, but the shared SSH connection didn't start.", text)
-            return "stop"
+            return "next"
         self.fail(step, self.explain(text) or (text.splitlines()[-1] if text else "ssh stopped"), text)
         return "next"
 

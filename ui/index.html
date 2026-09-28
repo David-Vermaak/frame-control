@@ -2684,7 +2684,7 @@ async function useDevice(id) {
 }
 async function devAction(label, body, btn) {
   const res = await act(label, () => api("/api/devices", body), btn);
-  if (res && res.devices) { dv.data = res; dv.list = res.devices; renderDevices(); }
+  if (res) loadDevices();  // in order with every other load, so a late answer can't undo a newer one
   return res;
 }
 

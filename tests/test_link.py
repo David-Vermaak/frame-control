@@ -312,6 +312,11 @@ class Connecting(unittest.TestCase):
         self.link.lost("ssh: connect to host b port 22: Operation timed out", 3)
         self.assertEqual(len(self.link.kicks), 1)
 
+    def test_a_jump_hosts_login_isnt_the_headsets(self):
+        opts = ["-o", "HostName=10.0.0.5"]
+        self.assertFalse(fl.Link.is_target('Authenticated to bastion ([1.2.3.4]:22) using "publickey".', opts, "frame"))
+        self.assertTrue(fl.Link.is_target('Authenticated to 10.0.0.5 ([10.0.0.5]:22) using "publickey".', opts, "frame"))
+
     def test_probes_from_an_earlier_attempt_leave_the_new_rows_alone(self):
         self.link.state.update(attempt=2, probes=[{"host": "b", "state": "waiting"}])
         self.link.probe_update(0, 1, state="answered", ip="10.0.0.2")
