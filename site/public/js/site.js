@@ -2,7 +2,7 @@
 const SITE = {
   repo: "saphid/frame-control",
   // Ko-fi page name, the part after ko-fi.com/. Donate buttons stay hidden while it's empty.
-  kofi: "",
+  kofi: "alexsouthwell",
 };
 
 const RELEASE = `https://github.com/${SITE.repo}/releases/latest/download/`;
