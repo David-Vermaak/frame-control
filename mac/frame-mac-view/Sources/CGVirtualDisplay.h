@@ -26,3 +26,5 @@
 - (instancetype)initWithDescriptor:(CGVirtualDisplayDescriptor *)descriptor;
 - (BOOL)applySettings:(CGVirtualDisplaySettings *)settings;
 @end
+
+#include "../../../desktop/controller.h"
