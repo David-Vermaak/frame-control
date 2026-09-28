@@ -1508,8 +1508,12 @@ async function ctrlPoll(n) {
     ctrl.state = r.state; ctrl.message = r.message || "";
   } catch (e) { ctrl.state = "error"; ctrl.message = e.message; }
   ctrlShow();
-  if (ctrl.state !== "ready" && ctrl.state !== "error" && n < 30) setTimeout(() => ctrlPoll(n + 1), 500);
-  else if (ctrl.state === "ready") ctrlFlush();
+  if (ctrl.state !== "ready" && ctrl.state !== "error" && n < 30) return setTimeout(() => ctrlPoll(n + 1), 500);
+  if (ctrl.state === "ready") return ctrlFlush();
+  if (ctrl.state !== "error") {
+    ctrl.state = "error"; ctrl.message = "The Frame didn't answer. Turn Control off and on to try again.";
+    ctrlShow();
+  }
 }
 $("viewer").tabIndex = 0;
 $("viewer").addEventListener("focus", () => { if (ctrl.on && window.frameApp?.captureKeys) window.frameApp.captureKeys(true); });
@@ -1561,6 +1565,7 @@ async function ctrlFlush() {
   try {
     const r = await api("/api/touch", { events: batch });
     ctrl.state = r.state; ctrl.message = r.message || "";
+    if (r.stale && typeof loadPanels === "function") loadPanels();  // focus moved on: catch up now
     if (!r.sent && r.state === "error") {
       // Broken: presses would be stale by the time it's back; releases still matter.
       ctrl.queue.unshift(...batch.filter(isRelease));
@@ -1738,6 +1743,7 @@ canvasEl.addEventListener("pointermove", e => {
 for (const type of ["pointerup", "pointercancel"]) canvasEl.addEventListener(type, e => {
   if (!ctrl.on) return;
   if (e.pointerType === "touch") return type === "pointercancel" ? ctrlTouchCancel(e) : ctrlTouchUp(e);
+  if (type === "pointercancel") return [...ctrl.held].forEach(b => ctrlButton(b, false));  // no button is named
   const name = CTRL_BUTTONS[e.button] || "left";
   if (ctrl.held.has(name)) ctrlButton(name, false);
 });
@@ -1772,7 +1778,8 @@ function ctrlText(text) {
     ctrlWarned = true;
     toast("Control types plain letters, numbers and symbols. For accents and emoji, use Keyboard and trackpad below.");
   }
-  for (const part of plain.match(/[\s\S]{1,500}/g) || []) ctrlSend([{ text: part }]);
+  // Small pieces: the Frame types them key by key, and a release queued behind mustn't wait long.
+  for (const part of plain.match(/[\s\S]{1,100}/g) || []) ctrlSend([{ text: part }]);
 }
 $("ctrlType").addEventListener("beforeinput", e => {
   if (e.isComposing) return;

@@ -217,6 +217,10 @@ How (**verified 2026-09-29**, SteamOS 0.4.1, build 20260925.6191901):
   gets a connector of its own and doesn't hold focus.
 - **Keys in a burst can arrive out of order**, so the helper paces them (8 ms
   apart).
+- **Known limit:** if focus moves to another panel in the middle of a drag, the
+  release goes to the panel that has focus then. Whether gamescope hands it to
+  the window that got the press isn't known yet. When the session ends, the
+  helper lets go of every button and key it still holds.
 - **The Desktop picture is the window's own pixels**: `ffmpeg -f x11grab
   -window_id <window> -i :<display>` works on gamescope's redirected windows,
   while grabbing the root gives black. It streams as H.264 like the headset view

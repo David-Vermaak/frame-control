@@ -140,6 +140,12 @@ def focus_display():
     return name if name[:1] == ":" and name[1:].isdigit() else None
 
 
+def focus_now():
+    """Just which window and display have focus: two property reads, for checking a press."""
+    window = (xprop_root(":0", "GAMESCOPE_FOCUSED_WINDOW") or [0])[0]
+    return (window or None, focus_display() if window else None)
+
+
 def focus():
     """The panel that has focus in the headset: window, display, name and sizes (gamescope
     publishes the window and its display on :0's root)."""
@@ -222,7 +228,7 @@ class Gamescope:
         if L.ei_setup_backend_socket(self.ei, SOCKET.encode()) != 0:
             raise RuntimeError("Couldn't reach gamescope's input socket. Is the headset on?")
         self.fd = L.ei_get_fd(self.ei)
-        self.device, self.sequence, self.held = None, 0, set()
+        self.device, self.sequence, self.held, self.keys, self.alive = None, 0, set(), set(), True
 
     def pump(self, wait=0.0):
         """Handle gamescope's events; False once it has disconnected."""
@@ -249,7 +255,7 @@ class Gamescope:
                 if self.L.ei_event_get_device(ev) == self.device:
                     self.device = None
             elif kind == EV_DISCONNECT:
-                self.device, alive = None, False
+                self.device, alive, self.alive = None, False, False
             self.L.ei_event_unref(ev)
 
     def wait_ready(self, timeout=5):
@@ -258,7 +264,8 @@ class Gamescope:
             if not self.pump(0.1):
                 break
         if self.device is None:
-            raise RuntimeError("gamescope didn't offer an input device")
+            raise RuntimeError("gamescope closed its input socket" if not self.alive
+                               else "gamescope didn't offer an input device")
 
     def frame(self):
         self.L.ei_device_frame(self.device, self.L.ei_now(self.ei))
@@ -287,6 +294,7 @@ class Gamescope:
     def key(self, code, down):
         self.L.ei_device_keyboard_key(self.device, code, down)
         self.frame()
+        (self.keys.add if down else self.keys.discard)(code)
         # Paced: a burst of keys can reach the app out of order (seen 2026-09-29).
         time.sleep(0.008)
 
@@ -303,9 +311,12 @@ class Gamescope:
                 self.key(SHIFT, False)
 
     def release_all(self):
+        """Let go of every button and key still down, so nothing stays held in the headset."""
         for code in list(self.held):
             name = next(n for n, c in BUTTONS.items() if c == code)
             self.button(name, False)
+        for code in list(self.keys):
+            self.key(code, False)
 
 
 # ---- events from the server --------------------------------------------------------
@@ -341,8 +352,11 @@ def apply(gs, event, panel):
     # Moves may use a focus reading up to a second old; anything that acts (a press, key,
     # text or scroll) reads it afresh, so it can't land on a panel that took focus since.
     acts = any(k in event for k in ("button", "key", "text", "scroll")) and event.get("down") is not False
-    if "window" in event and (acts or not panel or time.time() - panel.get("_at", 0) > 1 or aimed_elsewhere(event, panel)):
-        panel = {**focus(), "_at": time.time()}
+    if "window" in event:
+        if panel and acts and focus_now() == (panel.get("window"), panel.get("display")):
+            panel = {**panel, "_at": time.time()}  # still the same panel: keep its geometry
+        elif acts or not panel or time.time() - panel.get("_at", 0) > 1 or aimed_elsewhere(event, panel):
+            panel = {**focus(), "_at": time.time()}
     stale = aimed_elsewhere(event, panel) if "window" in event else False
     if stale and not (event.get("down") is False and ("button" in event or "key" in event)):
         say("ready", focus=panel.get("window"), display=panel.get("display"), stale=True)  # the page re-syncs
@@ -392,10 +406,17 @@ def main():
             for line in lines:
                 for event in events(line):
                     if gs.device is None:
-                        gs.wait_ready(2)
+                        # Paused (gamescope can pause the device): wait a moment; drop this
+                        # event if it doesn't come back. Only a disconnect ends the session.
+                        try:
+                            gs.wait_ready(2)
+                        except RuntimeError:
+                            if not gs.alive:
+                                raise
+                            continue
                     try:
                         panel = apply(gs, event, panel)
-                    except (ValueError, KeyError, TypeError):
+                    except (ValueError, KeyError, TypeError, OSError):
                         continue  # the server checks events; skip anything odd
     except RuntimeError as e:
         say("error", message=str(e))

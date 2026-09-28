@@ -616,7 +616,7 @@ class InputAgent:
     """
 
     def __init__(self, source=HERE / "frame_input_agent.py", packages=None):
-        self.source, self.proc, self.lock = source, None, threading.Lock()
+        self.source, self.proc, self.lock, self.write_lock = source, None, threading.Lock(), threading.Lock()
         self.packages = kdeconnect_packages() if packages is None else packages
         # generation counts stop()s; launching is the generation a launch is under way for.
         self.status, self.launching, self.generation = {"state": "off"}, None, 0
@@ -789,8 +789,10 @@ class InputAgent:
             self.start()
         elif ready and events:
             try:
-                proc.stdin.write((json.dumps(events) + "\n").encode())
-                proc.stdin.flush()
+                # One writer at a time: two devices sending at once mustn't tear a line.
+                with self.write_lock:
+                    proc.stdin.write((json.dumps(events) + "\n").encode())
+                    proc.stdin.flush()
                 sent = True
             except (BrokenPipeError, OSError, ValueError):
                 pass  # _watch reports how it ended

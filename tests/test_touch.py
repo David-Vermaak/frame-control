@@ -89,11 +89,13 @@ class Apply(unittest.TestCase):
 
     def setUp(self):
         self.focused = {"window": 7, "display": ":1", "root": [1280, 720], "width": 1280, "height": 720, "name": "x"}
-        self.old_focus, self.old_say = self.t.focus, self.t.say
+        saved = self.t.focus, self.t.say, self.t.focus_now
         self.said = []
         self.t.focus = lambda: dict(self.focused)
+        self.t.focus_now = lambda: (self.focused["window"], self.focused["display"])
         self.t.say = lambda state, **more: self.said.append((state, more))
-        self.addCleanup(lambda: (setattr(self.t, "focus", self.old_focus), setattr(self.t, "say", self.old_say)))
+        self.addCleanup(lambda: (setattr(self.t, "focus", saved[0]), setattr(self.t, "say", saved[1]),
+                                 setattr(self.t, "focus_now", saved[2])))
 
     def test_tap_moves_then_clicks_in_order(self):
         gs, panel = FakeGamescope(), None
@@ -120,10 +122,12 @@ class Apply(unittest.TestCase):
         panel = self.t.apply(gs, {"fx": 0.5, "fy": 0.5, "window": 7, "display": ":1"}, None)
         panel = self.t.apply(gs, {"fx": 0.6, "fy": 0.5, "window": 7, "display": ":1"}, panel)
         self.assertEqual(len(calls), 1)
+        self.t.apply(gs, {"button": "left", "down": True, "window": 7, "display": ":1"}, panel)
+        self.assertEqual(len(calls), 1)  # same panel still: the quick check was enough
         self.focused["window"] = 8
         self.t.apply(gs, {"button": "left", "down": True, "window": 7, "display": ":1"}, panel)
         self.assertEqual(len(calls), 2)
-        self.assertEqual([c[0] for c in gs.calls], ["move_to", "move_to"])
+        self.assertEqual([c[0] for c in gs.calls], ["move_to", "move_to", "button"])
 
     def test_same_window_id_on_the_other_display_is_another_panel(self):
         gs = FakeGamescope()
@@ -136,6 +140,24 @@ class Apply(unittest.TestCase):
                   {"key": True}, {"button": "sideways"}):
             self.t.apply(gs, e, None)
         self.assertEqual([c[0] for c in gs.calls], ["move_by", "scroll", "key", "text"])
+
+    def test_everything_held_is_let_go(self):
+        class Held(self.t.Gamescope):
+            def __init__(self):
+                self.held, self.keys, self.log = set(), set(), []
+
+            def frame(self):
+                pass
+
+        g = Held()
+        g.L = type("L", (), {"ei_device_button_button": lambda *a: g.log.append(("button",) + a[2:]),
+                             "ei_device_keyboard_key": lambda *a: g.log.append(("key",) + a[2:])})()
+        g.device = object()
+        g.button("left", True)
+        g.key(42, True)
+        g.release_all()
+        self.assertEqual(g.log[-2:], [("button", 0x110, False), ("key", 42, False)])
+        self.assertEqual((g.held, g.keys), (set(), set()))
 
     def test_text_uses_shift_for_capitals(self):
         class Keys(self.t.Gamescope):
