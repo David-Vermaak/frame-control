@@ -251,6 +251,10 @@ class Gamescope:
                     self.sequence += 1
                     self.L.ei_device_start_emulating(device, self.sequence)
                     self.device = device
+                    # Releases that arrived while it was paused were dropped: let go of
+                    # everything now, so the headset and this agent agree nothing is held.
+                    if self.held or self.keys:
+                        self.release_all()
             elif kind in (EV_DEVICE_PAUSED, EV_DEVICE_REMOVED):
                 if self.L.ei_event_get_device(ev) == self.device:
                     self.device = None
@@ -335,6 +339,9 @@ def number(value, limit=100000.0):
     return max(-limit, min(limit, float(value)))
 
 
+STALE = [False]  # whether the last status said a tap went nowhere
+
+
 def aimed_elsewhere(event, panel):
     """Whether an event names a panel that isn't the one with focus now."""
     if "window" not in event:
@@ -354,13 +361,17 @@ def apply(gs, event, panel):
     acts = any(k in event for k in ("button", "key", "text", "scroll")) and event.get("down") is not False
     if "window" in event:
         if panel and acts and focus_now() == (panel.get("window"), panel.get("display")):
-            panel = {**panel, "_at": time.time()}  # still the same panel: keep its geometry
+            pass  # still the same panel (its geometry is re-read on the usual one-second schedule)
         elif acts or not panel or time.time() - panel.get("_at", 0) > 1 or aimed_elsewhere(event, panel):
             panel = {**focus(), "_at": time.time()}
     stale = aimed_elsewhere(event, panel) if "window" in event else False
     if stale and not (event.get("down") is False and ("button" in event or "key" in event)):
         say("ready", focus=panel.get("window"), display=panel.get("display"), stale=True)  # the page re-syncs
+        STALE[0] = True
         return panel
+    if "window" in event and STALE[0]:
+        STALE[0] = False
+        say("ready", focus=panel.get("window"), display=panel.get("display"))  # caught up: stop re-syncing
     if "fx" in event and panel and panel.get("window"):
         gs.move_to(*to_root(panel, number(event["fx"], 1), number(event["fy"], 1)))
     if "dx" in event or "dy" in event:
@@ -404,8 +415,12 @@ def main():
                 return 0  # the server went away
             *lines, pending = (pending + chunk).split(b"\n")
             for line in lines:
+                waited = False
                 for event in events(line):
+                    if gs.device is None and waited:
+                        continue  # still paused: don't wait again for each event of this batch
                     if gs.device is None:
+                        waited = True
                         # Paused (gamescope can pause the device): wait a moment; drop this
                         # event if it doesn't come back. Only a disconnect ends the session.
                         try:

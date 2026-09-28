@@ -231,4 +231,14 @@ function page({ mode = "abs", rect = { left: 0, top: 0, width: 640, height: 360 
   if (calls !== 1) fail("new input bypassed the backoff: " + calls + " requests");
   clearTimeout(p.ctrl.retry);
 }
+// A long paste goes in several requests, so a release never waits behind all of it.
+{
+  const batches = [];
+  const p = page({ api: async (path, body) => { batches.push(body.events); return { state: "ready", sent: true }; } });
+  p.ctrlText("y".repeat(450));
+  p.ctrlButton("left", false);
+  await tick(30);
+  if (!batches.every(b => b.reduce((a, e) => a + (e.text?.length || 0), 0) <= 100)) fail("a batch carried too much text");
+  if (batches.length < 5) fail("paste went in " + batches.length + " requests");
+}
 console.log("control gestures ok");

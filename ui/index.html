@@ -1507,6 +1507,7 @@ async function ctrlPoll(n) {
     const r = await api(n ? "/api/touch" : "/api/touch?start=1");
     ctrl.state = r.state; ctrl.message = r.message || "";
   } catch (e) { ctrl.state = "error"; ctrl.message = e.message; }
+  if (!ctrl.on) return;  // turned off while connecting
   ctrlShow();
   if (ctrl.state !== "ready" && ctrl.state !== "error" && n < 30) return setTimeout(() => ctrlPoll(n + 1), 500);
   if (ctrl.state === "ready") return ctrlFlush();
@@ -1560,7 +1561,14 @@ async function ctrlFlush() {
     return;
   }
   ctrl.sending = true;
-  const batch = ctrl.queue.splice(0, 200);
+  // Up to 200 events, and at most about 100 characters of text: the Frame types a batch
+  // key by key before reading the next, and a release mustn't wait behind a long paste.
+  let n = 0, chars = 0;
+  while (n < ctrl.queue.length && n < 200 && (n === 0 || chars + (ctrl.queue[n].text?.length || 0) <= 100)) {
+    chars += ctrl.queue[n].text?.length || 0;
+    n++;
+  }
+  const batch = ctrl.queue.splice(0, n);
   let again = 0;
   try {
     const r = await api("/api/touch", { events: batch });

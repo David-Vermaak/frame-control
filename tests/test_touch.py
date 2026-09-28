@@ -90,6 +90,7 @@ class Apply(unittest.TestCase):
     def setUp(self):
         self.focused = {"window": 7, "display": ":1", "root": [1280, 720], "width": 1280, "height": 720, "name": "x"}
         saved = self.t.focus, self.t.say, self.t.focus_now
+        self.t.STALE[0] = False
         self.said = []
         self.t.focus = lambda: dict(self.focused)
         self.t.focus_now = lambda: (self.focused["window"], self.focused["display"])
@@ -129,6 +130,14 @@ class Apply(unittest.TestCase):
         self.assertEqual(len(calls), 2)
         self.assertEqual([c[0] for c in gs.calls], ["move_to", "move_to", "button"])
 
+    def test_stale_is_said_once_and_cleared(self):
+        gs, panel = FakeGamescope(), None
+        for e in ({"fx": 0.5, "fy": 0.5, "window": 99, "display": ":1"}, {"fx": 0.5, "fy": 0.5, "window": 7, "display": ":1"},
+                  {"fx": 0.6, "fy": 0.5, "window": 7, "display": ":1"}):
+            panel = self.t.apply(gs, e, panel)
+        self.assertEqual(self.said, [("ready", {"focus": 7, "display": ":1", "stale": True}),
+                                     ("ready", {"focus": 7, "display": ":1"})])
+
     def test_same_window_id_on_the_other_display_is_another_panel(self):
         gs = FakeGamescope()
         self.t.apply(gs, {"fx": 0.5, "fy": 0.5, "window": 7, "display": ":0"}, None)
@@ -158,6 +167,32 @@ class Apply(unittest.TestCase):
         g.release_all()
         self.assertEqual(g.log[-2:], [("button", 0x110, False), ("key", 42, False)])
         self.assertEqual((g.held, g.keys), (set(), set()))
+
+    def test_resuming_after_a_pause_lets_go_of_everything(self):
+        t = self.t
+        log, queue = [], [1]
+
+        class L:
+            def __getattr__(self, name):
+                if name == "ei_get_event":
+                    return lambda ei: queue.pop(0) if queue else None
+                return {"ei_event_get_type": lambda ev: t.EV_DEVICE_RESUMED, "ei_event_get_device": lambda ev: "dev",
+                        "ei_device_has_capability": lambda d, c: True,
+                        "ei_device_button_button": lambda d, c, down: log.append(("button", c, down)),
+                        "ei_device_keyboard_key": lambda d, c, down: log.append(("key", c, down))}.get(name, lambda *a: 0)
+
+        g = t.Gamescope.__new__(t.Gamescope)
+        g.L, g.ei, g.fd, g.device, g.sequence, g.alive = L(), None, None, None, 0, True
+        g.held, g.keys = {0x110}, {42}
+        g.frame = lambda: None
+        old = t.select.select
+        t.select.select = lambda *a: ([], [], [])
+        try:
+            g.pump()
+        finally:
+            t.select.select = old
+        self.assertEqual(sorted(log), [("button", 0x110, False), ("key", 42, False)])
+        self.assertEqual(g.device, "dev")
 
     def test_text_uses_shift_for_capitals(self):
         class Keys(self.t.Gamescope):
