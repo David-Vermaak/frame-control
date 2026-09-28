@@ -81,12 +81,37 @@ class EntryPoints(unittest.TestCase):
         self.assertEqual(result['kind'], 'apk')
         self.assert_art()
 
-    def test_refresh_api(self):
+    def test_refresh_api_covers_android_apps_and_titles(self):
         with patch.object(server, 'ensure_master'), \
                 patch.object(server, 'start_job', side_effect=lambda label, work: work()), \
-                patch.object(android, 'refresh_art', return_value=[]) as refresh:
-            self.assertEqual(server.android({'action':'refresh-art', 'all':True}), {'apps':[]})
-        refresh.assert_called_once_with(None)
+                patch.object(android, 'refresh_art', return_value=[]) as refresh, \
+                patch.object(titles, 'refresh_art', return_value=[{'id':'G','error':'x'}]) as title_refresh:
+            self.assertEqual(server.android({'action':'refresh-art', 'all':True}),
+                             {'apps':[], 'titles':[{'id':'G','error':'x'}]})
+            refresh.assert_called_once_with(); title_refresh.assert_called_once_with()
+            server.titles({'action':'refresh-art', 'id':'G'})
+            title_refresh.assert_called_with('G')
+
+    def test_backfill_applies_missing_art_once_steam_answers(self):
+        import threading
+        ran = threading.Event()
+        with patch.dict(server._backfill, {'running': False, 'last': 0.0}), \
+                patch.object(android, 'refresh_art', side_effect=[RuntimeError('odd'), None]) as refresh, \
+                patch.object(titles, 'refresh_art', side_effect=lambda gid: ran.set()) as title_refresh:
+            apps = [{'package':'org.a.x','art_missing':True}, {'package':'org.b.x','art_missing':True},
+                    {'package':'org.c.x','art_missing':False}]
+            with contextlib.redirect_stderr(io.StringIO()):
+                self.assertTrue(server.backfill_art(apps=apps, titles=[{'id':'G','art_missing':True}]))
+                self.assertTrue(ran.wait(5))
+            self.assertFalse(server.backfill_art(apps=apps))  # throttled
+        self.assertEqual([c.args for c in refresh.call_args_list], [('org.a.x',), ('org.b.x',)])
+        title_refresh.assert_called_once_with('G')
+        self.assertFalse(server.backfill_art(apps=[{'package':'org.c.x','art_missing':False}]))
+
+    def test_art_missing_flags(self):
+        self.assertTrue(android.art_missing({'artwork': {}}))
+        self.assertTrue(android.art_missing({'artwork': {'grid': 'x'}}))
+        self.assertFalse(android.art_missing({'artwork': {s: 'x' for s in artwork.SLOTS}}))
 
     def test_source_search_shared_installer_contract(self):
         # Source workers hand their download and optional images to this public seam.

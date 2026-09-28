@@ -377,6 +377,7 @@ def list_apps():
             continue
         if m:
             m['running'] = f"lepton-steamlaunch-{m['instance']}" in running
+            m['art_missing'] = art_missing(m)
             apps.append(m)
     return sorted(apps, key=lambda m: m['label'].lower())
 
@@ -537,6 +538,8 @@ def main():
             r = (backup_data if cmd == 'backup-data' else restore_data)(*args)
         elif cmd == 'list':
             r = list_apps()
+            if any(a['art_missing'] for a in r):
+                print('Some apps have no Steam artwork: python3 ui/frame_android.py refresh-art --all', file=sys.stderr)
         elif cmd in ('launch', 'stop', 'probe'):
             r = globals()[cmd](args[0])
         elif cmd == 'remove':

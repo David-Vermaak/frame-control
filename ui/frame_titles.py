@@ -852,7 +852,7 @@ def list_titles():
                        'runtime': alias, 'runtime_label': RUNTIMES.get(alias, {}).get('label', alias or 'not set'),
                        'source': str(meta.get('source') or ''), 'size': meta.get('size'),
                        'installed': meta.get('installed'), 'registered': t.get('settings') is not None,
-                       'frame_control': bool(meta)})
+                       'frame_control': bool(meta), 'art_missing': bool(meta) and frame_android.art_missing(meta)})
     return titles
 
 
@@ -933,8 +933,15 @@ def main():
                         progress=lambda text, _: print(text + '…', file=sys.stderr))
         elif cmd == 'list':
             r = list_titles()
+            if any(t['art_missing'] for t in r):
+                print('Some titles have no Steam artwork: python3 ui/frame_titles.py refresh-art --all', file=sys.stderr)
         elif cmd in ('launch', 'remove') and args:
             r = globals()[cmd](args[0])
+        elif cmd == 'refresh-art' and args:
+            r = refresh_art(None if args[0] == '--all' else args[0])
+            if isinstance(r, list) and any('error' in t for t in r):
+                print(json.dumps(r, indent=1))
+                raise SystemExit(1)
         else:
             sys.exit(__doc__)
     except FrameError as e:
