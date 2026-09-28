@@ -140,8 +140,9 @@ class BackupTests(unittest.TestCase):
             self.assertFalse((source / 'lib').exists() or (source / 'lib').is_symlink())
             self.assertEqual((source / 'files/save-link').read_bytes(), b'save')
 
-    def test_concurrent_restores_of_a_package_are_serialised(self):
-        import fcntl, threading
+    @unittest.skipUnless(os.name == 'posix', 'restores run on the Frame (Linux flock)')
+    def test_overlapping_restores_keep_a_recovery_copy(self):
+        import threading
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             (root / PKG).mkdir()
@@ -149,21 +150,33 @@ class BackupTests(unittest.TestCase):
             archive = io.BytesIO()
             REMOTE['backup'](root, PKG, META['instance'], archive)
             (root / PKG / 'save').write_bytes(b'current')
-            first = REMOTE['restore'](root, PKG, META['instance'], io.BytesIO(archive.getvalue()))['previous']
-            # Another client's restore is mid-swap: it holds the package lock.
-            fd = os.open(str(root / ('.' + PKG + '.restore.lock')), os.O_RDWR | os.O_CREAT, 0o600)
-            fcntl.flock(fd, fcntl.LOCK_EX)
-            results = []
-            second = threading.Thread(target=lambda: results.append(
-                REMOTE['restore'](root, PKG, META['instance'], io.BytesIO(archive.getvalue()))))
-            second.start()
-            second.join(.5)
-            self.assertTrue(second.is_alive())  # waiting, so it can't swap or delete the other's copy
-            self.assertEqual(sorted(root.glob('.' + PKG + '.before-restore-*')), [Path(first)])
-            os.close(fd)
-            second.join(5)
-            self.assertEqual(sorted(root.glob('.' + PKG + '.before-restore-*')), [Path(results[0]['previous'])])
-            self.assertEqual((root / PKG / 'save').read_bytes(), b'backup')
+            REMOTE['restore'](root, PKG, META['instance'], io.BytesIO(archive.getvalue()))  # an old copy to clean up
+            restore = REMOTE['restore']
+            real_rmtree, inside, go = shutil.rmtree, threading.Event(), threading.Event()
+            def rmtree(path, **kwargs):
+                if threading.current_thread().name == 'first':
+                    inside.set()  # swapped, now cleaning up; hold it here
+                    go.wait(5)
+                real_rmtree(path, **kwargs)
+            results = {}
+            def run():
+                results[threading.current_thread().name] = restore(
+                    root, PKG, META['instance'], io.BytesIO(archive.getvalue()))['previous']
+            with patch.dict(restore.__globals__, {'shutil': type('S', (), {'rmtree': staticmethod(rmtree),
+                                                                         'copyfileobj': shutil.copyfileobj})}):
+                first = threading.Thread(target=run, name='first')
+                first.start()
+                self.assertTrue(inside.wait(5))
+                second = threading.Thread(target=run, name='second')
+                second.start()
+                second.join(.5)
+                self.assertTrue(second.is_alive())  # can't swap or clean up during the first's cleanup
+                go.set()
+                first.join(5)
+                second.join(5)
+            copies = sorted(root.glob('.' + PKG + '.before-restore-*'))
+            self.assertEqual(copies, [Path(results['second'])])  # the second restore's recovery copy survives
+            self.assertEqual((copies[0] / 'save').read_bytes(), b'backup')
 
     def test_restore_keeps_only_latest_previous_copy(self):
         with tempfile.TemporaryDirectory() as tmp:
