@@ -129,6 +129,7 @@ class MacView:
         self.supervisor = None
         self.closing = False
         self.shows = 0  # counts Show presses, so a late cleanup can't close a new viewer
+        self.launching = 0  # Shows in progress (one may be replacing its own stream)
         self.shown = set()  # sources with a viewer out there, connected or retrying
         self.browser_flags = list(BROWSER_FLAGS)
 
@@ -280,6 +281,15 @@ class MacView:
     # ---- viewers on the Frame ----
 
     def show(self, src, quality="balanced", width=None, height=None):
+        with self.lock:
+            self.launching += 1
+        try:
+            return self._show(src, quality, width, height)
+        finally:
+            with self.lock:
+                self.launching -= 1
+
+    def _show(self, src, quality, width, height):
         if src != "test" and not src.startswith(("window:", "display:", "separate:")):
             raise MacViewError("Pick a window or display to show.")
         self.shows += 1
@@ -337,7 +347,7 @@ class MacView:
         2026-09-28), so once nothing is shown, end it. It runs with a profile
         of its own, so nothing else is touched."""
         time.sleep(2)  # the viewers close their windows first
-        if self.shown or self.shows != shows:
+        if self.shown or self.shows != shows or self.launching:
             return
         try:
             self.run("pkill -f '[f]rame-control/mac-view|[d]ata/frame-mac-view' || true", timeout=10)

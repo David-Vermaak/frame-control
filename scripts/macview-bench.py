@@ -173,9 +173,11 @@ class Relay:
             writer.close()
 
         async def pump():
-            while data := await reader.read(65536):
-                await queue.put((self.loop.time() + self.delay, data))
-            await queue.put((0, None))
+            try:
+                while data := await reader.read(65536):
+                    await queue.put((self.loop.time() + self.delay, data))
+            finally:  # EOF or a reset: either way the sender finishes and closes
+                queue.put_nowait((0, None))
 
         sender, pumper = asyncio.ensure_future(send()), asyncio.ensure_future(pump())
         done, _ = await asyncio.wait({sender, pumper}, return_when=asyncio.FIRST_COMPLETED)

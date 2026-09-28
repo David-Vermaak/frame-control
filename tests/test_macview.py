@@ -98,6 +98,9 @@ class Helpers(unittest.TestCase):
             mv.shows += 1  # Show pressed during the wait: leave the new viewer alone
             mv._end_viewer_browser(gen)
             self.assertEqual(len(calls), 1)
+            mv.launching = 1  # a Show replacing its own stream is still launching
+            mv._end_viewer_browser(mv.shows)
+            self.assertEqual(len(calls), 1)
 
 
 class WS:
