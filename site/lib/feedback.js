@@ -21,10 +21,12 @@ const oneLine = (value, max) => String(value ?? "").replace(/\s+/g, " ").trim().
 // (#1, owner/repo#1, GH-1, github.com links) would add backlinks to other
 // people's issues, so break them all with a zero-width space. Escaping & first
 // stops &commat; and &num; from turning back into @ and # when GitHub renders,
-// and escaping < keeps out raw HTML such as an unclosed <!-- comment.
+// escaping < keeps out raw HTML such as an unclosed <!-- comment, and doubling
+// backslashes stops GH\-1 or github\.com from being unescaped back into references.
 const ZWSP = "\u200b";
 export function defang(text) {
   return text
+    .replace(/\\/g, "\\\\")
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/@(?=[A-Za-z0-9])/g, `@${ZWSP}`)

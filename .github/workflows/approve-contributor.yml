@@ -18,6 +18,7 @@ jobs:
     concurrency:
       group: approve-contributor
       cancel-in-progress: false
+      queue: max
     runs-on: ubuntu-latest
     permissions:
       contents: write
