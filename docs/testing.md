@@ -148,3 +148,10 @@ For example, on 2026-09-27 the smoke test found that Steam's `create-shortcut`
 refuses ids with a hyphen (`missing/invalid arguments`), which the fake had
 accepted. The fake now refuses them the same way, and Frame Control makes ids
 Steam accepts.
+
+## Tracking protocols and fake BlueZ
+
+`tests/test_tracking.py` exercises our gaze conversion, OSC sender, HRS parser
+and BlueZ lifecycle with an in-memory fake object tree. It runs in the normal
+unit suite without Bluetooth, GTK or OpenXR. Real Frame results and the absent
+strap/tracker boundaries are recorded in [tracking](tracking.md).

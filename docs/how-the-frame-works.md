@@ -20,6 +20,15 @@ SteamVR  (vrserver, vrcompositor, vrdashboard)       ← renders the room + pane
 Lepton (Android 11, podman container "lepton-dev") ← its own panel, app 3056000
 ```
 
+## Tracking additions (verified 2026-09-28)
+
+On SteamOS 0.4.1, build `20260925.6191901`, SteamVR exposes combined gaze
+through `XR_EXT_eye_gaze_interaction` in a headless OpenXR 1.0 session. Our
+reader obtained valid tracked samples and sent OSC to a configured loopback
+receiver. BlueZ LE discovery works; GTK4/GI can render our heart-rate panel.
+No BLE strap or SlimeVR trackers were attached. See [tracking](tracking.md)
+for the evidence, privacy defaults and untested integration boundaries.
+
 ## Facts worth knowing
 
 | Fact | Where it matters |
