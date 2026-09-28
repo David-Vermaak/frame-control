@@ -73,7 +73,11 @@ not being worn, so it did not reach `FOCUSED`).
    inside the APK that asks the runtime for 1.0 and maps the 1.1 core
    functions to the extensions the runtime does have (`XR_KHR_locate_spaces`,
    `XR_EXT_local_floor`, `XR_EXT_uuid`, `XR_EXT_palm_pose`).
-3. **Not yet reached:** required Meta-only extensions (each app differs),
+3. **Lepton's missing clipboard service** still applies to VR apps. The Godot
+   XR Tools demo's Quest build (itch.io) dies in `Godot.<init>` casting the
+   null clipboard service to `ClipboardManager`, before any OpenXR call. See
+   the clipboard table in [apks.md](apks.md).
+4. **Not yet reached:** required Meta-only extensions (each app differs),
    swapchain formats (the Lynx Wolvic build needed `GL_SRGB8_ALPHA8`), and
    Meta platform services.
 
