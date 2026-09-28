@@ -607,7 +607,8 @@ class InputAgent:
     def __init__(self, source=HERE / "frame_input_agent.py", packages=None):
         self.source, self.proc, self.lock = source, None, threading.Lock()
         self.packages = kdeconnect_packages() if packages is None else packages
-        self.status, self.launching, self.generation = {"state": "off"}, False, 0
+        # generation counts stop()s; launching is the generation a launch is under way for.
+        self.status, self.launching, self.generation = {"state": "off"}, None, 0
 
     def command(self, folder=""):
         code = base64.b64encode(self.source.read_bytes()).decode()
@@ -617,19 +618,23 @@ class InputAgent:
             + f" {shlex.quote(client)} {shlex.quote(INPUT_NAME)} {shlex.quote(folder)}"
             + f" {shlex.quote(json.dumps(self.packages, separators=(',', ':')))}")
 
-    def deliver(self, report):
+    def deliver(self, report, force=False):
         """Where the agent finds the packages on the Frame, copying them there first if needed.
 
         On the Frame itself (the iPhone app) they came with the bundle. Otherwise they
-        go over the SSH connection, only if the Frame doesn't already have them unpacked.
+        go over the SSH connection, unless the Frame already has them unpacked (`force`:
+        the agent found it didn't after all).
         """
         if LOCAL:
             return str(KDECONNECT / "packages")
-        stamp = kdeconnect_stamp(self.packages)
-        have = ssh(f"{{ test -x /usr/lib/kdeconnectd || cmp -s - {KDECONNECT_HOME}/root/.frame-control-packages; }}"
-                   " && echo yes || true", stdin=stamp, timeout=20).strip()
-        if have == "yes" or not self.packages:
+        if not self.packages:
             return ""  # nothing to copy (the agent says so if it needed them)
+        if not force:
+            # Bytes, so Windows doesn't turn the stamp's line ends into CRLF.
+            have = ssh(f"{{ test -x /usr/lib/kdeconnectd || cmp -s - {KDECONNECT_HOME}/root/.frame-control-packages; }}"
+                       " && echo yes || true", stdin=kdeconnect_stamp(self.packages).encode(), text=False, timeout=20)
+            if have.strip() == b"yes":
+                return ""
         client = "".join(c for c in input_client() if c.isalnum() or c in "-_")[:64] or "default"
         folder = f"{KDECONNECT_HOME}/incoming/{client}"
         ssh(f"mkdir -p {folder}", timeout=20)
@@ -638,21 +643,23 @@ class InputAgent:
             if not path.is_file() or file_sha256(path) != sha:
                 raise Failure(f"{name} is missing or damaged in this copy of Frame Control"
                               " (a build runs app/build/fetch-deps.js to add it)", 500)
-            report(f"Copying KDE Connect to the Frame ({name.split('-')[0]})")
+            report(f"Copying KDE Connect to the Frame ({name.rsplit('-', 3)[0]})")
             quoted = shlex.quote(name)
-            ssh(f"cd {folder} && cat > {quoted}.part && mv {quoted}.part {quoted}",
+            # Its own temporary name: two starts can be copying at once.
+            ssh(f"cd {folder} && cat > {quoted}.part$$ && mv {quoted}.part$$ {quoted}",
                 stdin=path.read_bytes(), text=False, timeout=600)
         return f"~/{folder}"
 
     def start(self):
         with self.lock:
-            if self.launching or (self.proc and self.proc.poll() is None):
+            if self.launching == self.generation or (self.proc and self.proc.poll() is None):
                 return
-            self.launching, self.status = True, {"state": "starting"}
+            # (A launch from before a stop() may still be finishing; it ends itself.)
+            self.launching, self.status = self.generation, {"state": "starting"}
             generation = self.generation
         threading.Thread(target=self._launch, args=(generation,), daemon=True).start()
 
-    def _launch(self, generation):
+    def _launch(self, generation, force=False):
         def report(message):
             with self.lock:
                 if self.generation == generation:
@@ -660,35 +667,50 @@ class InputAgent:
         errors = tempfile.TemporaryFile()
         try:
             ensure_master()
-            folder = self.deliver(report)
+            folder = self.deliver(report, force)
             proc = subprocess.Popen([*SSH, FRAME, self.command(folder)], stdin=subprocess.PIPE,
                                     stdout=subprocess.PIPE, stderr=errors)
         except (Failure, OSError) as e:
             message = str(e)
             friendly = unreachable(message)
             with self.lock:
-                self.launching = False
+                if self.launching == generation:
+                    self.launching = None
                 if self.generation == generation:
                     self.status = {"state": "error", "message": friendly or message,
                                    **({"offline": True} if friendly else {})}
             return
         _live_tunnels.add(proc)
         with self.lock:
-            self.launching = False
+            if self.launching == generation:
+                self.launching = None
             stale = self.generation != generation
             if not stale:
                 self.proc = proc
         if stale:  # turned off meanwhile
             proc.terminate()
-        self._watch(proc, errors)
+        if self._watch(proc, errors, retry=not force) and not force:
+            # It needed the packages after all (another device changed what's
+            # installed after we looked): copy them and start once more.
+            with self.lock:
+                if self.proc is not proc or self.generation != generation:
+                    return
+                self.proc, self.launching, self.status = None, generation, {"state": "starting"}
+            self._launch(generation, force=True)
 
-    def _watch(self, proc, errors):
+    def _watch(self, proc, errors, retry=False):
+        """Follow the agent's status until it exits. True if it asked for the packages
+        (`retry`: the caller will send them, so that isn't an error yet)."""
+        wanted = False
         for line in proc.stdout:
             try:
                 status = json.loads(line)
             except ValueError:
                 continue
             if isinstance(status, dict) and isinstance(status.get("state"), str):
+                if status["state"] == "need-packages":
+                    wanted = True
+                    continue
                 with self.lock:
                     if self.proc is proc:
                         self.status = status
@@ -697,10 +719,13 @@ class InputAgent:
         errors.seek(0)
         detail = strip_ansi(errors.read().decode(errors="replace")).strip()
         with self.lock:
-            if self.proc is proc and self.status.get("state") != "error":
+            if self.proc is proc and self.status.get("state") != "error" and not (wanted and retry):
                 message = detail.splitlines()[-1] if detail else "The connection to the Frame ended"
+                if wanted:
+                    message = "KDE Connect didn't reach the Frame"
                 friendly = unreachable(message)
                 self.status = {"state": "error", "message": friendly or message, **({"offline": True} if friendly else {})}
+        return wanted
 
     def send(self, events):
         """Forward events if the agent is ready; start it if it isn't running.

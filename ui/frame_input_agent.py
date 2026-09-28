@@ -16,7 +16,7 @@ argv: client id, client name, the folder holding the packages, and a JSON list
 of [file, sha256] naming them (see frame/kdeconnect/packages.json).
 
 Status goes to stdout, one JSON object per line:
-{"state": "installing" | "starting" | "pairing" | "ready" | "error", ...}.
+{"state": "installing" | "starting" | "pairing" | "ready" | "error" | "need-packages", ...}.
 
 Standard library only: this runs on the Frame's own Python.
 """
@@ -153,10 +153,21 @@ def stop_daemon():
             time.sleep(0.1)
 
 
+class NeedPackages(Exception):
+    """This build of KDE Connect isn't unpacked and the server didn't send it (it thought it was there)."""
+
+
 def ensure_daemon(folder, packages):
-    """Start KDE Connect: the Frame's own if it ever has one, else ours, unpacked first if needed."""
+    """Start KDE Connect: the Frame's own if it ever has one, else ours, unpacked first if needed.
+
+    A copy from another Frame Control version that another device is using right
+    now is left running and used as it is (they speak the same protocol); it's
+    replaced the next time nobody is using it.
+    """
     system = SYSTEM_DAEMON.exists()
-    if not system and not installed(packages):
+    if not system and not installed(packages) and not (listening() and our_daemons()):
+        if not folder:
+            raise NeedPackages()
         install(folder, packages)
     if listening():
         return
@@ -373,6 +384,9 @@ def run(client, name, folder, packages):
                     stop_daemon()
                 ensure_daemon(folder, packages)
             link = connect(device, cert, key, name)
+    except NeedPackages:
+        say("need-packages")  # the server copies them and starts again
+        return 1
     except (OSError, RuntimeError, subprocess.SubprocessError) as e:
         say("error", message=str(e))
         return 1

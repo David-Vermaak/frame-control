@@ -144,7 +144,8 @@ class Bundled(unittest.TestCase):
 
         def ssh(remote, stdin=None, timeout=30, text=True):
             calls.append((remote, stdin))
-            return "yes\n" if remote.startswith("{ test -x") and frame_has else ""
+            answer = "yes\n" if remote.startswith("{ test -x") and frame_has else ""
+            return answer if text else answer.encode()
         old = self.server.ssh, self.server.KDECONNECT, self.server.LOCAL
         self.server.ssh, self.server.KDECONNECT, self.server.LOCAL = ssh, folder, False
         try:
@@ -157,7 +158,8 @@ class Bundled(unittest.TestCase):
         folder, calls, packages = self.deliver(frame_has=True)
         self.assertEqual(folder, "")
         self.assertEqual(len(calls), 1)
-        self.assertEqual(calls[0][1], "".join(f"{sha}  {name}\n" for name, sha in packages))
+        # Bytes: on Windows a text pipe would send CRLF and never match.
+        self.assertEqual(calls[0][1], "".join(f"{sha}  {name}\n" for name, sha in packages).encode())
 
     def test_copies_each_package_over_ssh(self):
         folder, calls, packages = self.deliver(frame_has=False)
@@ -169,6 +171,66 @@ class Bundled(unittest.TestCase):
     def test_refuses_a_damaged_bundle(self):
         with self.assertRaises(self.server.Failure):
             self.deliver(frame_has=False, damaged=True)
+
+    def lifecycle(self, agent_lines, deliver=None):
+        """An InputAgent whose ssh and agent are fakes; returns it and the folders each launch used."""
+        launches = []
+        test = self
+
+        class Agent(self.server.InputAgent):
+            def deliver(self, report, force=False):
+                if deliver:
+                    deliver()
+                return "~/copied" if force else ""
+
+            def command(self, folder=""):
+                launches.append(folder)
+                return "agent"
+
+        class Proc:
+            stdin = None
+
+            def __init__(self, lines):
+                self.stdout = iter(lines)
+
+            def wait(self):
+                return 0
+
+            def poll(self):
+                return None
+
+            def terminate(self):
+                pass
+
+        def popen(*a, **k):
+            return Proc(agent_lines.pop(0) if agent_lines else [b'{"state": "ready"}\n'])
+        old = self.server.ensure_master, self.server.subprocess.Popen
+        self.server.ensure_master, self.server.subprocess.Popen = lambda: None, popen
+        test.addCleanup(lambda: (setattr(self.server, "ensure_master", old[0]),
+                                 setattr(self.server.subprocess, "Popen", old[1])))
+        return Agent(packages=[("a.pkg.tar.zst", "0" * 64)]), launches
+
+    def test_agent_asking_for_packages_gets_them_and_starts_again(self):
+        agent, launches = self.lifecycle([[b'{"state": "need-packages"}\n'], [b'{"state": "ready"}\n']])
+        agent._launch(agent.generation)
+        self.assertEqual(launches, ["", "~/copied"])
+        self.assertNotIn("reach", agent.status.get("message", ""))
+
+    def test_start_after_stop_during_the_copy_still_starts(self):
+        gate, entered = threading.Event(), threading.Event()
+        agent, launches = self.lifecycle([], deliver=lambda: (entered.set(), gate.wait(5)))
+        agent.start()
+        self.assertTrue(entered.wait(5))
+        agent.stop()
+        entered.clear()
+        agent.start()  # while the first launch is still copying
+        self.assertTrue(entered.wait(5), "the second start didn't launch")
+        gate.set()
+        for _ in range(100):
+            if len(launches) == 2:
+                break
+            time.sleep(0.02)
+        self.assertEqual(len(launches), 2)  # the stopped launch ran its agent too, then ended it
 
 
 @unittest.skipIf(sys.platform == "win32", "the agent runs on the Frame (Linux)")
@@ -220,6 +282,24 @@ class AgentInstall(unittest.TestCase):
             self.agent.install(self.dir, [("nope.pkg.tar.zst", "0" * 64)])
         with self.assertRaisesRegex(RuntimeError, "doesn't include"):
             self.agent.install(self.dir, [])
+
+    def test_leaves_another_devices_running_copy_alone(self):
+        # A different build is running for another device: use it, don't stop it to reinstall.
+        self.agent.listening, old = (lambda: True), self.agent.listening
+        self.agent.our_daemons, old_ours = (lambda: [123]), self.agent.our_daemons
+        try:
+            self.agent.ensure_daemon("", [("new.pkg.tar.zst", "1" * 64)])
+        finally:
+            self.agent.listening, self.agent.our_daemons = old, old_ours
+        self.assertFalse(self.agent.ROOT.exists())
+
+    def test_asks_for_packages_it_was_not_sent(self):
+        self.agent.listening, old = (lambda: False), self.agent.listening
+        try:
+            with self.assertRaises(self.agent.NeedPackages):
+                self.agent.ensure_daemon("", [("new.pkg.tar.zst", "1" * 64)])
+        finally:
+            self.agent.listening = old
 
     def test_server_and_agent_agree_on_the_stamp(self):
         import server
