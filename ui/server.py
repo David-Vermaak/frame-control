@@ -7,6 +7,9 @@ up by scripts/connect.sh or ui/frame_connect.py.
 
 Usage: ui/server.py [--port 47810] [--exit-on-eof]   (normally started by the app)
 Env:   FRAME_ALIAS (default frame)
+       FRAME_LOCAL=1   run on the Frame itself (the iPhone app starts it there over SSH)
+       FRAME_UI_KEY    required X-Frame-UI value (the iPhone app passes a fresh one)
+       FRAME_DEVICE    what to call the device the page runs on (e.g. iPhone)
 """
 import argparse
 import base64
@@ -43,12 +46,20 @@ import frame_webinstall  # noqa: E402
 frame_host.trust_bundled_cas()
 
 HERE = Path(__file__).resolve().parent
+# On the Frame itself, every `ssh frame COMMAND` the server and its helpers run
+# goes to local-bin/ssh, which runs COMMAND here instead, so one code path serves
+# both. Nothing listens beyond 127.0.0.1; the phone reaches it through SSH.
+LOCAL = os.environ.get("FRAME_LOCAL") == "1"
+if LOCAL:
+    os.environ["PATH"] = f"{HERE / 'local-bin'}{os.pathsep}{os.environ.get('PATH', '')}"
+UI_KEY = os.environ.get("FRAME_UI_KEY") or "1"
+DEVICE = os.environ.get("FRAME_DEVICE") or "phone"
 FRAME = os.environ.get("FRAME_ALIAS", "frame")
 if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", FRAME):
     sys.exit(f"FRAME_ALIAS must be a plain host alias, not {FRAME!r}")
 # Reuse one SSH connection for the frequent status/screenshot calls, where ssh
 # supports it (not on Windows: there every command connects on its own).
-CONTROL = frame_host.control_path()
+CONTROL = None if LOCAL else frame_host.control_path()
 MUX = ["ssh", "-o", "BatchMode=yes", *(["-o", f"ControlPath={CONTROL}"] if CONTROL else [])]
 # Commands use the master when it's up and connect directly when it isn't.
 SSH = [*MUX, *(["-o", "ControlMaster=no"] if CONTROL else []), "-o", "ConnectTimeout=5"]
@@ -504,8 +515,30 @@ def flatpak(body):
     raise Failure("action must be install or uninstall", 400)
 
 
+def power(what, password):
+    """Sleep, restart or shut down from the Frame itself: sudo takes the Developer Mode password on stdin."""
+    if not isinstance(password, str) or not password or "\n" in password:
+        raise Failure("enter the Developer Mode password", 400)
+    try:
+        r = subprocess.run(["sudo", "-S", "-k", "-p", "", "systemctl", what], input=password + "\n",
+                           capture_output=True, text=True, timeout=30)
+    except subprocess.TimeoutExpired:
+        raise Failure(f"systemctl {what} didn't answer")
+    if r.returncode != 0:
+        err = r.stderr.strip()
+        raise Failure("that password wasn't accepted" if "incorrect password" in err or "Sorry" in err
+                      else err or f"systemctl {what} failed", 400)
+    return {"message": {"suspend": "Going to sleep", "reboot": "Restarting", "poweroff": "Shutting down"}[what]}
+
+
 def open_thing(body):
     what = body.get("what")
+    if LOCAL:
+        # Terminals, Steam Link and remote desktop open on the phone (its app does
+        # that); what's left here is power, with the password the page asked for.
+        if what in ("reboot", "poweroff", "suspend"):
+            return power(what, body.get("password"))
+        raise Failure("open that from the app", 400)
     try:
         if what == "terminal":
             return {"message": f"Opened an SSH session in {terminal(['ssh', FRAME])}"}
@@ -829,6 +862,30 @@ class AdbTunnel:
         return False
 
 
+class PodmanShell:
+    """AdbTunnel's stand-in on the Frame itself: there's no adb there, but each
+    instance is a podman container, so run Android's shell inside it."""
+
+    def __init__(self, ports, containers):
+        self.containers = containers
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def shell(self, port, command, timeout=20):
+        ctr = self.containers.get(port)
+        if not ctr:
+            raise Failure(f"port {port} isn't a Lepton container this app can reach")
+        return ssh(f"podman exec {shlex.quote(ctr)} /system/bin/sh -c {shlex.quote(command)}", timeout=timeout)
+
+
+def android_shell(ports, containers):
+    return PodmanShell(ports, containers) if LOCAL else AdbTunnel(ports)
+
+
 DISPLAY_READ = "echo @@pkgs; pm list packages -3; echo @@size; wm size; echo @@density; wm density; " \
                "echo @@font; settings get system font_scale"
 
@@ -901,7 +958,7 @@ def android_displays():
     if not ports:
         return {"instances": []}
     instances = []
-    with AdbTunnel(ports) as t:
+    with android_shell(ports, containers) as t:
         for p in ports:
             item = {"port": p, "container": containers.get(p)}
             try:
@@ -955,10 +1012,10 @@ def android_display(body):
 
     if not cmds:
         raise Failure("nothing to change: give density, size or fontScale", 400)
-    ports, _, _ = lepton_ports()
+    ports, containers, _ = lepton_ports()
     if port not in ports:
         raise Failure(f"no Lepton instance is listening on Frame port {port}", 404)
-    with AdbTunnel([port]) as t:
+    with android_shell([port], containers) as t:
         for c in cmds:
             out = t.shell(port, c)
             # wm prints usage or an exception on failure but may still exit 0.
@@ -1225,8 +1282,8 @@ class Handler(BaseHTTPRequestHandler):
         # All of /api/*, not just POST: an <img> on any website could otherwise
         # trigger a headset capture and display it.
         api = urlparse(self.path).path.startswith("/api/")
-        if (self.command == "POST" or api) and self.headers.get("X-Frame-UI") != "1":
-            self.send_json({"error": "missing X-Frame-UI header"}, 403)
+        if (self.command == "POST" or api) and not secrets.compare_digest(self.headers.get("X-Frame-UI") or "", UI_KEY):
+            self.send_json({"error": "missing or wrong X-Frame-UI header"}, 403)
             return False
         return True
 
@@ -1259,7 +1316,8 @@ class Handler(BaseHTTPRequestHandler):
             if path in ("/", "/index.html"):
                 self.send_bytes((HERE / "index.html").read_bytes(), "text/html; charset=utf-8")
             elif path == "/api/host":
-                self.send_json({"os": frame_host.NAME, "fileManager": frame_host.FILE_MANAGER,
+                self.send_json({"os": "SteamOS", "fileManager": None, "computer": DEVICE, "mobile": True} if LOCAL else
+                               {"os": frame_host.NAME, "fileManager": frame_host.FILE_MANAGER,
                                 "computer": "Mac" if frame_host.MAC else "PC"})
             elif path == "/api/android":
                 ensure_master()
@@ -1459,7 +1517,8 @@ def main():
             sys.stdin.buffer.read()
             threading.Thread(target=httpd.shutdown, daemon=True).start()
         threading.Thread(target=watch_stdin, daemon=True).start()
-    print(f"Frame Control on http://127.0.0.1:{args.port}  (alias: {FRAME}; Ctrl-C to stop)", flush=True)
+    # The real port, which --port 0 leaves to the system (the iPhone app reads it from here).
+    print(f"Frame Control on http://127.0.0.1:{httpd.server_address[1]}  (alias: {FRAME}; Ctrl-C to stop)", flush=True)
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:

@@ -1,0 +1,9 @@
+NAME="SteamOS"
+PRETTY_NAME="SteamOS"
+ID=steamos
+ID_LIKE=arch
+LOGO=steamos
+HOME_URL="https://www.steampowered.com/"
+VERSION_ID=0.3.0
+VARIANT_ID=vr
+BUILD_ID=20260922.6101926

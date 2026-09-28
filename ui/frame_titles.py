@@ -35,7 +35,13 @@ PY = 'python3 ~/' + UTILS + '/'
 # devkit-steam is the trampoline file that switches SteamOS to a sideloaded client
 # (select_steam.sh); a folder there breaks Valve's devkit tools.
 RESERVED_IDS = ('steam', 'steamdeckard', 'steamvr', 'steamvrdeckard', 'devkit-steam')
-ID_RE = re.compile(r'^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$')
+# Any title folder on the Frame we'll list, launch or remove: safe in a shell and a path.
+ID_RE = re.compile(r'^[A-Za-z0-9_][A-Za-z0-9_-]{0,63}$')
+# What a new install may use. Steam's create-shortcut refused "fc-smoke-exe" with
+# "missing/invalid arguments" and took the same program as "FCSmokeProbe" (headset
+# smoke test, 2026-09-27, build 20260922.6101926); Valve's client only allows
+# GAMEID_ALLOWED_PATTERN, ^[A-Za-z_][A-Za-z0-9_.]+$ (devkit_client/gui2). No dots here.
+NEW_ID_RE = re.compile(r'^[A-Za-z_][A-Za-z0-9_]{1,63}$')
 DIR_RE = re.compile(r'^/[A-Za-z0-9_./-]+$')
 
 # Zip limits: well above any real game, well below a zip bomb.
@@ -124,13 +130,15 @@ def _pe(f, head):
 
 
 def title_id(name):
-    """The Devkit Game id Steam shows as the title's name: [A-Za-z0-9_-], at most 64."""
-    s = re.sub(r'[^A-Za-z0-9_-]+', '_', str(name or '').strip())
-    s = re.sub(r'_+', '_', s).strip('_-')[:64].strip('_-')
+    """The Devkit Game id Steam shows as the title's name, in the form Steam accepts
+    (NEW_ID_RE): letters, digits and _, not starting with a digit, 2 to 64 long."""
+    s = re.sub(r'[^A-Za-z0-9]+', '_', str(name or '').strip()).strip('_')[:64].strip('_')
     if not s:
         raise FrameError('the title needs a name with some letters or digits')
-    if s.lower() in RESERVED_IDS:
-        s += '-game'
+    if s[0].isdigit():
+        s = '_' + s[:63]
+    if len(s) < 2 or s.lower() in RESERVED_IDS:
+        s += '_game'
     return s
 
 
@@ -653,7 +661,7 @@ def install_plan(plan, name=None, exe=None, runtime=None, progress=None):
 
 def _install(plan, step):
     gid = plan['id']
-    if not ID_RE.match(gid) or gid.lower() in RESERVED_IDS:
+    if not NEW_ID_RE.match(gid) or gid.lower() in RESERVED_IDS:
         raise FrameError(f'bad title id {gid!r}')
     step("Syncing Valve's devkit tools to the Frame", 0.02)
     ensure_utils()
@@ -683,8 +691,9 @@ def _install(plan, step):
         ssh(f'cat > {GAMES}/{gid}-framecontrol.json', input=json.dumps(meta, indent=1), timeout=30)
         registered = True                    # the files stay: Steam registers them once it's running
         if 'error' in reply:
-            raise FrameError(f"Uploaded, but Steam didn't register it: {reply['error']}. "
-                             "With Steam running on the Frame, install it again.")
+            err = str(reply['error']).strip().rstrip('.')
+            hint = ' With Steam running on the Frame, install it again.' if 'not running' in err else ''
+            raise FrameError(f"Uploaded, but Steam didn't register it: {err}.{hint}")
         step('Done', 1.0)
         meta.update(runtime_label=RUNTIMES[plan['runtime']]['label'], steam=str(reply.get('success', '')).strip())
         return meta

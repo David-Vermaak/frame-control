@@ -1,0 +1,26 @@
+#!/usr/bin/env python3
+"""Stub for SteamOS's `steam` command: hands steam:// URLs to the running client.
+
+On the Frame, `steam steam://rungameid/N` over SSH starts the game in the
+running client (docs/apks.md, docs/steam-games.md, 2026-09-25). How the real
+wrapper passes the URL on isn't documented; this writes it as a line on
+~/.steam/steam.pipe, which fakesteam reads (guess).
+"""
+import os
+import sys
+
+sys.path.insert(0, '/usr/local/lib/fakeframe')
+import fakeframe_state as fs  # noqa: E402
+
+args = sys.argv[1:]
+running = fs.steam_pid() is not None
+fs.log('steam', args=args, client_running=running)
+if not running:
+    # The real command would start the Steam client; this one can't.
+    print('steam: the Steam client is not running', file=sys.stderr)
+    sys.exit(0)
+fd = os.open(os.path.expanduser('~/.steam/steam.pipe'), os.O_RDWR)
+try:
+    os.write(fd, (' '.join(args) + '\n').encode())
+finally:
+    os.close(fd)

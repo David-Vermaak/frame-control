@@ -1,0 +1,21 @@
+# The fake Frame's sshd. With Developer Mode on, the Frame takes key logins and
+# the Developer Mode password for `steamos` (docs/ssh.md); the fake's password
+# is "frame". MaxSessions leaves room for Frame Control's shared connection.
+Port 22
+HostKey /etc/ssh/ssh_host_ed25519_key
+HostKey /etc/ssh/ssh_host_rsa_key
+HostKey /etc/ssh/ssh_host_ecdsa_key
+PermitRootLogin no
+PubkeyAuthentication yes
+AuthorizedKeysFile .ssh/authorized_keys
+PasswordAuthentication yes
+KbdInteractiveAuthentication no
+UsePAM no
+PrintMotd no
+MaxSessions 64
+MaxStartups 64:30:128
+# OpenSSH 9.8+ penalises an address after failed logins by refusing it for a
+# while. The pairing tests fail logins on purpose, so the fake turns that off.
+# (Whether the Frame's sshd penalises is unchecked.)
+PerSourcePenalties no
+Subsystem sftp /usr/lib/ssh/sftp-server

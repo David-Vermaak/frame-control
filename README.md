@@ -103,6 +103,9 @@ already ships (sideloading a game copies Valve's own devkit scripts to
 | **Linux** (x64) | [AppImage](https://github.com/saphid/steam-frame/releases/latest/download/Frame-Control-linux-x86_64.AppImage) · [.deb](https://github.com/saphid/steam-frame/releases/latest/download/Frame-Control-linux-amd64.deb) | `ssh` (most desktops have it) |
 | **Linux** (arm64) | [AppImage](https://github.com/saphid/steam-frame/releases/latest/download/Frame-Control-linux-arm64.AppImage) · [.deb](https://github.com/saphid/steam-frame/releases/latest/download/Frame-Control-linux-arm64.deb) | `ssh`, and `adb` for Android apps (`sudo apt install adb`) |
 
+**iPhone and iPad:** the same features from your phone, with nothing to install on
+a computer. Build it from [`ios/`](ios) in Xcode; see [docs/iphone.md](docs/iphone.md).
+
 The app brings its own Python and `adb`; SSH is built into macOS and Windows.
 Google doesn't publish `adb` for arm64 Linux, so that build uses your
 distribution's. If you already have `adb`, the app uses yours.
@@ -199,6 +202,9 @@ Frame's software fits together, all checked against a real headset and labelled
 | [Install links for websites](docs/web-install.md) | `frame-control://install` links and manifests, the rules, a button to paste |
 | [Steam games](docs/steam-games.md) · [VR video](docs/vr-video.md) · [WebXR in Chromium](docs/webxr-chromium.md) | Installing and buying, watching VR180/360, the Chromium build |
 | [SSH](docs/ssh.md) · [Streaming](docs/streaming.md) · [Files](docs/file-transfer.md) · [Panels](docs/panels.md) · [Tailscale](docs/tailscale.md) | Topic notes |
+| [Frame Control for iPhone](docs/iphone.md) | The iPhone and iPad app, how it runs the server on the Frame, pairing |
+| [Recovery and OS images](docs/recovery-and-images.md) | Where to download the Frame's OS, what's inside, testing without the headset |
+| [Testing](docs/testing.md) | Unit tests, end-to-end tests against a fake Frame in Docker, and the headset smoke test |
 | [Open questions](docs/open-questions.md) | What's still unchecked |
 
 <details>
@@ -225,6 +231,7 @@ Frame's software fits together, all checked against a real headset and labelled
 
 ```sh
 python3 -m unittest discover -s tests   # server tests; no headset needed
+scripts/e2e.sh                          # end-to-end against a fake Frame (Linux with Docker)
 cd app && npm install && npm start      # run the app from the checkout
 ```
 

@@ -1,0 +1,38 @@
+#!/usr/bin/env python3
+"""Stub for flatpak: --user installs and removals, and `list`, kept in the state file.
+Nothing is downloaded; an app id containing "missing" fails like an unknown ref."""
+import sys
+
+sys.path.insert(0, '/usr/local/lib/fakeframe')
+import fakeframe_state as fs  # noqa: E402
+
+args = sys.argv[1:]
+fs.log('flatpak', args=args)
+words = [a for a in args if not a.startswith('-')]
+cmd = words[0] if words else ''
+if cmd == 'remote-add':
+    pass
+elif cmd == 'install':
+    app = words[-1]
+    if 'missing' in app:
+        sys.exit(f'error: Nothing matches {app} in remote flathub')
+    with fs.update() as s:
+        if not any(f['id'] == app for f in s['flatpaks']):
+            s['flatpaks'].append({'id': app, 'name': app.rsplit('.', 1)[-1], 'version': '1.0', 'installation': 'user'})
+    print(f'Installing {app}\nInstallation complete.')
+elif cmd == 'uninstall':
+    app = words[-1]
+    with fs.update() as s:
+        before = len(s['flatpaks'])
+        s['flatpaks'] = [f for f in s['flatpaks'] if f['id'] != app]
+        gone = len(s['flatpaks']) < before
+    if not gone:
+        sys.exit(f'error: {app}/*unspecified*/*unspecified* not installed')
+    print('Uninstall complete.')
+elif cmd == 'list':
+    for f in fs.read()['flatpaks']:
+        print('\t'.join((f['id'], f['name'], f['version'], f['installation'])))
+elif cmd == 'run':
+    pass
+else:
+    sys.exit(f'flatpak stub: unsupported {args}')

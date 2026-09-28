@@ -21,7 +21,8 @@ desktop app, which knows where a dropped folder lives; in a plain browser, zip
 it.) A dialog shows:
 
 - **Name**: what Steam shows. Steam uses the title id as the name, so it's
-  limited to letters, digits, `_` and `-`; the dialog shows the result.
+  limited to letters, digits and `_`, and can't start with a digit; the
+  dialog shows the result.
 - **Launches**: the program picked to start the game, with the other
   candidates in the list.
 - **Runtime**: picked from the program, see below. Windows programs can switch
@@ -133,10 +134,15 @@ splits that string is **not checked**.
   with the same rule, because `scp -r` would follow a link out of the folder
   and upload whatever it points at.
 - Installs run one at a time, and Remove is refused while one runs.
-- The title id is limited to `[A-Za-z0-9_-]`, at most 64 characters. Valve's
-  scripts pass it to a shell (`steamos-delete` runs `rm -r` on it). Valve's
+- The title id is limited to letters, digits and `_`, doesn't start with a
+  digit (one that would gets `_` in front), and is 2 to 64 characters. That's
+  what Steam's `create-shortcut` accepts: on the Frame it refused
+  `fc-smoke-exe` with `missing/invalid arguments` and registered the same
+  program as `FCSmokeProbe` (2026-09-27, BUILD_ID 20260922.6101926), and
+  Valve's client only allows `^[A-Za-z_][A-Za-z0-9_.]+$`. Valve's scripts
+  also pass the id to a shell (`steamos-delete` runs `rm -r` on it). Valve's
   reserved sideload names (`steam`, `steamvr`, and their `deckard` forms,
-  which would replace the Steam client itself) get `-game` added.
+  which would replace the Steam client itself) get `_game` added.
 - Nothing needs `sudo`; everything goes to your home folder on the Frame.
 - In the app, a dropped folder is read from its local path by the app's own
   server, which only accepts requests from its own page (see

@@ -103,6 +103,28 @@ Still open: 4, 6, 7, 11 (in-headset connect), 12–15, 16 (off-LAN and after a r
     the colour-coded test clips play in 3D (red left eye, cyan right) for both
     H.264 and H.265? Does the DLNA browser find a server on the Mac?
 
+## Verified 2026-09-27
+
+- **Recovery images exist** for the Frame at
+  `https://steamdeck-images.steamos.cloud/recovery/`; the root filesystem inside
+  is btrfs and runs, as a userland, on ARM64 Linux. See
+  [recovery-and-images.md](recovery-and-images.md).
+- **Frame Control's server runs on the Frame itself** (the iPhone app does
+  this), including headset capture, 31 fps live video and file uploads. See
+  [iphone.md](iphone.md).
+- **Password pairing and `sudo -S`** work against the recovery image's own
+  sshd and sudo (not yet against the headset, whose password we don't hold).
+
+## Still open (2026-09-27)
+
+- Does `podman exec <lepton container> /system/bin/sh -c 'wm size'` change an
+  instance's display the way `adb shell wm size` does?
+- Can the recovery image, or its kernel, boot in a VM at all?
+- Does a real sleep, restart or shut down from the iPhone app work (via
+  `sudo -S systemctl`)?
+- The Mac EDL flashing script in `~/Downloads/steam-frame-recovery/` hasn't
+  been run against a Frame.
+
 ## Unconfirmed claims made in these docs
 
 - `/home` and `/etc` persist across Frame OS updates. This is inferred from
