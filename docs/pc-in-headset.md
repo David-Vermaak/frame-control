@@ -74,8 +74,8 @@ window resize/minimize, and non-US keyboard layouts.
   binding and the PC Python binding. Capture is gated **before** encoding;
   encoded reference frames are never discarded. A bounded raw-frame queue
   keeps the newest picture, including the last update of an idle window,
-  until the gate opens. A native one-frame-source test covers that case. It keeps the Mac's bitrate
-  demand protection and tier hysteresis.
+  until the gate opens. A native one-frame-source test covers that case.
+  It keeps the Mac's bitrate demand protection and tier hysteresis.
 - PC records use the existing `Stats.swift` JSON schema, with bounded
   4096-frame/512-input storage in `ui/frame_stream_stats.py`. The benchmark's
   analysis, targets and network shaping are shared, not reimplemented.
@@ -120,10 +120,10 @@ same bounded shaping relay, without administrator privileges.
 
 ## Evidence
 
-- **Verified, Mac, 2026-09-28:** 172 existing unit/integration tests passed
-  after extracting the common controller, including the real Mac helper's
-  H.264, ticket, timing and input-echo tests. Eight PC adapter tests passed;
-  native PC tests were skipped locally because their libraries were absent.
+- **Verified, Mac, 2026-09-28:** the final full unit/integration suite ran
+  183 tests successfully, including the real Mac helper's H.264, ticket, timing
+  and input-echo tests. The native PC test class was skipped locally because
+  its libraries were absent; the PC adapter and shared-controller tests passed.
 - **Verified, real Frame, 2026-09-28, BUILD_ID 20260925.6191901:** the base
   helper's synthetic source created panel `valve.steam.desktopgame.2001639889`,
   and the shared Chromium viewer decoded H.264. It recorded 286 frames over
