@@ -139,6 +139,22 @@ class Connecting(unittest.TestCase):
         self.link.work = lambda: 0
         self.assertEqual(self.link.active_device()["alias"], "frame-2")  # idle: move on
 
+    def test_nothing_elsewhere_moves_a_running_install(self):
+        """A bare alias in use, then another server sets up and picks a headset."""
+        self.link.override = None
+        self.hosts({"localhost": "ok"})
+        with mock.patch.object(fl, "ssh_g", return_value=("localhost", self.port, "tester", False)):
+            self.link.connect(["start"])
+        started = self.routes[-1]
+        other = fd.Registry(self.dir / "devices.json")
+        other.set_active(other.add_device("frame-2", hosts=["192.0.2.2"])["id"])
+        self.link.work = lambda: 1
+        with mock.patch.object(fl, "ssh_g", return_value=("localhost", self.port, "tester", False)):
+            self.link.close_master()
+            self.link.connect(["dropped"])
+        self.assertEqual(self.routes[-1][0], started[0])
+        self.assertTrue(self.link.deferred)
+
     def listen6(self):
         """A "different device": the same port on IPv6 loopback."""
         try:

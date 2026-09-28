@@ -487,11 +487,11 @@ class Link:
                 device = dict(device, user=device.get("user") or u, port=p, frozen_host=h, proxied=proxied, frozen=[
                     "-o", f"HostName={frame_devices.ssh_host(h)}", "-o", f"Port={p}",
                     *(["-o", f"User={u}"] if u else [])])
-            if self.routed and self.routed_device and device["alias"] == self.routed_device["alias"] \
-                    and self.route_key(device) != self.routed and self.work():
-                # Set Up Connection changed this headset in ~/.ssh/config (its login, or a bare
-                # alias became a set-up headset) while an install runs: reconnect as it
-                # started; the change applies once it's done (see watch_config).
+            if self.routed and self.routed_device and self.route_key(device) != self.routed and self.work():
+                # While an install runs, nothing moves it: not Set Up Connection changing this
+                # headset in ~/.ssh/config, nor another Frame Control server adding, choosing
+                # or removing headsets in devices.json. (Switching here is refused meanwhile.)
+                # Reconnect as it started; the change applies once it's done (see watch_config).
                 device = self.routed_device
                 self.deferred = True
             if self.route_key(device) != self.routed:
