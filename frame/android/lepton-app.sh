@@ -30,6 +30,20 @@ fi
 exec 9>"$DIR/launch.lock"
 flock -n 9 || { echo "Android app is already running" >&2; exit 1; }
 CONTAINER="lepton-steamlaunch-$SteamAppId"
+# Lepton doesn't hold the lock, so a launcher SIGKILLed before Lepton made its
+# container leaves a Lepton that nothing tracks: end that process group first.
+# Only a group still running this app.apk, never an unrelated reused id.
+PGID_FILE="$DIR/launch.pgid"
+if [[ -f "$PGID_FILE" ]]; then
+  old="$(cat "$PGID_FILE")"
+  if [[ "$old" =~ ^[0-9]+$ ]] && ps -A -o pgid=,args= | awk -v g="$old" '$1 == g' | grep -qF -- "$DIR/app.apk"; then
+    echo "Stopping the previous launch (process group $old)" >&2
+    kill -TERM -- "-$old" 2>/dev/null || true
+    for _ in 1 2 3 4 5 6 7 8 9 10; do kill -0 -- "-$old" 2>/dev/null || break; sleep 0.5; done
+    kill -KILL -- "-$old" 2>/dev/null || true
+  fi
+  rm -f "$PGID_FILE"
+fi
 # Holding the lock means no launcher owns a running container: it was orphaned
 # (this script SIGKILLed), so stop it rather than refuse every later Play.
 if [[ "$(podman inspect --format '{{.State.Running}}' "$CONTAINER" 2>/dev/null || true)" == true ]]; then
@@ -60,6 +74,7 @@ cleanup() {
     kill -KILL "$child" 2>/dev/null || true
     wait "$child" 2>/dev/null || true
   fi
+  rm -f "$PGID_FILE"
 }
 trap cleanup EXIT
 trap 'exit 143' TERM
@@ -68,6 +83,7 @@ trap 'exit 129' HUP
 # 9>&-: the lock is this launcher's alone; Lepton's tree mustn't keep it held.
 setsid --wait "$LEPTON" waitforexitandrun -- "$DIR/app.apk" 9>&- &
 child=$!
+echo "$child" > "$PGID_FILE"
 rc=0
 wait "$child" || rc=$?
 child=""

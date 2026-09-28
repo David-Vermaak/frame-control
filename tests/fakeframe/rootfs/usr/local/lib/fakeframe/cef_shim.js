@@ -38,6 +38,7 @@ function build(steam) {
   });
   const shortcutOverview = s => ({
     appid: s.appid, display_name: s.name, sort_as: s.name, app_type: SHORTCUT_TYPE, devkit_gameid: s.devkit_gameid,
+    icon_data: s.icon ? 'fake-icon' : undefined,
     local_per_client_data: { installed: true, display_status: 1, status_percentage: 0 },
   });
   const allApps = () => [...steam.apps.map(gameOverview), ...steam.shortcuts.map(shortcutOverview)];

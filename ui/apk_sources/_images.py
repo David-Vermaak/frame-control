@@ -65,53 +65,94 @@ def image_type(data):
 
 def fetch(url, redirects=3, deadline=None, limit=MAX_IMAGE):
     """deadline: time.monotonic() value by which the whole fetch, redirects included, must finish."""
+    data = get(url, {'Accept': 'image/png,image/jpeg,image/webp,image/gif'}, redirects, deadline, limit)
+    return data, image_type(data)
+
+
+def _resolve(host, port, timeout):
+    # getaddrinfo has no timeout of its own; a thread keeps a slow resolver inside the budget.
+    found = {}
+
+    def run():
+        try:
+            found['addresses'] = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+        except OSError as e:
+            found['error'] = e
+    worker = threading.Thread(target=run, daemon=True)
+    worker.start()
+    worker.join(timeout)
+    if 'error' in found:
+        raise found['error']
+    if 'addresses' not in found:
+        raise SourceError('Artwork download took too long')
+    return found['addresses']
+
+
+def get(url, headers=None, redirects=3, deadline=None, limit=MAX_IMAGE):
+    """GET a public HTTP(S) URL within an overall deadline (default 60 s), redirects included.
+
+    A watchdog shuts the socket at the deadline, so a server trickling bytes can't outlast it."""
+    deadline = time.monotonic() + 60 if deadline is None else deadline
+
+    def left():
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise SourceError('Artwork download took too long')
+        return remaining
     if not valid_url(url):
         raise SourceError('Artwork URL is not allowed')
-
-    def remaining():
-        if deadline is None:
-            return 10
-        left = deadline - time.monotonic()
-        if left <= 0:
-            raise SourceError('Artwork download took too long')
-        return min(10, left)
     p = urlsplit(url)
     port = p.port or (443 if p.scheme == 'https' else 80)
-    addresses = socket.getaddrinfo(p.hostname, port, type=socket.SOCK_STREAM)
+    addresses = _resolve(p.hostname, port, left())
     if not addresses or any(not ipaddress.ip_address(a[4][0]).is_global for a in addresses):
         raise SourceError('Private network artwork is not allowed')
     # Connect to the checked IP, never resolve again between validation and use.
-    sock = socket.create_connection((addresses[0][4][0], port), timeout=remaining())
+    live = [socket.create_connection((addresses[0][4][0], port), timeout=min(10, left()))]
+
+    def expire():
+        try:
+            live[0].shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
+    watchdog = threading.Timer(left(), expire)
+    watchdog.daemon = True
+    watchdog.start()
     conn = http.client.HTTPConnection(p.hostname, port, timeout=10)
     try:
         if p.scheme == 'https':
-            sock = ssl.create_default_context().wrap_socket(sock, server_hostname=p.hostname)
-        conn.sock = sock
+            live[0] = ssl.create_default_context().wrap_socket(live[0], server_hostname=p.hostname)
+        conn.sock = live[0]
         path = p.path or '/'
         if p.query:
             path += '?' + p.query
-        conn.request('GET', path, headers={'User-Agent': 'FrameControl/0.3.1', 'Accept': 'image/png,image/jpeg,image/webp,image/gif'})
-        sock.settimeout(remaining())
+        conn.request('GET', path, headers={'User-Agent': 'FrameControl/0.3.1', **(headers or {})})
+        live[0].settimeout(min(10, left()))
         response = conn.getresponse()
         if response.status in (301, 302, 303, 307, 308) and redirects:
             target = urljoin(url, response.getheader('Location', ''))
             conn.close()
-            return fetch(target, redirects - 1, deadline, limit)
+            return get(target, headers, redirects - 1, deadline, limit)
         if response.status != 200:
             raise SourceError('Artwork is unavailable')
         data = b''
         while len(data) <= limit:
-            sock.settimeout(remaining())
-            chunk = response.read(min(65536, limit + 1 - len(data)))
+            live[0].settimeout(min(10, left()))
+            chunk = response.read1(min(16384, limit + 1 - len(data)))  # one receive at most
             if not chunk:
                 break
             data += chunk
         if len(data) > limit:
             raise SourceError('Artwork is too large')
-        return data, image_type(data)
+        left()
+        return data
+    except (OSError, http.client.HTTPException) as e:
+        if time.monotonic() >= deadline:
+            raise SourceError('Artwork download took too long') from e
+        raise
     finally:
+        watchdog.cancel()
         conn.close()
-        sock.close()
+        live[0].close()
 
 
 def remember(url, data):

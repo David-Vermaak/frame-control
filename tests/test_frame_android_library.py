@@ -24,7 +24,7 @@ spec.loader.exec_module(shortcuts)
 
 @unittest.skipIf(os.name == 'nt', 'POSIX launcher')
 class LauncherTests(unittest.TestCase):
-    def exercise(self, terminate, sig=signal.SIGTERM, blocked=None, orphan=False):
+    def exercise(self, terminate, sig=signal.SIGTERM, blocked=None, orphan=False, stale=None):
         with tempfile.TemporaryDirectory() as tmp:
             d = Path(tmp)
             app = d / 'Applications/Android/org.test.app'
@@ -60,6 +60,13 @@ class LauncherTests(unittest.TestCase):
             saved = d / '.local/share/Steam/steamapps/compatdata/2800000001/internal/save'
             saved.parent.mkdir(parents=True)
             saved.write_text('saved game')
+            previous = None
+            if stale:
+                # A Lepton left by a SIGKILLed launcher (its own session), or an unrelated reused id.
+                args = [sys.executable, '-c', 'import time; time.sleep(30)']
+                previous = subprocess.Popen(args + ([str(app / 'app.apk')] if stale == 'lepton' else ['other']),
+                                            start_new_session=True)
+                (app / 'launch.pgid').write_text(str(previous.pid))
             proc = subprocess.Popen(['bash', str(app / 'launch.sh')], env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             try:
                 if blocked:
@@ -73,6 +80,10 @@ class LauncherTests(unittest.TestCase):
                 while not (d / 'started').exists() and proc.poll() is None and time.monotonic() < deadline:
                     time.sleep(.02)
                 self.assertTrue((d / 'started').exists(), 'launcher did not start Lepton')
+                if previous:
+                    self.assertEqual(previous.poll() is not None, stale == 'lepton')
+                    self.assertEqual((app / 'launch.pgid').read_text().strip(),
+                                     (d / 'started').read_text().strip())  # the new group is recorded
                 self.assertFalse((d / 'inherited-lock').exists(), 'Lepton inherited the launch lock')
                 if terminate:
                     self.assertIsNone(proc.poll(), 'Steam-tracked wrapper exited during the session')
@@ -84,7 +95,12 @@ class LauncherTests(unittest.TestCase):
                 self.assertEqual(proc.returncode, 128 + sig if terminate else 23)
                 self.assertEqual(saved.read_text(), 'saved game')
                 self.assertTrue((app / 'app.apk').exists())
+                self.assertFalse((app / 'launch.pgid').exists())
             finally:
+                if previous and previous.poll() is None:
+                    previous.kill()
+                if previous:
+                    previous.wait()
                 if proc.poll() is None:
                     proc.kill()
                     proc.communicate()
@@ -104,6 +120,12 @@ class LauncherTests(unittest.TestCase):
 
     def test_duplicate_launch_leaves_existing_session_alone(self):
         self.exercise(False, blocked='LOCKED')
+
+    def test_previous_launch_left_by_sigkill_is_reaped_first(self):
+        self.exercise(True, stale='lepton')
+
+    def test_reused_process_group_id_is_left_alone(self):
+        self.exercise(True, stale='other')
 
     def test_orphaned_container_is_stopped_and_play_proceeds(self):
         # Container running but the lock free: its launcher was SIGKILLed.
@@ -166,6 +188,57 @@ class ArtworkTests(unittest.TestCase):
         connect.assert_not_called()
         with self.assertRaises(SourceError):
             art.fetch('file:///etc/passwd')
+
+    def trickle(self, head, seconds):
+        # A server that answers one byte every 20 ms, over a socketpair standing in for the network.
+        import socket
+        import threading
+        from apk_sources import _images
+        client, server = socket.socketpair()
+        def serve():
+            try:
+                server.recv(65536)
+                for byte in head + b'x' * 1000:
+                    server.sendall(bytes([byte]))
+                    time.sleep(0.02)
+            except OSError:
+                pass
+            finally:
+                server.close()
+        threading.Thread(target=serve, daemon=True).start()
+        public = [(2, 1, 6, '', ('93.184.216.34', 80))]
+        with patch.object(_images.socket, 'getaddrinfo', return_value=public), \
+                patch.object(_images.socket, 'create_connection', return_value=client):
+            start = time.monotonic()
+            with self.assertRaisesRegex(_images.SourceError, 'too long'):
+                _images.get('http://example.org/a.png', deadline=start + seconds)
+            return time.monotonic() - start
+
+    def test_deadline_bounds_trickling_headers_and_body(self):
+        self.assertLess(self.trickle(b'HTTP/1.1 200 OK\r\nContent-Length: 1000\r\n\r\n', 0.15), 0.4)
+        self.assertLess(self.trickle(b'HTTP/1.1 200 OK\r\n', 0.15), 0.4)  # headers never finish
+
+    def test_deadline_covers_name_resolution(self):
+        import threading
+        from apk_sources import _images
+        gate = threading.Event()
+        with patch.object(_images.socket, 'getaddrinfo', side_effect=lambda *a, **k: gate.wait(5) and []):
+            start = time.monotonic()
+            with self.assertRaisesRegex(_images.SourceError, 'too long'):
+                _images.get('https://example.org/a.png', deadline=start + 0.1)
+            self.assertLess(time.monotonic() - start, 0.4)
+        gate.set()
+        with self.assertRaisesRegex(_images.SourceError, 'too long'):
+            _images.get('https://example.org/a.png', deadline=time.monotonic() - 1)
+
+    def test_steamgriddb_uses_the_bounded_fetch_without_redirects(self):
+        import frame_steamgriddb as sgdb
+        from apk_sources import _images
+        with patch.object(_images, 'get', return_value=b'{"success": true, "data": [1]}') as get:
+            self.assertEqual(sgdb._get('/search/x', 'secret', time.monotonic() + 5), [1])
+        self.assertEqual(get.call_args.kwargs['redirects'], 0)
+        self.assertEqual(get.call_args.args[1]['Authorization'], 'Bearer secret')
+        self.assertLessEqual(get.call_args.kwargs['deadline'] - time.monotonic(), 5)
 
     def test_supplied_jpeg(self):
         data = (FIXTURES / 'icon.jpg').read_bytes()
@@ -296,6 +369,44 @@ class InstallTests(unittest.TestCase):
                                         '.local/share/Steam/steamapps/shadercache/2800000001')
             self.assertIn('Steam client running', result['library_warnings'][0])
 
+    def test_remove_waits_for_refresh_and_is_never_undone(self):
+        import threading
+        state = {'meta': dict(self.existing, flatscreen=False), 'shortcuts': {3346865537}}
+        in_refresh, release, added = threading.Event(), threading.Event(), []
+        def meta(pkg):
+            if not state['meta']:
+                raise android.FrameError(pkg + ' is not installed')
+            return dict(state['meta'])
+        def ssh(cmd, input=None, **kw):
+            if cmd.startswith('rm -rf Applications/Android/org.test.vr'):
+                state['meta'] = None
+            return json.dumps({'icon_png': ''}) if cmd == 'python3 -' else '/home/steamos'
+        def tool(*args, **kw):
+            if args[0] == 'list': return json.dumps([{'appid': a} for a in state['shortcuts']])
+            if args[0] == 'remove': state['shortcuts'].discard(int(args[1])); return '{"warnings": []}'
+            if args[0] == 'add': added.append(args); return '99'
+            if args[0] == 'render': return json.dumps({'paths': {s: '/tmp/' + s + '.png' for s in art.SLOTS}})
+            return '{"warnings": []}'
+        def prepare(*args, **kw):
+            in_refresh.set(); release.wait(5)
+            return self.images, []
+        with patch.object(android, '_meta_or_fail', side_effect=meta), patch.object(android, 'ssh', side_effect=ssh), \
+                patch.object(android, 'shortcut_tool', side_effect=tool), patch.object(android, 'stop'), \
+                patch.object(android, '_write_meta', side_effect=lambda d, m: state.__setitem__('meta', m)), \
+                patch.object(android.frame_artwork, 'prepare', side_effect=prepare):
+            refresh = threading.Thread(target=android.refresh_art, args=('org.test.vr',), kwargs={'fill_only': True})
+            refresh.start()
+            self.assertTrue(in_refresh.wait(5))
+            remove = threading.Thread(target=android.remove, args=('org.test.vr',))
+            remove.start()
+            remove.join(0.3)
+            self.assertTrue(remove.is_alive(), 'remove ran while a refresh was writing')
+            release.set(); refresh.join(5); remove.join(5)
+            self.assertIsNone(state['meta']); self.assertEqual(state['shortcuts'], set())
+            with self.assertRaisesRegex(android.FrameError, 'not installed'):
+                android.refresh_art('org.test.vr', fill_only=True)  # a queued backfill after removal
+        self.assertEqual(added, [])
+
     def test_stop_requests_steam_and_has_container_fallback(self):
         with patch.object(android, '_meta_or_fail', return_value=self.existing), \
                 patch.object(android, 'shortcut_tool', side_effect=android.FrameError('offline')) as api, \
@@ -332,7 +443,7 @@ class SteamAPITests(unittest.TestCase):
         with patch.object(shortcuts, 'evaluate', return_value={'warnings': []}) as evaluate:
             shortcuts.configure(42, 'Game', '', '', '/icon', None, slots, {'category': 'Sideloaded'})
         js = evaluate.call_args.args[0]
-        self.assertIn('if (null !== null)', js)
+        self.assertIn('if (null !== null && !fill)', js)
         self.assertIn('const wanted = ["Sideloaded"]', js)
         with patch.object(sys, 'argv', ['steam_shortcuts.py', 'configure', '42', 'Game', '', '', '/icon', '',
                                         json.dumps(slots), '{}']), \
@@ -410,6 +521,36 @@ class SteamContextTests(unittest.TestCase):
             shortcuts.remove(42)
             self.assertEqual(steam['shortcuts'], [])
             self.assertEqual(steam['collections'][0]['apps'], [999])
+
+    @unittest.skipUnless(__import__('shutil').which('node'), 'optional V8 fixture check requires node')
+    def test_fill_only_keeps_customised_name_icon_and_art(self):
+        custom = {'0': {'data': 'mine-grid', 'ext': 'png'}, '1': {'data': 'mine-hero', 'ext': 'jpg'}}
+        steam = {'apps': [], 'compat_tools': {}, 'collections': [],
+                 'shortcuts': [{'appid': 42, 'name': 'My Name', 'icon': '/mine.png', 'vr': True, 'artwork': dict(custom)}]}
+        def evaluate(expression, timeout=20):
+            nonlocal steam
+            proc = subprocess.run(['node', str(ROOT / 'tests/fakeframe/rootfs/usr/local/lib/fakeframe/cef_shim.js')],
+                                  input=json.dumps({'id': 1, 'expression': expression, 'awaitPromise': True,
+                                                    'steam': steam}) + '\n',
+                                  text=True, capture_output=True, timeout=10, check=True)
+            reply = json.loads(proc.stdout)
+            self.assertNotIn('exceptionDetails', reply['result'])
+            steam = reply['steam']
+            return reply['result']['result'].get('value')
+        with tempfile.TemporaryDirectory() as home:
+            grid = Path(home, '.local/share/Steam/userdata/1/config/grid')
+            grid.mkdir(parents=True)
+            (grid / '42p.png').write_bytes(b'mine')
+            (grid / '42_hero.jpg').write_bytes(b'mine')
+            with patch.dict(os.environ, {'HOME': home, 'USERPROFILE': home}), patch.object(shortcuts, 'evaluate', side_effect=evaluate):
+                self.assertEqual(shortcuts.custom_art(42), {0, 1})
+                shortcuts.configure(42, 'Generated', '/exe', '/dir', '/generated.png', False,
+                                    {slot: str(FIXTURES / 'icon.png') for slot in art.SLOTS},
+                                    {'category': 'Sideloaded', 'fill_only': True})
+        s = steam['shortcuts'][0]
+        self.assertEqual((s['name'], s['icon'], s['vr']), ('My Name', '/mine.png', True))
+        self.assertEqual({k: s['artwork'][k] for k in ('0', '1')}, custom)
+        self.assertEqual(set(s['artwork']), {'0', '1', '2', '3'})
 
     @unittest.skipUnless(__import__('shutil').which('node'), 'optional V8 fixture check requires node')
     def test_remove_without_collections_or_artwork_api_still_removes(self):

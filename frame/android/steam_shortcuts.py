@@ -9,7 +9,7 @@ Python stdlib only; the Mac runs it with `ssh frame python3 - <args> < this`.
   steam_shortcuts.py stop APPID
   steam_shortcuts.py remove APPID
 """
-import base64, json, os, re, socket, struct, sys, urllib.request
+import base64, glob, json, os, re, socket, struct, sys, urllib.request
 
 DEVTOOLS = 'http://127.0.0.1:8080/json'
 
@@ -198,9 +198,26 @@ def _render(plan, renderer, label, images):
     return {'paths': paths, 'warnings': list(result.get('warnings', []))}
 
 
+# Steam's own file for each custom-art type in userdata/*/config/grid/.
+GRID_FILES = {0: 'p', 1: '_hero', 2: '_logo', 3: ''}
+
+
+def custom_art(appid):
+    """The custom-art types this shortcut already has in Steam, for any local user."""
+    found = set()
+    for kind, suffix in GRID_FILES.items():
+        pattern = os.path.expanduser(f'~/.local/share/Steam/userdata/*/config/grid/{int(appid)}{suffix}.*')
+        if any(os.path.splitext(p)[1].lower() in ('.png', '.jpg', '.jpeg') for p in glob.glob(pattern)):
+            found.add(kind)
+    return found
+
+
 def configure(appid, name, exe, start_dir, icon, vr, artwork, options=None):
+    """options: category, details, fill_only (only empty slots and a missing icon; name and flags untouched)."""
     options = options or {}
     category = options.get('category', 'Android')
+    fill = bool(options.get('fill_only'))
+    existing = custom_art(appid) if fill else set()
     if set(artwork) != set(ASSETS):
         raise ValueError('all five Steam artwork slots are required')
     images = []
@@ -214,18 +231,22 @@ def configure(appid, name, exe, start_dir, icon, vr, artwork, options=None):
             data = f.read(MAX_ART + 1)
         if len(data) > MAX_ART:
             raise ValueError('artwork is too large')
-        if slot != 'icon':  # Frame's custom-art API maps type 4 to Header; use SetShortcutIcon.
+        # Frame's custom-art API maps type 4 to Header; use SetShortcutIcon.
+        if slot != 'icon' and ASSETS[slot] not in existing:
             images.append([ASSETS[slot], ext, base64.b64encode(data).decode()])
     return evaluate(f'''(async () => {{
-      const id = {int(appid)}, warnings = [];
-      SteamClient.Apps.SetShortcutName(id, {json.dumps(name)});
-      if ({json.dumps(exe)}) SteamClient.Apps.SetShortcutExe(id, {json.dumps(exe)});
-      if ({json.dumps(start_dir)}) SteamClient.Apps.SetShortcutStartDir(id, {json.dumps(start_dir)});
-      if (typeof SteamClient.Apps.SetShortcutSortAs === "function")
-        SteamClient.Apps.SetShortcutSortAs(id, {json.dumps(name)});
-      SteamClient.Apps.SetShortcutIcon(id, {json.dumps(icon)});
-      // null (devkit titles): leave the VR flag as Steam registered it.
-      if ({json.dumps(vr)} !== null) {{
+      const id = {int(appid)}, warnings = [], fill = {json.dumps(fill)};
+      const overview = appStore.GetAppOverviewByAppID(id);
+      if (!fill) {{
+        SteamClient.Apps.SetShortcutName(id, {json.dumps(name)});
+        if ({json.dumps(exe)}) SteamClient.Apps.SetShortcutExe(id, {json.dumps(exe)});
+        if ({json.dumps(start_dir)}) SteamClient.Apps.SetShortcutStartDir(id, {json.dumps(start_dir)});
+        if (typeof SteamClient.Apps.SetShortcutSortAs === "function")
+          SteamClient.Apps.SetShortcutSortAs(id, {json.dumps(name)});
+      }}
+      if (!fill || !(overview && overview.icon_data)) SteamClient.Apps.SetShortcutIcon(id, {json.dumps(icon)});
+      // null (devkit titles) or filling gaps: leave the VR flag as Steam has it.
+      if ({json.dumps(vr)} !== null && !fill) {{
         if (typeof SteamClient.Apps.SetShortcutIsVR === "function")
           SteamClient.Apps.SetShortcutIsVR(id, {json.dumps(vr)});
         else warnings.push("Steam VR shortcut flag API unavailable");
@@ -233,7 +254,7 @@ def configure(appid, name, exe, start_dir, icon, vr, artwork, options=None):
       if (typeof SteamClient.Apps.SetCustomArtworkForApp === "function") {{
         for (const [type, ext, data] of {json.dumps(images)}) {{
           // Steam keeps a slot's PNG and JPEG side by side; clear it so a stale one can't win.
-          if (typeof SteamClient.Apps.ClearCustomArtworkForApp === "function")
+          if (!fill && typeof SteamClient.Apps.ClearCustomArtworkForApp === "function")
             try {{ await SteamClient.Apps.ClearCustomArtworkForApp(id, type); }} catch (e) {{}}
           await SteamClient.Apps.SetCustomArtworkForApp(id, data, ext, type);
         }}

@@ -6,7 +6,6 @@ import tempfile
 import time
 import unicodedata
 import urllib.parse
-import urllib.request
 
 import frame_host
 
@@ -51,19 +50,11 @@ def save_settings(body):
 
 
 def _get(path, key, deadline=None):
-    timeout = 12 if deadline is None else min(12, deadline - time.monotonic())
-    if timeout <= 0:
-        raise ValueError('SteamGridDB lookup took too long')
-    request = urllib.request.Request(API + path, headers={'Authorization': 'Bearer ' + key,
-                                                         'User-Agent': 'FrameControl/1.0'})
-    # Do not carry the credential to redirects or include it in error messages.
-    class NoRedirect(urllib.request.HTTPRedirectHandler):
-        def redirect_request(self, *args, **kwargs):
-            return None
-    with urllib.request.build_opener(NoRedirect()).open(request, timeout=timeout) as response:
-        data = response.read(MAX_JSON + 1)
-    if len(data) > MAX_JSON:
-        raise ValueError('SteamGridDB response too large')
+    from apk_sources import _images
+    # No redirects: the credential never goes anywhere but the API. Errors never contain it.
+    data = _images.get(API + path, {'Authorization': 'Bearer ' + key, 'Accept': 'application/json'}, redirects=0,
+                       deadline=time.monotonic() + 12 if deadline is None else min(deadline, time.monotonic() + 12),
+                       limit=MAX_JSON)
     result = json.loads(data)
     if not isinstance(result, dict) or not result.get('success') or not isinstance(result.get('data'), list):
         raise ValueError('SteamGridDB lookup failed')

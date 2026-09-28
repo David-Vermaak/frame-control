@@ -221,10 +221,11 @@ def _install(apk_path, info, pkg, flatscreen, name, source, artwork=None):
 
 
 def apply_library(shortcut, label, directory, images, vr=None, home=None, exe='', start_dir='', details=None,
-                  category='Android'):
+                  category='Android', fill_only=False):
     """Mandatory for every sideload: render all five slots before reporting success.
 
-    vr None leaves Steam's VR flag as it is (devkit titles declare their own)."""
+    vr None leaves Steam's VR flag as it is (devkit titles declare their own). fill_only (automatic
+    backfill) sets only slots Steam has no art for, and never the name, exe or flags."""
     home = home or ssh('echo $HOME').strip()
     d = directory
     ssh(f'mkdir -p {shlex.quote(d)}/artwork')
@@ -244,7 +245,8 @@ def apply_library(shortcut, label, directory, images, vr=None, home=None, exe=''
         raise FrameError('Steam artwork renderer did not produce every slot')
     result = json.loads(shortcut_tool('configure', str(shortcut), label, exe, start_dir, art['icon'],
                                      '' if vr is None else '1' if vr else '0', json.dumps(art),
-                                     json.dumps({'category': category, 'details': details or {}}), timeout=120))
+                                     json.dumps({'category': category, 'details': details or {},
+                                                 'fill_only': fill_only}), timeout=120))
     result['warnings'] = rendered.get('warnings', []) + result.get('warnings', [])
     result['artwork'] = art
     if category == 'Android':
@@ -277,8 +279,10 @@ def art_missing(m):
     return set((m or {}).get('artwork') or {}) != set(frame_artwork.SLOTS)
 
 
-def refresh_art(pkg=None, artwork=None):
-    """Refresh existing APK library entries without reinstalling or stopping them."""
+def refresh_art(pkg=None, artwork=None, fill_only=False):
+    """Refresh existing APK library entries without reinstalling or stopping them.
+
+    fill_only: the automatic backfill; it only fills empty Steam slots (see apply_library)."""
     if pkg is None:
         results = []
         for app in list_apps():
@@ -287,7 +291,7 @@ def refresh_art(pkg=None, artwork=None):
             except Exception as e:  # one app's failure must not stop the others
                 results.append({'package': app['package'], 'label': app.get('label'), 'error': str(e) or type(e).__name__})
         return results
-    with _install_lock:
+    with _install_lock:  # shared with install and remove: a removed app is never recreated
         m = _meta_or_fail(pkg)
         d = f'{APPS_DIR}/{pkg}'
         # Parse the APK on the Frame, transferring only its icon/label, not the APK.
@@ -315,7 +319,8 @@ def refresh_art(pkg=None, artwork=None):
             created = True
         try:
             result = apply_library(m['shortcut'], m['label'], d, images, vr=not m.get('flatscreen', True),
-                                   home=home, exe=f'{home}/{d}/launch.sh', start_dir=f'{home}/{d}', details=m)
+                                   home=home, exe=f'{home}/{d}/launch.sh', start_dir=f'{home}/{d}', details=m,
+                                   fill_only=fill_only and not created)
         except Exception:
             if created:
                 try:
@@ -323,7 +328,7 @@ def refresh_art(pkg=None, artwork=None):
                 except FrameError:
                     pass  # keep the render error, not the cleanup's
             raise
-        m.update(artwork=result.get('artwork', {}), library_version=2)
+        m.update(artwork=result.get('artwork', {}), library_version=2, art_pending=False)
         m['library_warnings'] = warnings + result.get('warnings', [])
         m['artwork_refreshed'] = time.strftime('%Y-%m-%dT%H:%M:%S')
         _write_meta(d, m)
@@ -411,6 +416,11 @@ def stop(pkg):
 
 
 def remove(pkg, keep_data=False):
+    with _install_lock:  # never while an install or artwork refresh of any app is writing
+        return _remove(pkg, keep_data)
+
+
+def _remove(pkg, keep_data):
     m = _meta_or_fail(pkg)
     stop(pkg)
     if m['shortcut']:

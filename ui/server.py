@@ -153,11 +153,12 @@ _backfill_lock = threading.Lock()
 
 
 def backfill_art(apps=(), titles=()):
-    """Give installs that lack Steam artwork (Steam wasn't running, say) their art once Steam is up.
+    """Apply art Frame Control couldn't at install time (Steam wasn't running), once Steam is up.
 
-    Runs in the background, at most once every five minutes; refresh-art reports failures on demand."""
-    pkgs = [a["package"] for a in apps if a.get("art_missing")]
-    gids = [t["id"] for t in titles if t.get("art_missing")]
+    Only entries marked art_pending at install; it fills empty Steam slots and never replaces art or
+    names the user may have customised. Runs in the background, at most once every five minutes."""
+    pkgs = [a["package"] for a in apps if a.get("art_pending")]
+    gids = [t["id"] for t in titles if t.get("art_pending")]
     with _backfill_lock:
         if not (pkgs or gids) or _backfill["running"] or time.time() - _backfill["last"] < 300:
             return False
@@ -169,7 +170,7 @@ def backfill_art(apps=(), titles=()):
             for refresh, key in [(frame_android.refresh_art, p) for p in pkgs] + \
                                 [(frame_titles.refresh_art, g) for g in gids]:
                 try:
-                    refresh(key)
+                    refresh(key, fill_only=True)
                 except Exception as e:
                     print(f"artwork backfill for {key}: {e}", file=sys.stderr)
         except Exception:

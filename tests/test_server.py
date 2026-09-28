@@ -234,7 +234,6 @@ class ServerGuards(unittest.TestCase):
         self.assertEqual(self.post("/api/nope", {})[0], 404)
 
 
-@unittest.skipIf(os.name == "nt", "runs on the Frame (Linux); local-bin/ssh is a POSIX shell script")
 class ArtworkSettings(unittest.TestCase):
     """The settings panel's endpoints, with and without the page's X-Frame-UI key."""
 
@@ -285,6 +284,7 @@ class ArtworkSettings(unittest.TestCase):
         self.assertLess(page.index("async function api("), page.index('<script src="/artwork-settings.js">'))
 
 
+@unittest.skipIf(os.name == "nt", "runs on the Frame (Linux); local-bin/ssh is a POSIX shell script")
 class LocalMode(unittest.TestCase):
     """FRAME_LOCAL=1, as the iPhone app starts the server on the Frame: its own key
     guards /api/, and ssh goes to ui/local-bin/ssh, which runs commands here."""
