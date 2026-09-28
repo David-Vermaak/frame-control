@@ -317,6 +317,43 @@ class Repositories(unittest.TestCase):
         fdroid.remove_repo(source['id'])  # a deliberate re-add starts over
         self.assertEqual(fdroid.add_repo(URL)['fingerprint'], pin)
 
+    def test_concurrent_processes_cannot_publish_an_older_index_last(self):
+        import threading
+        self.files['entry.jar'], _ = entry_jar(50)
+        source = fdroid.add_repo(URL)
+        self.files['entry.jar'], _ = entry_jar(100)
+        newer, _ = entry_jar(200)
+        inner = []
+        def fetch(url, path, maximum):
+            if url.endswith('index-v2.json') and not inner:
+                # Another process (its own in-memory locks) loads a newer index after our early check.
+                inner.append(1)
+                self.files['entry.jar'] = newer
+                self.assertEqual(len(fdroid._load(source, force=True)[0]), 1)
+            self.fetch(url, path, maximum)
+        self.fetch_mock.side_effect = fetch
+        writes = []
+        real_write = fdroid._write
+        with patch.object(fdroid, '_source_lock', lambda source_id: threading.Lock()), \
+                patch.object(fdroid, '_write', lambda path, value: (writes.append(path.name), real_write(path, value))):
+            with self.assertRaisesRegex(SourceError, 'older'):
+                fdroid._load(source, force=True)
+        self.assertEqual(fdroid._state(source)['timestamp'], 200)
+        self.assertEqual(writes, [source['id'] + '.json', 'apk-repo-state.json'])  # only the newer index published
+
+    def test_cli_search_waits_for_background_refresh(self):
+        source = self.add()
+        self.expire(source)
+        before = self.fetch_mock.call_count
+        out = io.StringIO()
+        with patch.object(sys, 'argv', ['fdroid.py', 'search', source['id'], 'example']), \
+                patch('sys.stdout', out):
+            fdroid.main()
+        self.assertEqual(json.loads(out.getvalue())[0]['id'], 'org.example.app')
+        self.assertEqual(self.fetch_mock.call_count, before + 2)  # the refresh finished before exit
+        self.assertFalse(fdroid.stale(source))
+        self.assertNotIn(source['id'], fdroid._refreshing)
+
     def test_no_v1_fallback_once_v2_accepted(self):
         source = self.add()
         self.v1 = True

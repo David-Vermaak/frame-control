@@ -1,6 +1,7 @@
 """Signed F-Droid repositories. CLI: add|remove|list|search|download."""
 import argparse
 import base64
+import contextlib
 import hashlib
 from html.parser import HTMLParser
 import json
@@ -281,6 +282,35 @@ def _state(source):
     return state if isinstance(state, dict) and state.get('url') == source['url'] else {}
 
 
+@contextlib.contextmanager
+def _state_file_lock():
+    """Inter-process lock: the CLI and the app must not publish indexes out of order."""
+    path = frame_host.data_dir('apk-repo-state.lock')
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(str(path), 'a+b') as f:
+        if os.name == 'nt':
+            import msvcrt
+            while True:
+                try:
+                    f.seek(0)
+                    msvcrt.locking(f.fileno(), msvcrt.LK_LOCK, 1)
+                    break
+                except OSError:
+                    pass  # LK_LOCK gives up after ~10 s; keep waiting
+            try:
+                yield
+            finally:
+                f.seek(0)
+                msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+
+
 def _check_timestamp(source, timestamp):
     last = _state(source).get('timestamp')
     if last is not None and (type(timestamp) is not int or timestamp < last):
@@ -523,8 +553,10 @@ def _load(source, force=False):
                     if _sha256(raw) != entry['sha256'] or (entry.get('size') is not None and raw.stat().st_size != entry['size']):
                         raise SourceError('index SHA-256 or size mismatch')
                 apps = _reduce(raw, source)
-                _write(cache, {'version': CACHE_VERSION, 'url': source['url'], 'fingerprint': pin, 'apps': apps})
-                _accept(source, timestamp, v2)
+                with _state_file_lock():  # recheck: another process may have accepted a newer index meanwhile
+                    _check_timestamp(source, timestamp)
+                    _write(cache, {'version': CACHE_VERSION, 'url': source['url'], 'fingerprint': pin, 'apps': apps})
+                    _accept(source, timestamp, v2)
                 _stale.discard(source['id'])
                 return apps, pin
         except SourceLimited as e:
@@ -565,6 +597,7 @@ def remove_repo(source_id):
             raise SourceError('unknown user repository')
         settings['repos'] = [s for s in settings['repos'] if s['id'] != source_id]
         _write(_storage(), settings)
+    with _state_file_lock(), _LOCK:  # lock order: state file, then _LOCK
         states = _states()
         if states.pop(source_id, None) is not None:  # re-adding is a deliberate new trust decision
             _write(_state_path(), states)
@@ -663,6 +696,8 @@ def main():
             if not source:
                 raise SourceError('unknown repository id; use list')
             result = search(source, args.query) if args.command == 'search' else download(source, args.package)
+        for thread in list(_refreshing.values()):  # daemon refreshes would die with the CLI
+            thread.join()
         print(json.dumps(result, indent=2))
     except SourceError as e:
         parser.exit(1, 'error: ' + str(e) + '\n')
