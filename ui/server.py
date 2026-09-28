@@ -43,6 +43,9 @@ import frame_host  # noqa: E402
 import frame_store  # noqa: E402
 import frame_titles  # noqa: E402
 import frame_webinstall  # noqa: E402
+import frame_vr  # noqa: E402
+import frame_utilities  # noqa: E402
+import frame_compat_db  # noqa: E402
 
 frame_host.trust_bundled_cas()
 
@@ -432,6 +435,27 @@ def steam(body):
     if action not in ("install", "store"):
         raise Failure("action must be install or store", 400)
     return steam_frame(action, appid)
+
+
+def vr(body):
+    try:
+        action = frame_vr.validate(body)
+    except ValueError as e:
+        raise Failure(str(e), 400)
+    sources = {name: (HERE / (name + '.py')).read_text() for name in ('frame_status', 'frame_vr')}
+    script = "import sys, types, json, os\n"
+    for name, source in sources.items():
+        script += f"m = types.ModuleType({name!r}); sys.modules[{name!r}] = m\nexec({source!r}, m.__dict__)\n"
+    # Only the optional HUD needs files: its terminal child survives this SSH call.
+    if action == 'hud-start':
+        script += "m.ROOT.mkdir(parents=True, exist_ok=True, mode=0o700)\n"
+        for name, source in sources.items():
+            script += f"p = m.ROOT / {name + '.py'!r}; t = p.with_suffix('.' + str(os.getpid()) + '.tmp')\nt.write_text({source!r}); os.replace(t, p)\n"
+    script += f"try:\n print(json.dumps(m.dispatch({body!r})))\nexcept Exception as e:\n print(json.dumps({{'error': str(e)}}))\n"
+    result = json.loads(ssh('python3 -', stdin=script, timeout=20))
+    if result.get('error'):
+        raise Failure(result['error'])
+    return result
 
 
 def steam_search(query):
@@ -1227,7 +1251,7 @@ def _sweep_one(prefix, d):
         pass
 
 
-POST = {"/api/android/display": android_display, "/api/android": android, "/api/titles": titles, "/api/launch": launch, "/api/steam": steam, "/api/volume": set_volume, "/api/clipboard": clipboard,
+POST = {"/api/vr": vr, "/api/android/display": android_display, "/api/android": android, "/api/titles": titles, "/api/launch": launch, "/api/steam": steam, "/api/volume": set_volume, "/api/clipboard": clipboard,
         "/api/flatpak": flatpak, "/api/open": open_thing, "/api/shots/save": save_shots,
         "/api/webinstall/check": webinstall_check, "/api/webinstall/start": webinstall_start,
         "/api/webinstall/cancel": webinstall_cancel}
@@ -1354,6 +1378,8 @@ class Handler(BaseHTTPRequestHandler):
                                 "shared": frame_catalog.compat_db.shared()})
             elif path == "/api/android/catalog":
                 self.send_json({"apps": frame_catalog.catalog()})
+            elif path == "/api/vr/utilities":
+                self.send_json(frame_utilities.catalogue(steam_frame("utilities")["utilities"], frame_compat_db.load()))
             elif path == "/api/status":
                 self.send_json(status({}))
             elif path == "/api/steam/owned":
