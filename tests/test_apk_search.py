@@ -84,10 +84,34 @@ class SearchTests(SettingsTest):
                 self.assertLess(time.monotonic() - started, .3)
                 self.assertTrue(result['apps'])
                 self.assertEqual([s['status'] for s in result['sources']], ['ok', 'loading', 'error'])
-                search.search('other', timeout=.03)
+                self.assertEqual(search.search('other', timeout=.03)['sources'][1]['status'], 'loading')
+                search.search('newest', timeout=.03)
                 self.assertEqual(calls, [''])
+                release.set()
+                result = search.search('newest', timeout=2)
+                self.assertEqual(result['sources'][1]['status'], 'ok')
+                self.assertEqual(calls, ['', 'newest'])  # 'other' was superseded, never run
         finally:
             release.set()
+
+    def test_set_enabled_does_not_hold_search_lock_in_source(self):
+        free = []
+        def set_enabled(source_id, enabled):
+            t = threading.Thread(target=lambda: free.append(search._lock.acquire(timeout=1) and not search._lock.release()))
+            t.start()
+            t.join()
+        mod = fake()
+        mod.set_enabled = set_enabled
+        with patch.object(search, 'modules', return_value=([mod], [])):
+            search.set_enabled('one', False)
+        self.assertEqual(free, [True])
+
+    def test_limited_source_status(self):
+        from apk_sources import SourceLimited
+        mods = [fake('busy', Mock(side_effect=SourceLimited('busy is limiting requests', 60)))]
+        with patch.object(search, 'modules', return_value=(mods, [])):
+            status = search.search(timeout=1)['sources'][0]
+        self.assertEqual((status['status'], status['error']), ('limited', 'busy is limiting requests'))
 
     def test_disable_persists_and_prevents_queries_and_installs(self):
         mod = fake()
