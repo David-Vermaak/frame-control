@@ -165,6 +165,68 @@ class Repositories(unittest.TestCase):
         self.assertEqual(len(fdroid.search(source, 'example')), 1)
         self.assertEqual(self.fetch_mock.call_count, 4)
 
+    def test_artwork_v1_and_v2_survives_source_cache(self):
+        source = self.add()
+        for version in ('v1', 'v2'):
+            with self.subTest(version=version):
+                raw = FIXTURES / ('artwork-' + version + '.json')
+                if version == 'v1':
+                    normalized = self.root / 'normalized.json'
+                    fdroid._v1(raw.read_bytes(), normalized)
+                    raw = normalized
+                apps = fdroid._reduce(raw, source)
+                cache = fdroid.frame_host.cache_dir('apk-sources', source['id'] + '.json')
+                fdroid._write(cache, {'version': fdroid.CACHE_VERSION, 'url': URL,
+                                     'fingerprint': PIN, 'apps': apps})
+                before = self.fetch_mock.call_count
+                result = fdroid.search(source, 'example offline')[0]
+                self.assertEqual(result['developer'], 'Example Developer')
+                self.assertEqual(result['summary'], 'Offline fixture & music. One line.')
+                self.assertEqual(result['icon'], URL + 'org.example.app/en-US/icon.png')
+                self.assertEqual(result['images'], {
+                    'icon': result['icon'],
+                    'banner': URL + 'org.example.app/fr/featureGraphic.png',
+                    'screenshots': [URL + 'org.example.app/en-US/phoneScreenshots/' + str(i) + '.png' for i in range(1, 5)] +
+                                   [URL + 'org.example.app/fr/sevenInchScreenshots/' + str(i) + '.png' for i in range(1, 3)]})
+                self.assertEqual(fdroid.details(source, result['id'])['images'], result['images'])
+                self.assertEqual(self.fetch_mock.call_count, before)
+
+    def test_missing_artwork_is_not_invented(self):
+        result = fdroid.search(self.add(), 'example')[0]
+        self.assertEqual(result['images'], {'icon': None, 'banner': None, 'screenshots': []})
+        self.assertIsNone(result['icon'])
+        self.assertIsNone(result['developer'])
+
+    def test_v1_legacy_icon_and_tablet_fallback(self):
+        index = json.loads((FIXTURES / 'artwork-v1.json').read_text())
+        app = index['apps'][0]
+        app['localized'] = {'fr': {'sevenInchScreenshots': ['tablet.png']}}
+        app['icon'] = 'legacy.1.png'
+        raw = self.root / 'legacy.json'
+        fdroid._v1(json.dumps(index).encode(), raw)
+        result = fdroid._reduce(raw, {'id': 'test', 'url': URL})['org.example.app']
+        self.assertEqual(result['icon'], URL + 'icons/legacy.1.png')
+        self.assertEqual(result['images']['screenshots'], [URL + 'org.example.app/fr/sevenInchScreenshots/tablet.png'])
+
+    def test_v2_legacy_screenshot_keys_and_limit(self):
+        meta = {'phoneScreenshots': {'fr': [{'name': '/phone/' + str(i) + '.png'} for i in range(8)]},
+                'sevenInchScreenshots': {'en-US': [{'name': '/tablet.png'}]}}
+        images = fdroid._images(meta, URL)
+        self.assertEqual(images['screenshots'], [URL + 'phone/' + str(i) + '.png' for i in range(6)])
+        meta.pop('phoneScreenshots')
+        self.assertEqual(fdroid._images(meta, URL)['screenshots'], [URL + 'tablet.png'])
+
+    def test_old_cache_refreshes_for_artwork(self):
+        source = self.add()
+        path = fdroid.frame_host.cache_dir('apk-sources', source['id'] + '.json')
+        saved = json.loads(path.read_text())
+        saved.pop('version')
+        for app in saved['apps'].values():
+            app.pop('images')
+        fdroid._write(path, saved)
+        self.assertIn('images', fdroid.search(source, 'example')[0])
+        self.assertEqual(self.fetch_mock.call_count, 4)
+
     def test_cached_index_does_not_cross_pins(self):
         source = self.add()
         source['fingerprint'] = '0' * 64

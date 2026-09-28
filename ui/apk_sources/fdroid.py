@@ -2,6 +2,7 @@
 import argparse
 import base64
 import hashlib
+from html.parser import HTMLParser
 import json
 import os
 from pathlib import Path
@@ -23,6 +24,7 @@ from frame_apk_sign import _der_parts, _cert_key, der
 from frame_catalog import _IndexReader, _reduce_index, _sha256
 
 KIND = 'fdroid'
+CACHE_VERSION = 2
 _LOCK = threading.RLock()
 # Published by the repository operators; a user repository without a pin uses TOFU.
 FDROID_PIN = '43238d512c1e5eb2d6569f4a3afbf5523418b82e0a3ed1552770abb9a9c9ccab'
@@ -250,8 +252,59 @@ def sources():
 
 def _text(value):
     if isinstance(value, dict):
-        return value.get('en-US') or value.get('en') or next(iter(value.values()), '')
+        return value.get('en-US') or next((v for v in value.values() if v), '')
     return value or ''
+
+
+class _PlainText(HTMLParser):
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.parts, self.hidden = [], 0
+
+    def handle_starttag(self, tag, attrs):
+        if tag in ('script', 'style'):
+            self.hidden += 1
+        elif tag in ('br', 'p', 'div', 'li'):
+            self.parts.append(' ')
+
+    def handle_endtag(self, tag):
+        if tag in ('script', 'style'):
+            self.hidden = max(0, self.hidden - 1)
+        elif tag in ('p', 'div', 'li'):
+            self.parts.append(' ')
+
+    def handle_data(self, data):
+        if not self.hidden:
+            self.parts.append(data)
+
+
+def _summary(value):
+    parser = _PlainText()
+    parser.feed(_text(value))
+    parser.close()
+    return ' '.join(''.join(parser.parts).split())
+
+
+def _images(meta, base):
+    def url(file):
+        name = file.get('name') if isinstance(file, dict) else file
+        return _child(base, name) if isinstance(name, str) and name else None
+
+    icon = url(_text(meta.get('icon')))
+    banner = url(_text(meta.get('featureGraphic')))
+    screenshots = []
+    groups = meta.get('screenshots') or {}
+    for device, legacy in (('phone', 'phoneScreenshots'), ('sevenInch', 'sevenInchScreenshots')):
+        files = _text(groups.get(device)) or _text(meta.get(legacy)) or []
+        for file in files if isinstance(files, list) else []:
+            image = url(file)
+            if image and image not in screenshots:
+                screenshots.append(image)
+            if len(screenshots) == 6:
+                break
+        if len(screenshots) == 6:
+            break
+    return {'icon': icon, 'banner': banner, 'screenshots': screenshots}
 
 
 def _reduce(path, source):
@@ -276,10 +329,10 @@ def _reduce(path, source):
                     versions.append(dict(v, size=original['file'].get('size'), updated=_date(original.get('added'))))
                 versions.sort(key=lambda v: (v['version_code'], v['abis'] == ['arm64-v8a']), reverse=True)
                 latest = versions[0]
-                icon = _text(meta.get('icon'))
+                images = _images(meta, source['url'])
                 result[pkg] = dict(source=source['id'], id=pkg, package=pkg,
-                    name=_text(meta.get('name')) or pkg, summary=_text(meta.get('summary')),
-                    icon=_child(source['url'], icon['name']) if isinstance(icon, dict) and icon.get('name') else None,
+                    name=_text(meta.get('name')) or pkg, summary=_summary(meta.get('summary')),
+                    icon=images['icon'], images=images, developer=_text(meta.get('authorName')) or None,
                     page=meta.get('webSite') or source['url'], vr=None, free=True,
                     license=meta.get('license'), downloadable=bool(latest.get('sha256')),
                     versions=versions, **{k: latest[k] for k in ('version', 'version_code', 'min_sdk', 'abis', 'size', 'updated')})
@@ -297,8 +350,22 @@ def _v1(content, path):
     for pkg, builds in index['packages'].items():
         app = apps.get(pkg, {})
         localized = app.get('localized', {})
-        en = localized.get('en-US') or next(iter(localized.values()), {})
-        meta = {k: en.get(k) or app.get(k) for k in ('name', 'summary', 'license', 'webSite')}
+        meta = {k: _text({locale: fields[k] for locale, fields in localized.items() if fields.get(k)}) or app.get(k)
+                for k in ('name', 'summary', 'license', 'webSite', 'authorName')}
+        for field in ('icon', 'featureGraphic', 'phoneScreenshots', 'sevenInchScreenshots'):
+            images = {}
+            for locale, fields in localized.items():
+                value = fields.get(field)
+                if not value:
+                    continue
+                prefix = pkg + '/' + locale + '/'
+                if field.endswith('Screenshots'):
+                    images[locale] = [{'name': prefix + field + '/' + name} for name in value[:6]]
+                else:
+                    images[locale] = {'name': prefix + value}
+            meta[field] = images
+        if not meta['icon'] and app.get('icon'):
+            meta['icon'] = {'en-US': {'name': 'icons/' + app['icon']}}
         versions = {}
         for i, v in enumerate(builds):
             versions[str(i)] = {'manifest': {'versionName': v.get('versionName'), 'versionCode': v['versionCode'],
@@ -318,7 +385,8 @@ def _load(source, force=False):
         if not force and cache.exists() and time.time() - cache.stat().st_mtime < 86400:
             try:
                 saved = json.loads(cache.read_text())
-                if saved.get('fingerprint') == source.get('fingerprint') and saved.get('url') == source['url']:
+                if (saved.get('version') == CACHE_VERSION and saved.get('fingerprint') == source.get('fingerprint')
+                        and saved.get('url') == source['url']):
                     return saved['apps'], saved['fingerprint']
             except (OSError, ValueError, KeyError, AttributeError):
                 pass
@@ -341,7 +409,7 @@ def _load(source, force=False):
                     if _sha256(raw) != entry['sha256'] or (entry.get('size') is not None and raw.stat().st_size != entry['size']):
                         raise SourceError('index SHA-256 or size mismatch')
                 apps = _reduce(raw, source)
-                _write(cache, {'url': source['url'], 'fingerprint': pin, 'apps': apps})
+                _write(cache, {'version': CACHE_VERSION, 'url': source['url'], 'fingerprint': pin, 'apps': apps})
                 return apps, pin
         except SourceError:
             raise

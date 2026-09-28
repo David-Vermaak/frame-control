@@ -53,3 +53,28 @@ expiry policy, automated key rotation or cross-process settings-write locking.
 The settings API serializes threads and publishes atomically. Should a later
 change add explicit rollback policy and broader JAR algorithms? Parent may
 choose UI wording for TOFU; this source already returns trust_on_first_use.
+
+## Artwork follow-up
+
+Added `images: {icon, banner, screenshots}`, matching top-level `icon`,
+`developer` from authorName, and HTML/entity-aware one-line summaries. Artwork
+prefers en-US per field, then the first populated locale. Phone screenshots
+precede seven-inch screenshots, with at most six unique URLs. v2 supports both
+`screenshots.phone/sevenInch` and the older phoneScreenshots/sevenInchScreenshots
+field names. v1 localized filenames are resolved under package/locale, with
+legacy top-level icons resolved under icons/. Missing art remains null/empty.
+
+No frame_catalog edit was necessary: this source already rereads raw metadata
+after using the shared compatibility reducer. Incremented the source cache
+schema so old entries refresh immediately rather than hiding artwork for a day.
+Tests exercise v1/v2 metadata, cache round-trips and migration, locale fallback,
+missing fields, legacy icon paths, screenshot bounds and summary cleanup.
+
+Follow-up verification (Python 3.9.6, branch user-repos):
+- `python3 -m unittest discover -s tests -p test_fdroid_sources.py`: 19 tests,
+  0.046s, OK, exit 0.
+- `python3 -m unittest discover -s tests`: 185 tests, 5.081s, OK, exit 0.
+- `git diff --check`: exit 0.
+No live image fetch or redesigned store rendering was exercised; these remain
+with the parent/UI integration. No independent review or delegation performed,
+as explicitly requested. No new open implementation questions.
