@@ -1,0 +1,53 @@
+[
+  {
+    "repo": "KhronosGroup/OpenXR-SDK-Source",
+    "name": "hello_xr",
+    "summary": "A simple VR scene for checking that OpenXR graphics and controllers work.",
+    "license": "Apache-2.0",
+    "vr": true,
+    "asset_pattern": "hello_xr-Vulkan-*.apk",
+    "allow_prerelease": false,
+    "images": {
+      "icon": "https://raw.githubusercontent.com/KhronosGroup/OpenXR-SDK-Source/3ed64d0f9bb680f24b80a085091e5c8fab38f7b7/src/tests/hello_xr/android_resources/vulkan/mipmap-xxxhdpi/ic_helloxr_launcher.png",
+      "banner": "https://opengraph.githubassets.com/1/KhronosGroup/OpenXR-SDK-Source",
+      "screenshots": []
+    },
+    "icon": "https://raw.githubusercontent.com/KhronosGroup/OpenXR-SDK-Source/3ed64d0f9bb680f24b80a085091e5c8fab38f7b7/src/tests/hello_xr/android_resources/vulkan/mipmap-xxxhdpi/ic_helloxr_launcher.png"
+  },
+  {
+    "repo": "icosa-foundation/open-brush",
+    "name": "Open Brush",
+    "summary": "Paint in the air and create colorful 3D artwork in VR.",
+    "license": "Apache-2.0",
+    "vr": true,
+    "asset_pattern": "*Quest*.apk",
+    "allow_prerelease": true,
+    "images": {
+      "icon": "https://raw.githubusercontent.com/icosa-foundation/open-brush/56acbce831c7e9f257bfee9e21853da99773787b/Assets/Resources/DefaultImages/OpenBrushLogo.png",
+      "banner": "https://raw.githubusercontent.com/icosa-foundation/open-brush/56acbce831c7e9f257bfee9e21853da99773787b/open-brush.png",
+      "screenshots": [
+        "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/1634870/ss_785ea37d63378146dfe0f0ffa3f1d5c155ca978f.1920x1080.jpg",
+        "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/1634870/ss_0a9c208e26a43cf34879c2ca361d4c8f18af8cba.1920x1080.jpg",
+        "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/1634870/ss_19b25b86ef55c0d8769a65135d60eaae8fa40553.1920x1080.jpg"
+      ]
+    },
+    "icon": "https://raw.githubusercontent.com/icosa-foundation/open-brush/56acbce831c7e9f257bfee9e21853da99773787b/Assets/Resources/DefaultImages/OpenBrushLogo.png"
+  },
+  {
+    "repo": "SgtBilko76/SuperTux-3D",
+    "name": "SuperTux 3D",
+    "summary": "Run and jump through Tux’s platform adventure on a layered 3D screen in VR.",
+    "license": "GPL-3.0",
+    "vr": true,
+    "asset_pattern": "*Quest*.apk",
+    "allow_prerelease": true,
+    "images": {
+      "icon": "https://raw.githubusercontent.com/SgtBilko76/SuperTux-3D/1955493ee6f1000e048c58db40d4904df827210e/data/images/engine/icons/supertux-256x256.png",
+      "banner": "https://www.supertux.org/images/0_7_0/github_preview.png",
+      "screenshots": [
+        "https://www.supertux.org/images/0_7_0/github_preview.png"
+      ]
+    },
+    "icon": "https://raw.githubusercontent.com/SgtBilko76/SuperTux-3D/1955493ee6f1000e048c58db40d4904df827210e/data/images/engine/icons/supertux-256x256.png"
+  }
+]
