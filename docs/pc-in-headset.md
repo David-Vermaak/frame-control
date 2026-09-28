@@ -41,7 +41,9 @@ API choices are **documented**, not device verification:
 
 Windows needs a WGC-capable Windows 10/11 desktop and an available hardware
 Media Foundation H.264 encoder. Elevated windows and the secure desktop
-cannot be driven by an ordinary Frame Control process. Minimized/closed
+cannot be driven by an ordinary Frame Control process. If Windows refuses
+to focus a selected window, input is refused rather than sent to the app
+covering it; bring the selected window forward, then Stop and Show again. Minimized/closed
 windows may stop producing frames. Protected content is not supported.
 
 On Linux, press **Choose a window or screen…** and approve the desktop's

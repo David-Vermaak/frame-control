@@ -217,6 +217,8 @@ class Windows:
         self.user.GetWindowTextW.argtypes = [W.HWND, W.LPWSTR, C.c_int]
         self.user.GetWindowRect.argtypes = [W.HWND, C.POINTER(W.RECT)]
         self.user.SetForegroundWindow.argtypes = [W.HWND]
+        self.user.GetForegroundWindow.argtypes = []
+        self.user.GetForegroundWindow.restype = W.HWND
         self.dwm.DwmGetWindowAttribute.argtypes = [W.HWND, W.DWORD, C.c_void_p, W.DWORD]
         self.callback = C.WINFUNCTYPE(W.BOOL, W.HWND, W.LPARAM)
         self.monitor_callback = C.WINFUNCTYPE(W.BOOL, W.HMONITOR, W.HDC, C.POINTER(W.RECT), W.LPARAM)
@@ -305,6 +307,16 @@ class WindowsInput:
         if error:
             raise error
 
+    def focus(self):
+        if not self.source['src'].startswith('window:'):
+            return
+        hwnd = int(self.source['src'].split(':')[1])
+        user = self.host.user
+        if user.GetForegroundWindow() != hwnd and not user.SetForegroundWindow(hwnd):
+            raise RuntimeError('Windows could not focus this window. Bring it to the front on your PC, then press Stop and Show again.')
+        if user.GetForegroundWindow() != hwnd:
+            raise RuntimeError('The selected window is not in front. Reopen the view after bringing it to the front on your PC.')
+
     def handle(self, m):
         t, u = m['t'], self.host.user
         if t == 'release':
@@ -314,8 +326,8 @@ class WindowsInput:
             if source['src'].startswith('window:'):
                 hwnd = int(source['src'].split(':')[1])
                 x, y, w, h = self.host.rect(hwnd)
-                if m.get('e') == 'down':
-                    u.SetForegroundWindow(hwnd)
+                if m.get('e') == 'down' or t == 'wheel':
+                    self.focus()
             else:
                 x, y, w, h = (source[k] for k in ('x', 'y', 'w', 'h'))
             x += max(0, min(1, float(m.get('x', 0)))) * (w - 1)
@@ -335,6 +347,8 @@ class WindowsInput:
                     self.host.send(mouse=(0, 0, delta & 0xffffffff, flag))
         elif t == 'k':
             code, down = str(m.get('code', '')), m.get('e') == 'down'
+            if down:
+                self.focus()
             special = {'Enter': 13, 'Escape': 27, 'Tab': 9, 'Backspace': 8, 'Space': 32,
                        'ArrowLeft': 37, 'ArrowUp': 38, 'ArrowRight': 39, 'ArrowDown': 40,
                        'Delete': 46, 'Home': 36, 'End': 35, 'PageUp': 33, 'PageDown': 34,
@@ -350,6 +364,7 @@ class WindowsInput:
             elif down and len(str(m.get('key', ''))) == 1:
                 self.handle({'t': 'text', 's': m['key']})
         elif t == 'text':
+            self.focus()
             raw = str(m.get('s', ''))[:4096].encode('utf-16-le')
             for i in range(0, len(raw), 2):
                 unit = int.from_bytes(raw[i:i+2], 'little')

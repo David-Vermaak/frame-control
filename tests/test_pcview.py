@@ -93,6 +93,16 @@ class AdapterTests(unittest.TestCase):
         self.assertIn(mock.call(mouse=(0, 0, 0, 0x10)), host.send.call_args_list)
         self.assertIn(mock.call(key=(162, 0, 2)), host.send.call_args_list)
 
+    def test_refused_windows_focus_never_clicks_the_covering_app(self):
+        host = mock.Mock()
+        host.rect.return_value = (0, 0, 800, 600)
+        host.user.GetForegroundWindow.return_value = 99
+        host.user.SetForegroundWindow.return_value = False
+        inp = capture.WindowsInput(host, dict(src='window:12', w=800, h=600))
+        with self.assertRaisesRegex(RuntimeError, 'could not focus'):
+            inp.handle(dict(t='m', e='down', b=0, x=.5, y=.5))
+        host.send.assert_not_called()
+
     def test_pc_reuses_launcher_and_namespaces_panel_ids(self):
         view = frame_pcview.PCView(['ssh'], mock.Mock(return_value='panel created'), 'frame')
         view.call = mock.Mock(side_effect=lambda path, **kw: {'screen': True, 'ticket': 'one-use', 'streams': []})
