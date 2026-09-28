@@ -70,6 +70,15 @@
   body.mobile .desk-only { display: none; }
 
 
+  .source-repo-form { display:grid; gap:10px; margin-top:14px; }
+  .source-repo-form input { display:block; width:100%; margin-top:5px; }
+  .source-offer { border-top:1px solid var(--line); padding-top:10px; margin-top:10px; }
+  #searchGrid .source-offer select { display:block; max-width:100%; width:100%; margin-top:5px; }
+  #searchFilters [aria-pressed=true], #sourceFilters [aria-pressed=true] { box-shadow:inset 0 0 0 1px var(--link); color:var(--link); }
+  #searchGrid h3, #searchGrid p { margin:4px 0; }
+  #searchGrid .row { margin-top:0; }
+  #searchGrid .source-offer { margin-top:auto; }
+  #sourceStatus { margin-bottom:10px; }
   /* ---- pages: one per tab; the header nav switches between them ---- */
   .page { display: flex; flex-direction: column; gap: 26px; }
   .page:not(.on) { display: none; }
@@ -121,7 +130,7 @@
   .seg { display: inline-flex; background: rgba(0,0,0,.3); border-radius: 3px; padding: 2px; }
   .seg button { background: transparent; height: 28px; font-size: 12.5px; letter-spacing: .6px; text-transform: uppercase; }
   .seg button.on { background: var(--btn-hi); color: var(--bright); }
-  input[type=text], input[type=password], textarea { width: 100%; background: rgba(0,0,0,.28); color: var(--text); border: 1px solid transparent;
+  input[type=text], input[type=search], input[type=url], input[type=password], textarea { width: 100%; background: rgba(0,0,0,.28); color: var(--text); border: 1px solid transparent;
                                border-radius: 3px; padding: 9px 11px; font: inherit; }
   textarea { resize: vertical; min-height: 76px; }
   input:focus, textarea:focus { outline: none; border-color: var(--blue); background: rgba(0,0,0,.4); }
@@ -282,8 +291,8 @@
   .and-btns { flex-basis: 100%; padding-left: 46px; }
   .and-icon { width: 36px; height: 36px; border-radius: 8px; flex: none; background: rgba(0,0,0,.25); object-fit: cover; }
   .cat-tools { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
-  .cat-tools input[type=text] { flex: 1 1 240px; width: auto; }
-  .cat-tools select { background: rgba(0,0,0,.28); color: var(--text); border: 1px solid transparent; border-radius: 3px;
+  .cat-tools input[type=text], .cat-tools input[type=search] { flex: 1 1 240px; width: auto; }
+  .cat-tools select, .source-offer select { background: rgba(0,0,0,.28); color: var(--text); border: 1px solid transparent; border-radius: 3px;
                       padding: 9px 10px; font: inherit; font-size: 13px; max-width: 220px; }
   .vchips { display: flex; gap: 6px; flex-wrap: wrap; margin: 10px 0 14px; }
   .vchip { height: 26px; font-size: 12px; padding: 0 10px; opacity: .55; }
@@ -357,7 +366,7 @@
     button { height: 38px; }
     button.small { height: 32px; }
     .actions button { height: 46px; }
-    .cat-tools select { max-width: none; flex: 1 1 100%; }
+    .cat-tools select, .source-offer select { max-width: none; flex: 1 1 100%; }
     /* The on-screen keyboard covers the bottom of the screen; the tab bar would ride on top of it. */
     body.typing nav { display: none; }
   }
@@ -575,7 +584,22 @@
       </div>
       </div>
       <div class="panel">
-        <div class="shelf-head"><h2>Find apps</h2><span class="count" id="catCount"></span></div>
+        <div class="shelf-head"><h2>Find apps</h2><span class="count" id="searchCount"></span></div>
+        <form id="sourceSearch" class="cat-tools"><input id="sourceQ" type="search" aria-label="Search every APK source" placeholder="Search every APK source…"><button class="small">Search</button></form>
+        <div class="vchips" id="searchFilters"><button class="chip" data-filter="vr" aria-pressed="false">VR</button><button class="chip" data-filter="flat" aria-pressed="false">Flat</button><button class="chip" data-filter="installable" aria-pressed="false">Installable</button></div>
+        <div class="vchips" id="sourceFilters"></div>
+        <div class="hint" id="sourceStatus" role="status" aria-live="polite"></div>
+        <div class="cat-grid" id="searchGrid"></div>
+        <details style="margin-top:20px" id="sourcesPanel"><summary>Sources</summary>
+          <div class="list" id="sourcesList"></div>
+          <form id="addSource" class="source-repo-form">
+            <label>Repository URL<input name="url" type="url" required placeholder="https://example.org/fdroid/repo"></label>
+            <label>Fingerprint (optional)<input name="fingerprint" type="text" autocomplete="off"></label>
+            <button class="small">Add repository</button>
+          </form><div class="hint" id="sourceError" role="status"></div>
+        </details>
+        <div class="hint">Installable means Android 11 and arm64 requirements match. It does not guarantee the app runs. Unknown facts stay unknown.</div>
+<div hidden>        <div class="shelf-head"><h2>Find apps</h2><span class="count" id="catCount"></span></div>
         <div class="cat-tools">
           <input type="text" id="catQ" placeholder="Search F-Droid apps rated for the Frame…">
           <select id="catCat" aria-label="Category"><option value="">All categories</option></select>
@@ -584,7 +608,7 @@
         <div class="cat-grid" id="catGrid"><div class="sub">Loading the catalogue…</div></div>
         <div class="row" style="margin-top:12px"><button class="small" id="catMore" hidden>Show more</button></div>
         <div class="hint">Verdicts come from checks of each APK against what Lepton supports (Android 11,
-          64-bit ARM, no clipboard or Play Services) and from reports made on a Frame. See docs/apks.md.</div>
+          64-bit ARM, no clipboard or Play Services) and from reports made on a Frame. See docs/apks.md.</div></div>
       </div>
     </div>
   </section>
@@ -1779,6 +1803,66 @@ document.body.addEventListener("click", async e => {
   if (action === "install" && res) loadOwned();
 });
 loadOwned();
+
+// ---- All APK sources ----
+const sourceState = { vr: null, installable: false, source: "", apps: [], request: 0 };
+function sourcePage(url) { try { const u = new URL(url); return ["https:", "http:"].includes(u.protocol) ? u.href : ""; } catch { return ""; } }
+async function loadSources() {
+  try {
+    const { sources } = await api("/api/sources");
+    $("sourceFilters").innerHTML = `<button class="chip" data-source="" aria-pressed="${!sourceState.source}">All sources</button>` + sources.filter(s => s.enabled).map(s => `<button class="chip" data-source="${esc(s.id)}" aria-pressed="${sourceState.source === s.id}">${esc(s.name)}</button>`).join("");
+    $("sourcesList").innerHTML = sources.map(s => `<div class="item"><label class="grow"><input type="checkbox" data-enable="${esc(s.id)}" ${s.enabled ? "checked" : ""}> ${esc(s.name)} <span class="sub">${esc(s.trust || "unknown")} · ${esc(s.status || "not searched")}</span></label>${s.builtin === false ? `<button class="small" data-remove="${esc(s.id)}">Remove</button>` : ""}</div>`).join("") || `<div class="sub">No source modules are available in this build.</div>`;
+  } catch (e) { $("sourceError").textContent = e.message; }
+}
+async function searchSources() {
+  const request = ++sourceState.request;
+  $("sourceStatus").textContent = "Searching enabled sources…";
+  const params = new URLSearchParams({ q: $("sourceQ").value, source: sourceState.source, installable: String(sourceState.installable) });
+  if (sourceState.vr !== null) params.set("vr", String(sourceState.vr));
+  try {
+    const result = await api("/api/search?" + params);
+    if (request !== sourceState.request) return;
+    sourceState.apps = result.apps;
+    $("searchCount").textContent = `${result.apps.length} apps`;
+    $("sourceStatus").textContent = result.sources.map(s => `${s.name}: ${s.status === "error" ? s.error : s.status}`).join(" · ") || "No enabled sources";
+    $("searchGrid").innerHTML = result.apps.map((a, i) => `<article class="cat-card"><h3>${esc(a.name || "Unnamed app")}</h3><div class="sub">${esc(a.package || "Package unknown")}</div><p>${esc(a.summary || "")}</p><div class="row">${[...new Set(a.offers.map(o => o.source_name))].map(n => `<span class="tag">${esc(n)}</span>`).join(" ")}</div><div class="source-offer"><label>Get from <select aria-label="Source for ${esc(a.name)}" data-offer="${i}">${a.offers.map((o, j) => `<option value="${j}">${esc(o.source_name)} · ${esc(o.version || "Version unknown")} · ${o.verified === true ? "Verified" : "Unverified"}</option>`).join("")}</select></label><div id="offerInfo${i}"></div></div></article>`).join("") || `<div class="sub">No matching apps. Try another search or enable more sources.</div>`;
+    result.apps.forEach((_, i) => renderOffer(i, 0));
+    await loadSources();
+  } catch (e) { if (request === sourceState.request) $("sourceStatus").textContent = e.message; }
+}
+function renderOffer(i, j) {
+  const o = sourceState.apps[i].offers[j], page = sourcePage(o.page), busy = installing.has(`${o.source}:${o.id}`);
+  $("offerInfo" + i).innerHTML = `<p class="sub">${esc(o.fit.verdict)} · API ${esc(o.min_sdk ?? "unknown")} · ${esc(o.abis == null ? "ABI unknown" : o.abis.join(", ") || "No native code")}<br>Version code ${esc(o.version_code ?? "unknown")} · ${o.size == null ? "Size unknown" : (o.size / 1048576).toFixed(1) + " MB"} · Updated ${esc(o.updated || "unknown")}</p><p class="hint">${o.fit.reasons.map(esc).join(" · ")}</p><div class="row">${o.downloadable && o.fit.installable !== false ? `<button class="small action" data-source-install="${i}" data-choice="${j}" ${busy ? "disabled" : ""}>${busy ? "Downloading and installing…" : "Install"}</button>` : ""}${page ? `<a href="${esc(page)}" target="_blank" rel="noopener noreferrer">Developer page</a>` : ""}</div>`;
+}
+$("sourceSearch").onsubmit = e => { e.preventDefault(); searchSources(); };
+$("searchFilters").onclick = e => {
+  const b = e.target.closest("[data-filter]"); if (!b) return;
+  if (b.dataset.filter === "installable") sourceState.installable = !sourceState.installable;
+  else { const value = b.dataset.filter === "vr"; sourceState.vr = sourceState.vr === value ? null : value; }
+  $("searchFilters").querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", b.dataset.filter === "installable" ? sourceState.installable : sourceState.vr === (b.dataset.filter === "vr")));
+  searchSources();
+};
+$("sourceFilters").onclick = e => { const b = e.target.closest("[data-source]"); if (b) { sourceState.source = b.dataset.source; searchSources(); } };
+$("searchGrid").onchange = e => { if (e.target.matches("[data-offer]")) renderOffer(+e.target.dataset.offer, +e.target.value); };
+$("searchGrid").onclick = async e => {
+  const b = e.target.closest("[data-source-install]"); if (!b) return;
+  const o = sourceState.apps[+b.dataset.sourceInstall].offers[+b.dataset.choice];
+  if (installing.has(`${o.source}:${o.id}`)) return;
+  b.disabled = true; b.textContent = "Downloading and installing…";
+  const result = await runJob(`Install ${o.name}`, `${o.source}:${o.id}`, () => api("/api/sources/install", {source: o.source, id: o.id, version_code: o.version_code ?? null}));
+  b.disabled = false; b.textContent = result ? "Installed" : "Retry install";
+  if (result) loadAndroid();
+  if (!b.isConnected) searchSources();
+};
+async function changeSource(body) {
+  $("sourceError").textContent = "Saving…";
+  try { const result = await api("/api/sources", body); $("sourceError").textContent = result.message; sourceState.source = ""; await loadSources(); await searchSources(); }
+  catch (e) { $("sourceError").textContent = e.message; await loadSources(); }
+}
+$("sourcesList").onchange = e => { if (e.target.matches("[data-enable]")) changeSource({action: "enable", source: e.target.dataset.enable, enabled: e.target.checked}); };
+$("sourcesList").onclick = e => { const b = e.target.closest("[data-remove]"); if (b) changeSource({action: "remove", source: b.dataset.remove}); };
+$("addSource").onsubmit = e => { e.preventDefault(); const data = new FormData(e.target); changeSource({action: "add", url: data.get("url"), fingerprint: data.get("fingerprint")}); };
+loadSources().then(searchSources);
 
 // ---- Android apps (own Lepton instance each) + catalogue ----
 const VLABEL = { works: "Works on Frame", likely: "Should work", maybe: "Might work", unlikely: "Probably crashes", no: "Won't work" };
