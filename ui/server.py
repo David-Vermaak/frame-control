@@ -1654,6 +1654,23 @@ class Handler(BaseHTTPRequestHandler):
                 shutil.rmtree(tmp, ignore_errors=True)
 
 
+_ONE_SERVER = None
+
+
+def one_server():
+    """Only one Frame Control server per user: two would each connect, reconnect and
+    edit the headsets on their own, and could move each other's installs to another
+    headset. Held until this process exits. (FRAME_CONTROL_DATA_DIR gives a second,
+    separate one, as the tests do.)"""
+    lock = frame_devices.file_lock(frame_host.data_dir("server.lock"), timeout=8)  # the app restarting its server
+    try:
+        lock.__enter__()
+    except OSError:
+        sys.exit("Frame Control is already running on this computer (the app, or a server started "
+                 "from a terminal). Quit it, then try again.")
+    return lock
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--port", type=int, default=int(os.environ.get("PORT", 47810)))
@@ -1663,8 +1680,9 @@ def main():
     args = ap.parse_args()
     httpd = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
     sweep_tmp()
-    global LINK
+    global LINK, _ONE_SERVER
     if not LOCAL:
+        _ONE_SERVER = one_server()
         LINK = frame_link.Link(frame_devices.Registry(), env_alias=FRAME if FRAME_FROM_ENV else None,
                                mux_base=MUX_BASE, control=CONTROL, apply=route, explain=unreachable)
         LINK.work_lock, LINK.work = _work_lock, lambda: _work[0]

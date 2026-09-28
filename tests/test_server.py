@@ -237,6 +237,29 @@ class ServerGuards(unittest.TestCase):
         self.assertEqual(self.post("/api/nope", {})[0], 404)
 
 
+class OneServer(unittest.TestCase):
+    """Two servers for one user would each connect and edit headsets on their own."""
+
+    def start(self, env):
+        proc = subprocess.Popen([sys.executable, str(ROOT / "ui" / "server.py"), "--port", "0"], env=env,
+                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        self.addCleanup(lambda: (proc.terminate(), proc.wait(10), proc.stdout.close()))
+        return proc
+
+    def test_a_second_server_is_refused_until_the_first_exits(self):
+        data = tempfile.mkdtemp(prefix="frame-one-server-")
+        env = {**os.environ, "FRAME_CONTROL_DATA_DIR": data, "FRAME_ALIAS": "frame-control-test.invalid"}
+        first = self.start(env)
+        self.assertIn("Frame Control on", first.stdout.readline())
+        second = subprocess.run([sys.executable, str(ROOT / "ui" / "server.py"), "--port", "0"], env=env,
+                                capture_output=True, text=True, timeout=60)
+        self.assertEqual(second.returncode, 1)
+        self.assertIn("already running", second.stderr)
+        first.terminate()
+        first.wait(10)
+        self.assertIn("Frame Control on", self.start(env).stdout.readline())
+
+
 @unittest.skipIf(os.name == "nt", "runs on the Frame (Linux); local-bin/ssh is a POSIX shell script")
 class LocalMode(unittest.TestCase):
     """FRAME_LOCAL=1, as the iPhone app starts the server on the Frame: its own key

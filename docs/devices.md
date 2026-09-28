@@ -125,6 +125,14 @@ the key it shows, as Set Up Connection does. After reinstalling SteamOS the
 headset has a new key; **Forget identity** on the Devices tab lets the next
 connection save the new one.
 
+## One server at a time
+
+Only one Frame Control server runs per user (a lock file, `server.lock`, in the app's
+data folder). Two would each connect, reconnect and edit the headsets on their own, and
+one could move the other's install to a different headset. A second one, say
+`scripts/frame-ui.sh` while the app is open, exits with "Frame Control is already
+running". `FRAME_CONTROL_DATA_DIR` gives a separate one, with its own headsets.
+
 ## API
 
 All under the usual `/api/` guards (loopback `Host`, `X-Frame-UI` header).
