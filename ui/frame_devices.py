@@ -461,6 +461,12 @@ class Registry:
                 data.setdefault("networks", {})
                 data.setdefault("active", None)
                 data["devices"] = [d for d in data["devices"] if self._sane(d)]
+                # The headset in use is this server's own choice: another server picking a
+                # different one mustn't move commands (an install, say) under it. The file's
+                # choice is only where a server starts.
+                mine = self.data.get("active")
+                if mine and any(d["id"] == mine for d in data["devices"]):
+                    data["active"] = mine
                 self.data = data
 
     @staticmethod

@@ -348,8 +348,21 @@ class Connecting(unittest.TestCase):
         self.assertEqual(s["phase"], "connected", s["error"])
         self.assertTrue(s["device"]["transient"])
         # Where ~/.ssh/config sends it, pinned down for the connection (ssh's own known_hosts).
-        self.assertEqual(self.routes[-1], ("frame-bare", ["-o", "HostName=localhost", "-o", f"Port={self.port}",
-                                                          "-o", "User=tester"]))
+        alias, opts = self.routes[-1]
+        self.assertEqual((alias, opts[2:]), ("frame-bare", ["-o", "HostName=localhost", "-o", f"Port={self.port}",
+                                                            "-o", "User=tester"]))
+        self.assertEqual(opts[:2], ["-o", "ControlPath=" + fl.frame_host.control_path(fl.Link.control_tag(s["device"]))])
+
+    def test_each_headset_has_its_own_shared_connection(self):
+        """ssh's %C hashes only address, user and port: two headsets at one address
+        (one moved) must still never share a ControlMaster."""
+        a, b = (dict(fl.Link.bare("x"), id=i, transient=False, user="steamos", port=22) for i in ("aaaa1111", "bbbb2222"))
+        pa, pb = (next(o for o in self.link.host_opts(d, "192.0.2.5") if o.startswith("ControlPath=")) for d in (a, b))
+        self.assertNotEqual(pa, pb)
+        self.assertIn("aaaa1111", pa)
+        long_alias = fl.Link.bare("x" * 64)
+        path = next(o for o in self.link.host_opts(long_alias, None) if o.startswith("ControlPath="))
+        self.assertLess(len(path) - len("ControlPath=") - len("%C") + 40 + 17, 104)  # fits a macOS socket path
 
     def test_a_bare_alias_keeps_its_pinned_route_for_reconnects_and_terminals(self):
         self.link.override = "frame-bare"

@@ -184,6 +184,17 @@ class SharedFile(Base):
         self.assertIn("100.101.1.2", hosts)
         self.assertIn("100.101.1.2", [a["host"] for a in other.get(d["id"])["addresses"]])  # and it sees it
 
+    def test_another_servers_choice_of_headset_doesnt_move_this_one(self):
+        self.reg.sync_from_config(seed=False)
+        other = fd.Registry(self.dir / "devices.json")
+        mine, theirs = self.reg.by_alias("frame")["id"], self.reg.by_alias("frame-2")["id"]
+        self.reg.set_active(mine)
+        other.set_active(theirs)
+        self.assertEqual(self.reg.active(), mine)  # after a refresh
+        self.reg.add_address(mine, "192.0.2.9")  # and after a change reloads the file
+        self.assertEqual(self.reg.active(), mine)
+        self.assertEqual(fd.Registry(self.dir / "devices.json").active(), mine)  # last to save: next start
+
 class ConfigRewrite(Base):
     def test_hostname_user_and_port_change_only_inside_the_block(self):
         cfg = self.ssh / "config"

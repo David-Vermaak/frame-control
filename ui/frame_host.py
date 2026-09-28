@@ -56,12 +56,15 @@ def cache_dir(*parts):
     return base.joinpath(*parts)
 
 
-def control_path():
+def control_path(tag="x"):
     """ssh ControlPath for the shared connection, or None where it isn't supported.
 
+    `tag` names the headset: ssh's %C hashes only the address, user and port, so two
+    headsets reached at the same address (one of them moved) would otherwise share a
+    connection, and one's commands would run on the other.
     /tmp, not $TMPDIR: macOS's per-user temp path overflows the unix socket path limit.
     """
-    return f"/tmp/frame-ui-{os.getuid()}-%C" if MUX else None
+    return f"/tmp/frame-ui-{os.getuid()}-{tag}-%C" if MUX else None
 
 
 def which(name, *extra):

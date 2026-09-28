@@ -66,7 +66,8 @@ if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", FRAME):
 # Reuse one SSH connection for the frequent status/screenshot calls, where ssh
 # supports it (not on Windows: there every command connects on its own).
 CONTROL = None if LOCAL else frame_host.control_path()
-MUX = ["ssh", "-o", "BatchMode=yes", *(["-o", f"ControlPath={CONTROL}"] if CONTROL else [])]
+# The ControlPath itself is per headset: the connector puts it in HOST_OPTS.
+MUX = ["ssh", "-o", "BatchMode=yes"]
 MUX_BASE = list(MUX)
 # Commands use the master when it's up and connect directly when it isn't.
 SSH_TAIL = [*(["-o", "ControlMaster=no"] if CONTROL else []), "-o", "ConnectTimeout=5"]

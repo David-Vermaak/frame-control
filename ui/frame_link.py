@@ -26,6 +26,7 @@ when the page asks.
 Python stdlib only. Runs on this computer, never on the Frame.
 """
 import copy
+import hashlib
 import ipaddress
 import queue
 import re
@@ -364,17 +365,27 @@ class Link:
         return {"id": f"alias-{alias}", "name": alias, "alias": alias, "user": None, "port": None,
                 "addresses": [], "transient": True, "identity_files": []}
 
+    @staticmethod
+    def control_tag(device):
+        """A short, path-safe name for the headset's ControlPath: its id, or for a bare
+        alias a hash of it (an alias can be too long for a socket path)."""
+        if device.get("transient"):
+            return "a" + hashlib.sha1(device["alias"].encode()).hexdigest()[:8]
+        return device["id"]
+
     def host_opts(self, device, host):
         """What every ssh command adds to reach DEVICE at HOST."""
         if device.get("none"):
             return ["-o", "HostName=no-headset.invalid"]  # fails at once, with ssh's own "can't resolve"
+        # Each headset its own shared connection (see frame_host.control_path).
+        mux = ["-o", f"ControlPath={frame_host.control_path(self.control_tag(device))}"] if self.control else []
         if device.get("transient"):
-            return list(device.get("frozen") or [])  # what ~/.ssh/config said when it was routed
+            return [*mux, *(device.get("frozen") or [])]  # what ~/.ssh/config said when it was routed
         if not host:  # a headset with no addresses: reach nothing, not whatever ~/.ssh/config says
             return ["-o", "HostName=no-address.invalid"]
         # StrictHostKeyChecking=yes: whatever ~/.ssh/config says for Host *, every command
         # checks the headset's pinned key (only the connector's first handshake may save one).
-        return ["-o", "StrictHostKeyChecking=yes", "-o", f"HostName={frame_devices.ssh_host(host)}",
+        return [*mux, "-o", "StrictHostKeyChecking=yes", "-o", f"HostName={frame_devices.ssh_host(host)}",
                 "-o", f"HostKeyAlias={frame_devices.host_key_alias(device['id'])}",
                 "-o", f"UserKnownHostsFile={frame_devices.known_hosts_opt(device['id'])}", "-o", "HashKnownHosts=no",
                 "-o", f"User={device['user']}", "-o", f"Port={device['port']}"]
