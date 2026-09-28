@@ -1,4 +1,5 @@
 """Private-data archives, run under podman unshare on the Frame. Stdlib only."""
+import contextlib
 import json
 import os
 from pathlib import Path, PurePosixPath
@@ -113,19 +114,31 @@ def restore(root, package, instance, input_stream):
                     apply_metadata(target, member)
             for target, member in reversed(directories):
                 apply_metadata(target, member)
-        previous = root / ('.' + package + '.before-restore-' + str(time.time_ns()))
-        source.rename(previous)
-        try:
-            (stage / 'data').rename(source)
-        except BaseException:
-            previous.rename(source)
-            raise
-        # Keep only the newest pre-restore copy of this package's data.
-        for old in root.glob('.' + package + '.before-restore-*'):
-            if old != previous and not old.is_symlink():
-                shutil.rmtree(str(old), ignore_errors=True)
+        with package_lock(root, package):  # another restore of this package must not delete our copy
+            previous = root / ('.' + package + '.before-restore-' + str(time.time_ns()))
+            source.rename(previous)
+            try:
+                (stage / 'data').rename(source)
+            except BaseException:
+                previous.rename(source)
+                raise
+            # Keep only the newest pre-restore copy of this package's data.
+            for old in root.glob('.' + package + '.before-restore-*'):
+                if old != previous and not old.is_symlink():
+                    shutil.rmtree(str(old), ignore_errors=True)
         result['previous'] = str(previous)
         return result
+
+
+@contextlib.contextmanager
+def package_lock(root, package):
+    import fcntl
+    fd = os.open(str(root / ('.' + package + '.restore.lock')), os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        yield
+    finally:
+        os.close(fd)  # releases the lock
 
 
 def apply_metadata(path, member):

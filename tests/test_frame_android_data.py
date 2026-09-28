@@ -140,6 +140,31 @@ class BackupTests(unittest.TestCase):
             self.assertFalse((source / 'lib').exists() or (source / 'lib').is_symlink())
             self.assertEqual((source / 'files/save-link').read_bytes(), b'save')
 
+    def test_concurrent_restores_of_a_package_are_serialised(self):
+        import fcntl, threading
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / PKG).mkdir()
+            (root / PKG / 'save').write_bytes(b'backup')
+            archive = io.BytesIO()
+            REMOTE['backup'](root, PKG, META['instance'], archive)
+            (root / PKG / 'save').write_bytes(b'current')
+            first = REMOTE['restore'](root, PKG, META['instance'], io.BytesIO(archive.getvalue()))['previous']
+            # Another client's restore is mid-swap: it holds the package lock.
+            fd = os.open(str(root / ('.' + PKG + '.restore.lock')), os.O_RDWR | os.O_CREAT, 0o600)
+            fcntl.flock(fd, fcntl.LOCK_EX)
+            results = []
+            second = threading.Thread(target=lambda: results.append(
+                REMOTE['restore'](root, PKG, META['instance'], io.BytesIO(archive.getvalue()))))
+            second.start()
+            second.join(.5)
+            self.assertTrue(second.is_alive())  # waiting, so it can't swap or delete the other's copy
+            self.assertEqual(sorted(root.glob('.' + PKG + '.before-restore-*')), [Path(first)])
+            os.close(fd)
+            second.join(5)
+            self.assertEqual(sorted(root.glob('.' + PKG + '.before-restore-*')), [Path(results[0]['previous'])])
+            self.assertEqual((root / PKG / 'save').read_bytes(), b'backup')
+
     def test_restore_keeps_only_latest_previous_copy(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
