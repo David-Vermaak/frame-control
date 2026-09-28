@@ -1545,6 +1545,7 @@ function showApkAlternatives(reason, result) {
     if (res) $("apkAltDlg").close(); else { b.disabled = false; b.textContent = "Install"; }
     await loadAndroid();
     if (cat.apps) { const y = window.scrollY; filterCatalog(); window.scrollTo(0, y); }
+    if (res && res.app) await offerTest(res.app);
   };
   if (!$("apkAltDlg").open) $("apkAltDlg").showModal();
 }

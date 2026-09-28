@@ -1595,13 +1595,18 @@ class Handler(BaseHTTPRequestHandler):
                 keep = True  # stage_title owns tmp now, and removes it on failure
                 return stage_title(str(dest), temp_dir=str(tmp))
             if mode == "apk":
+                # Checked here, before install(), to hand the page a blocker it can offer
+                # alternatives for; report these failures the way install() would have.
+                start = time.time()
                 try:
                     info = frame_android.apk_info(str(dest))
                 except frame_android.FrameError as e:
+                    frame_android._after_install(None, None, e, start)
                     raise Failure(str(e), 400)
                 try:
                     frame_android.check_installable(info)
                 except frame_android.FrameError as e:
+                    frame_android._after_install(info, None, e, start)
                     raise Failure(str(e), 400, {"package": info["package"], "version_code": info.get("version_code"), "blocker": str(e)})
                 ensure_master()
                 try:
