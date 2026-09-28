@@ -237,6 +237,7 @@ def runtimes(state):
     for directory in (HOME + '/.local', HOME + '/.local/share'):
         os.makedirs(directory, mode=0o755, exist_ok=True)
         chown(directory)
+        os.chmod(directory, 0o755)
     apps = fs.STEAM_ROOT + '/steamapps'
     for alias, installed in state['runtimes'].items():
         acf = f'{apps}/appmanifest_{fs.RUNTIME_APPIDS[alias]}.acf'
