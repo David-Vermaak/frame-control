@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """A stand-in for OpenSSH's ssh, for tests/test_link.py: prints what `ssh -v` prints at
 each step of a connection, and plays a ControlMaster. What each HostName does comes
-from $FAKESSH_HOSTS (JSON: host -> "ok", "wrong" (a different host key) or "denied");
+from $FAKESSH_HOSTS (JSON: host -> "ok", "wrong" (a different host key), "denied" or
+"slow" (hangs after connecting);
 every call is appended to $FAKESSH_LOG as a JSON line. POSIX only."""
 import json
 import os
@@ -49,6 +50,8 @@ if what is None:
     sys.exit(255)
 say(f"debug1: Connecting to {host} [127.0.0.1] port {opts.get('port', 22)}.")
 say("debug1: Connection established.")
+if what == "slow":
+    time.sleep(30)
 say(f"debug1: Authenticating to {host}:22 as '{opts.get('user', 'tester')}'")
 say("debug1: Server host key: ssh-ed25519 SHA256:fakefakefakefakefakefakefakefakefakefakefak")
 if what == "wrong":

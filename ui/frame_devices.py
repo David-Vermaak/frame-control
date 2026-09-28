@@ -33,6 +33,7 @@ import os
 import re
 import secrets
 import subprocess
+import tempfile
 import threading
 import time
 from pathlib import Path
@@ -178,34 +179,63 @@ def read_config(path=None):
         return ""
 
 
-def _write_config(path, text):
-    """Swap the file in whole (same as frame_connect.write_config), keeping it private."""
-    tmp = path.with_name("config.frame-control.tmp")
-    tmp.write_text(text, encoding="utf-8")
-    if not frame_host.WINDOWS:
-        tmp.chmod(0o600)
-    for attempt in range(20):  # Windows: a running ssh.exe can hold the file for a moment
-        try:
-            os.replace(tmp, path)
-            return
-        except PermissionError:
-            time.sleep(0.25)
-    tmp.unlink()
-    raise OSError(f"{path} stayed locked by another program")
+# One edit of ~/.ssh/config at a time from this app (the connector and the page can
+# both want one); _edit_config also notices another program writing in between.
+_config_lock = threading.Lock()
+
+
+def _write_config(path, text, expected):
+    """Swap the file in whole (as frame_connect.write_config does), keeping it private.
+    Returns False, writing nothing, if the file no longer holds `expected`."""
+    fd_, tmp = tempfile.mkstemp(prefix="config.frame-control.", dir=str(path.parent))
+    tmp = Path(tmp)
+    try:
+        with os.fdopen(fd_, "w", encoding="utf-8") as fh:
+            fh.write(text)
+        if not frame_host.WINDOWS:
+            tmp.chmod(0o600)
+        for attempt in range(20):  # Windows: a running ssh.exe can hold the file for a moment
+            if read_config(path) != expected:
+                return False
+            try:
+                os.replace(tmp, path)
+                return True
+            except PermissionError:
+                time.sleep(0.25)
+        raise OSError(f"{path} stayed locked by another program")
+    finally:
+        if tmp.exists():
+            tmp.unlink()
+
+
+def _edit_config(path, change):
+    """Apply change(lines) -> new lines or None to the file, retrying if another program
+    wrote it meanwhile. -> True if the file changed."""
+    with _config_lock:
+        for _ in range(5):
+            text = read_config(path)
+            new = change(text.splitlines())
+            if new is None:
+                return False
+            if _write_config(path, "\n".join(new) + "\n", text):
+                return True
+        raise OSError(f"{path} kept changing while Frame Control tried to update it")
 
 
 def rewrite_block(alias, path=None, hostname=None, user=None, port=None):
     """Change HostName, User or Port inside ALIAS's managed block, leaving the rest of the
     file alone. -> True if the file changed. Does nothing if there's no such block."""
-    path = Path(path or ssh_config())
-    text = read_config(path)
-    lines = text.splitlines()
+    return _edit_config(Path(path or ssh_config()),
+                        lambda lines: _rewritten(lines, alias, hostname, user, port))
+
+
+def _rewritten(lines, alias, hostname, user, port):
     begin, end = begin_mark(alias), end_mark(alias)
     if begin not in lines or end not in lines:
-        return False
+        return None
     i, j = lines.index(begin), lines.index(end)
     if j < i:
-        return False
+        return None
     block = lines[i:j]
     want = {"hostname": ssh_host(hostname) if hostname else None, "user": user,
             "port": str(port) if port else None}
@@ -224,23 +254,16 @@ def rewrite_block(alias, path=None, hostname=None, user=None, port=None):
         at = next((n + 1 for n, line in enumerate(out) if line.split(None, 1)[:1] == ["HostName"]), 2)
         out.insert(at, f"  Port {want['port']}")
     new = lines[:i] + out + lines[j:]
-    if new == lines:
-        return False
-    _write_config(path, "\n".join(new) + "\n")
-    return True
+    return None if new == lines else new
 
 
 def remove_block(alias, path=None):
-    path = Path(path or ssh_config())
-    lines = read_config(path).splitlines()
-    begin, end = begin_mark(alias), end_mark(alias)
-    if begin not in lines or end not in lines:
-        return False
-    i, j = lines.index(begin), lines.index(end)
-    if j < i:
-        return False
-    _write_config(path, "\n".join(lines[:i] + lines[j + 1:]) + "\n")
-    return True
+    def change(lines):
+        begin, end = begin_mark(alias), end_mark(alias)
+        if begin not in lines or end not in lines or lines.index(end) < lines.index(begin):
+            return None
+        return lines[:lines.index(begin)] + lines[lines.index(end) + 1:]
+    return _edit_config(Path(path or ssh_config()), change)
 
 
 # ---- pinned host keys -------------------------------------------------------------
@@ -252,10 +275,26 @@ def _pin_lines(path=None):
         return []
 
 
+def _keygen(*args):
+    try:
+        return subprocess.run(["ssh-keygen", *args], capture_output=True, stdin=subprocess.DEVNULL, text=True,
+                              timeout=10)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+
+
 def pinned(device_id, path=None):
+    """Whether a key is saved for the device. The app's own entries are plain text (it
+    passes HashKnownHosts=no), but ask ssh-keygen too in case one was hashed."""
     name = host_key_alias(device_id)
-    return any(line.split(None, 1)[0].split(",").count(name) for line in _pin_lines(path)
-               if line.strip() and not line.startswith("#"))
+    target = Path(path or known_hosts())
+    if any(line.split(None, 1)[0].split(",").count(name) for line in _pin_lines(target)
+           if line.strip() and not line.startswith("#")):
+        return True
+    if not target.is_file():
+        return False
+    r = _keygen("-F", name, "-f", str(target))
+    return bool(r and r.returncode == 0 and r.stdout.strip())
 
 
 def seed_pin(device_id, hosts, port=22, sources=None, path=None):
@@ -299,10 +338,16 @@ def forget_pin(device_id, path=None):
     name = host_key_alias(device_id)
     lines = _pin_lines(target)
     kept = [line for line in lines if not (line.strip() and name in line.split(None, 1)[0].split(","))]
-    if kept != lines:
+    removed = kept != lines
+    if removed:
         target.write_text("".join(line + "\n" for line in kept), encoding="utf-8")
-        return True
-    return False
+    if target.is_file() and pinned(device_id, target):  # a hashed entry: ssh-keygen finds it
+        r = _keygen("-R", name, "-f", str(target))
+        removed = removed or bool(r and r.returncode == 0)
+        old = target.with_name(target.name + ".old")  # ssh-keygen -R leaves a backup
+        if old.exists():
+            old.unlink()
+    return removed
 
 
 # ---- address order --------------------------------------------------------------------
@@ -607,6 +652,12 @@ class Registry:
                         d["addresses"].insert(0, dict(new_address(host), label="From Set Up Connection"))
                     if seed:
                         seed_pin(d["id"], [host], b["port"])
+                    changed = True
+                if d.get("config_login") != [user, b["port"]]:
+                    # Set Up Connection (or an edit) changed who to log in as, or the port.
+                    if d.get("config_login") is not None and [d["user"], d["port"]] != [user, b["port"]]:
+                        d["user"], d["port"] = user, b["port"] if 1 <= b["port"] <= 65535 else d["port"]
+                    d["config_login"] = [user, b["port"]]
                     changed = True
                 if d["identity_files"] != b["identity_files"] and b["identity_files"]:
                     d["identity_files"] = b["identity_files"][:8]

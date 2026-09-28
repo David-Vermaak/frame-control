@@ -227,6 +227,49 @@ class Connecting(unittest.TestCase):
         self.assertEqual(self.routes, [])
         self.assertTrue(all("ControlPath=none" in c for c in self.calls()))
 
+    def test_switching_to_a_headset_that_never_answers_stops_using_the_last_one(self):
+        self.device("localhost")
+        self.hosts({"localhost": "ok"})
+        self.link.connect(["start"])
+        other = self.reg.add_device("frame-other", port=self.port)
+        self.reg.add_address(other["id"], "nothing.invalid")
+        self.link.use(other["id"])
+        self.link.connect(["switch"])
+        self.assertEqual(self.link.snapshot()["phase"], "failed")
+        alias, opts = self.routes[-1]
+        self.assertEqual(alias, "frame-other")
+        self.assertIn("HostName=nothing.invalid", opts)
+        self.assertIn(f"HostKeyAlias=frame-control-{other['id']}", opts)
+
+    def test_no_switching_while_something_is_installing(self):
+        d = self.device("localhost")
+        other = self.reg.add_device("frame-other")
+        for body in ({"action": "use", "id": other["id"]}, {"action": "remove", "id": d["id"]},
+                     {"action": "update", "id": d["id"], "port": 2222}):
+            with self.assertRaises(fd.DeviceError, msg=body):
+                fl.devices_action(self.link, body, open_setup=None, busy=lambda: 1)
+        # Renaming, or changing another headset, is fine.
+        fl.devices_action(self.link, {"action": "update", "id": d["id"], "name": "Desk"}, None, busy=lambda: 1)
+        fl.devices_action(self.link, {"action": "update", "id": other["id"], "port": 2222}, None, busy=lambda: 1)
+        self.assertEqual(self.reg.get(d["id"])["name"], "Desk")
+
+    def test_stopping_mid_handshake_leaves_no_ssh_behind(self):
+        self.device("localhost")
+        self.hosts({"localhost": "slow"})
+        t = threading.Thread(target=self.link.connect, args=(["start"],), daemon=True)
+        t.start()
+        for _ in range(100):
+            if self.link.pending:
+                break
+            time.sleep(0.05)
+        proc = self.link.pending
+        self.assertIsNotNone(proc)
+        self.link.stop()
+        t.join(10)
+        self.assertFalse(t.is_alive())
+        self.assertIsNotNone(proc.poll())
+        self.assertIsNone(self.link.master)
+
     def test_devices_api_checks_everything(self):
         d = self.device("localhost")
         bad = [{"action": "address-add", "id": d["id"], "host": "-oProxyCommand=touch /tmp/x"},

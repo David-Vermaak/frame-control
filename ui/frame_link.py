@@ -152,6 +152,8 @@ class Link:
         self.last_attempt = 0
         self.config_mtime = None
         self.thread = None
+        self.pending = None             # an ssh handshake still running
+        self.routed = None              # the device id every ssh command points at
 
     # ---- publishing ----
     def publish(self, **fields):
@@ -218,6 +220,9 @@ class Link:
             self.stopped = True
             self.cond.notify_all()
         self.close_master()
+        if self.thread:
+            self.thread.join(5)  # an attempt in progress notices `stopped` and ends
+        self.close_master()
 
     def alive(self):
         if self.state["phase"] != "connected":
@@ -278,7 +283,7 @@ class Link:
             return []
         return ["-o", f"HostName={frame_devices.ssh_host(host)}",
                 "-o", f"HostKeyAlias={frame_devices.host_key_alias(device['id'])}",
-                "-o", f"UserKnownHostsFile={frame_devices.known_hosts_opt()}",
+                "-o", f"UserKnownHostsFile={frame_devices.known_hosts_opt()}", "-o", "HashKnownHosts=no",
                 "-o", f"User={device['user']}", "-o", f"Port={device['port']}"]
 
     def public_device(self, d):
@@ -333,8 +338,12 @@ class Link:
             mtime = None
         if mtime != self.config_mtime:
             self.config_mtime = mtime
+            before = self.active_device()
             if self.reg.sync_from_config():
                 self.devices_changed()
+                after = self.active_device()
+                if (before.get("user"), before.get("port")) != (after.get("user"), after.get("port")):
+                    self.kick("switch")  # Set Up Connection changed the active headset's login
 
     def refresh_network(self):
         net = frame_network.current_network(self.last_fp)
@@ -348,6 +357,13 @@ class Link:
         self.last_attempt = now()
         self.close_master()
         device = self.active_device()
+        if device["id"] != self.routed:
+            # Another headset: nothing may go on reaching the last one, even if this one
+            # never answers. Its first address (and its own pinned identity) until one does.
+            first = device["addresses"][0]["host"] if device["addresses"] else None
+            self.alias, self.opts = device["alias"], self.host_opts(device, first)
+            self.apply(self.alias, self.opts)
+            self.routed = device["id"]
         with self.cond:
             self.state.update(phase="connecting", reason=why, device=self.public_device(device), via=None,
                               error=None, retry_at=None, attempt=self.state["attempt"] + 1, started=now(),
@@ -541,6 +557,9 @@ class Link:
 
     def close_master(self):
         proc, self.master = self.master, None
+        pending, self.pending = self.pending, None
+        if pending and pending.poll() is None:
+            pending.kill()
         if self.control and self.alias:
             try:
                 subprocess.run([*self.mux_base, *self.opts, "-O", "exit", self.alias], capture_output=True,
@@ -587,6 +606,7 @@ class Link:
         except OSError as e:
             self.fail("ssh", f"Couldn't run ssh: {e}", str(e))
             return "stop"
+        self.pending = proc  # so stop() can end it mid-handshake
         lines = queue.Queue()
         collecting = [True]
 
@@ -603,6 +623,9 @@ class Link:
         mismatch = False
         while True:
             left = deadline - time.monotonic()
+            if self.stopped:
+                proc.kill()
+                return "stop"
             if left <= 0:
                 proc.kill()
                 self.fail(step, self.explain(f"Timed out talking to {alias}") or "The headset took too long to answer.",
@@ -659,6 +682,10 @@ class Link:
                 self.stage("login", "done", f"Logged in as {user}")
                 step = "connected"
         collecting[0] = False  # the master keeps printing mux debug lines: drop them
+        self.pending = None
+        if self.stopped:
+            proc.kill()
+            return "stop"
         for sid in ("ssh", "identity", "login"):
             with self.cond:
                 pending = any(s["id"] == sid and s["state"] != "done" for s in self.state["stages"])
@@ -761,13 +788,19 @@ def devices_view(link):
             "kinds": frame_devices.KIND_LABEL}
 
 
-def devices_action(link, body, open_setup):
-    """POST /api/devices {"action": ..., "id": device id, ...}. -> {"message", ...devices_view}."""
+def devices_action(link, body, open_setup, busy=lambda: 0):
+    """POST /api/devices {"action": ..., "id": device id, ...}. -> {"message", ...devices_view}.
+    busy() counts installs in progress: nothing may move them to another headset."""
     reg = link.reg
     action = body.get("action")
     did = body.get("id")
     active = link.active_device()
     is_active = did == active["id"]
+    moves = action == "use" or (is_active and (action == "remove" or (
+        action == "update" and (body.get("user") is not None or body.get("port") is not None))))
+    if moves and busy():
+        raise frame_devices.DeviceError(
+            f"Wait for what's running on {active['name']} to finish (see the activity bar), then try again")
     if action == "use":
         d = reg.get(did)
         link.use(did)

@@ -14,6 +14,7 @@ Env:   FRAME_ALIAS (default frame)
 """
 import argparse
 import base64
+import contextlib
 import http.client
 import json
 import os
@@ -77,19 +78,52 @@ HOST_OPTS = []
 frame_android.SSH_OPTS = SSH[1:]
 
 
+_route_lock = threading.Lock()
+
+
 def route(alias, host_opts):
     """Point every ssh, scp and rsync at `alias` with `host_opts` (frame_link calls this
     when it picks a headset and an address). The lists change in place, so code holding
     them follows; frame_titles reads frame_android.SSH_OPTS at call time."""
     global FRAME, HOST_OPTS
-    FRAME = frame_android.FRAME = alias
-    HOST_OPTS = list(host_opts)
-    MUX[:] = [*MUX_BASE, *HOST_OPTS]
-    SSH[:] = [*MUX, *SSH_TAIL]
-    frame_android.SSH_OPTS = SSH[1:]
+    with _route_lock:
+        FRAME = frame_android.FRAME = alias
+        HOST_OPTS = list(host_opts)
+        MUX[:] = [*MUX_BASE, *HOST_OPTS]
+        SSH[:] = [*MUX, *SSH_TAIL]
+        frame_android.SSH_OPTS = SSH[1:]
 
 
 LINK = None  # the connector (frame_link.Link); None on the Frame itself
+
+# Installs and other changes in progress. Switching headsets waits for them: they
+# read the ssh settings step by step, so a switch could send the rest (or a failed
+# install's clean-up) to the other headset.
+_work_lock = threading.Lock()
+_work = [0]
+
+
+@contextlib.contextmanager
+def working():
+    with _work_lock:
+        _work[0] += 1
+    try:
+        yield
+    finally:
+        with _work_lock:
+            _work[0] -= 1
+
+
+def busy_while(fn):
+    def run(*args, **kwargs):
+        with working():
+            return fn(*args, **kwargs)
+    return run
+
+
+def busy():
+    with _work_lock:
+        return _work[0]
 
 APPID = re.compile(r"^\d{1,10}$")
 FLATPAK_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*(\.[A-Za-z0-9_-]+){2,}$")
@@ -181,7 +215,8 @@ def start_job(label, work):
     def run():
         fields = {}
         try:
-            result = work()
+            with working():
+                result = work()
             fields = {"message": result.get("message") or f"{label}: done", "result": result}
         except (Failure, frame_android.FrameError) as e:
             fields = {"error": unreachable(str(e)) or str(e)}
@@ -656,6 +691,7 @@ def stage_title(path, temp_dir=None, name=None):
             "token": token, "plan": frame_titles.public(plan)}
 
 
+@busy_while
 def _run_title_install(token, entry, name, exe, runtime):
     def update(**fields):  # the page reads jobs from other threads; change them under the lock
         with _titles_lock:
@@ -1090,6 +1126,7 @@ def webinstall_start(body):
     return {"job": pid}
 
 
+@busy_while
 def _webinstall_run(plan, job):
     tmp = None
     try:
@@ -1244,7 +1281,7 @@ def devices_post(body):
     if not LINK:
         raise Failure("Headsets are managed from the computer app", 400)
     try:
-        return frame_link.devices_action(LINK, body, open_setup)
+        return frame_link.devices_action(LINK, body, open_setup, busy)
     except frame_devices.DeviceError as e:
         raise Failure(str(e), 400)
 
@@ -1431,7 +1468,8 @@ class Handler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         try:
             if path == "/api/upload":
-                self.send_json(self.upload())
+                with working():
+                    self.send_json(self.upload())
                 return
             handler = POST.get(path)
             if not handler:
@@ -1443,7 +1481,9 @@ class Handler(BaseHTTPRequestHandler):
             body = json.loads(self.rfile.read(length) or b"{}")
             if not isinstance(body, dict):
                 raise Failure("request body must be a JSON object", 400)
-            self.send_json(handler(body))
+            with (contextlib.nullcontext() if path == "/api/devices" else working()):
+                result = handler(body)
+            self.send_json(result)
         except Failure as e:
             self.send_error_json(str(e), e.status, e.apk)
         except (ValueError, TypeError) as e:

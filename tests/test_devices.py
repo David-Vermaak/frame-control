@@ -120,6 +120,13 @@ class Migration(Base):
         hosts = [a["host"] for a in self.reg.by_alias("frame")["addresses"]]
         self.assertEqual(hosts, ["192.168.1.237", "frame.tail1234.ts.net"])  # the new one first
 
+    def test_setup_changing_the_login_updates_the_headset(self):
+        self.reg.sync_from_config(seed=False)
+        (self.ssh / "config").write_text(CONFIG.replace("  User steamos\n", "  User deck\n  Port 2200\n", 1))
+        self.assertTrue(self.reg.sync_from_config(seed=False))
+        d = self.reg.by_alias("frame")
+        self.assertEqual((d["user"], d["port"]), ("deck", 2200))
+
     def test_removed_headset_stays_removed_until_setup_changes_it(self):
         self.reg.sync_from_config(seed=False)
         second = self.reg.by_alias("frame-2")
@@ -159,6 +166,21 @@ class ConfigRewrite(Base):
         if os.name != "nt":
             self.assertEqual(cfg.stat().st_mode & 0o777, 0o600)
 
+    def test_concurrent_edits_all_land(self):
+        import threading
+        def edit(alias, prefix):
+            for n in range(15):
+                fd.rewrite_block(alias, hostname=f"{prefix}.{n}")
+        threads = [threading.Thread(target=edit, args=("frame", "10.0.0")),
+                   threading.Thread(target=edit, args=("frame-2", "10.0.1"))]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        blocks = fd.parse_blocks((self.ssh / "config").read_text())
+        self.assertEqual([b["hostname"] for b in blocks], ["10.0.0.14", "10.0.1.14"])
+        self.assertEqual([p.name for p in self.ssh.iterdir() if "frame-control." in p.name], [])  # no temp files left
+
     def test_zone_is_escaped_and_read_back(self):
         fd.rewrite_block("frame", hostname="fe80::1%en0")
         self.assertIn("HostName fe80::1%%en0", (self.ssh / "config").read_text())
@@ -192,6 +214,15 @@ class Pins(Base):
         self.assertFalse(fd.seed_pin("d3", ["frame.local"]))  # port 22: not that entry
         self.assertTrue(fd.seed_pin("d3", ["frame.local"], port=2222))
         self.assertIn(f"frame-control-d3 {KEY}", fd.known_hosts().read_text())
+
+    def test_hashed_pins_are_found_and_forgotten(self):
+        fd.known_hosts().write_text(f"frame-control-d4 {KEY}\n")
+        subprocess.run(["ssh-keygen", "-H", "-f", str(fd.known_hosts())], capture_output=True, check=True)
+        self.assertNotIn("frame-control-d4", fd.known_hosts().read_text())
+        self.assertTrue(fd.pinned("d4"))
+        self.assertTrue(fd.forget_pin("d4"))
+        self.assertFalse(fd.pinned("d4"))
+        self.assertFalse(fd.known_hosts().with_name("frame-control_known_hosts.old").exists())
 
     def test_known_hosts_option_uses_the_override(self):
         self.assertEqual(fd.known_hosts_opt(), str(self.ssh / "frame-control_known_hosts"))
