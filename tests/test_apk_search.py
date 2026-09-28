@@ -51,6 +51,18 @@ class SearchTests(SettingsTest):
         self.assertEqual(len(search.group(ENTRIES, vr=False)), 1)
         self.assertEqual(len(search.group(ENTRIES, installable=True)), 1)
 
+    def test_unknown_vr_counts_as_flat(self):
+        entries = [dict(ENTRIES[3], id='a', name='Flat', vr=False), dict(ENTRIES[3], id='b', name='Unknown', vr=None),
+                   dict(ENTRIES[3], id='c', name='Headset', vr=True)]
+        self.assertEqual(sorted(a['name'] for a in search.group(entries, vr=False)), ['Flat', 'Unknown'])
+        self.assertEqual([a['name'] for a in search.group(entries, vr=True)], ['Headset'])
+
+    def test_browse_puts_unknown_fit_vr_first_and_blocked_last(self):
+        entries = [dict(source='s', id='flat', name='Flat', package='a.flat', vr=False, min_sdk=21, abis=[]),
+                   dict(source='s', id='vr', name='Headset', package='a.vr', vr=True),
+                   dict(source='s', id='bad', name='Blocked', package='a.bad', vr=True, min_sdk=34, abis=[])]
+        self.assertEqual([a['name'] for a in search.group(entries)], ['Headset', 'Flat', 'Blocked'])
+
     def test_fit_unknown_and_native_free_and_vr_hints(self):
         self.assertIsNone(search.fit({})['installable'])
         self.assertTrue(search.fit({'min_sdk': 23, 'abis': []})['installable'])

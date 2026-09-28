@@ -174,7 +174,7 @@ def group(entries, query='', vr=None, installable=False):
     groups = {}
     for entry in entries:
         entry = decorate(entry)
-        if vr is not None and entry.get('vr') is not vr:
+        if vr is not None and (entry.get('vr') is True) != vr:  # unknown counts as flat
             continue
         if installable and entry['fit']['installable'] is not True:
             continue
@@ -196,7 +196,8 @@ def group(entries, query='', vr=None, installable=False):
         return (o.get('vr') is not True, not art.get('banner'), not art.get('screenshots'),
                 ''.join(chr(0x10ffff - ord(c)) for c in str(o.get('updated') or '')))
     if not q:
-        result.sort(key=lambda a: (not any(o['fit']['installable'] is True for o in a['offers']),) + browse(a))
+        # Unknown fit stays in the VR-first order; only apps known not to install sink.
+        result.sort(key=lambda a: (all(o['fit']['installable'] is False for o in a['offers']),) + browse(a))
         return result
     result.sort(key=lambda a: (not any(normalise(o.get('name')) == q for o in a['offers']),
                                not any(o['fit']['installable'] is True for o in a['offers']),
