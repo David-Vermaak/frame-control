@@ -325,3 +325,11 @@ because gamescope scales Lepton's surface to fit the same panel. Also unverified
 whether the settings survive the app or its Lepton instance relaunching.
 Lepton Development rebuilds its Android data on exit, so there they probably
 don't.
+
+## Expansion files and save backups
+
+SideQuest-inspired CLI helpers install local OBB files into an already-running
+app instance and back up/restore a stopped instance's private app data. See
+[SideQuest features and limits](sidequest.md) for commands, archive scope and
+verification status. These paths have offline coverage; real Frame storage and
+permissions remain unverified. They do not change APK install or launch behavior.

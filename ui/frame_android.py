@@ -8,6 +8,7 @@ Lepton Development, which wipes its apps on exit. See docs/apks.md.
 
 Python stdlib only. CLI: python3 ui/frame_android.py
   install APK [--vr|--flat] [--no-xr-compat] | info APK | versions APK-or-PKG
+  install-obb PKG OBB [OBB ...] | backup-data PKG ARCHIVE | restore-data PKG ARCHIVE
   patch SRC DST [--add NAME=PATH ...] | list | launch PKG | stop PKG | remove PKG | probe PKG
 """
 import json, os, re, shlex, shutil, struct, subprocess, sys, threading, time, zlib
@@ -333,6 +334,21 @@ def patch(src, dst, add=None):
         raise FrameError(str(e)) from e
 
 
+def install_obb(pkg, paths):
+    import frame_android_data
+    return frame_android_data.install_obb(pkg, paths)
+
+
+def backup_data(pkg, destination):
+    import frame_android_data
+    return frame_android_data.backup_data(pkg, destination)
+
+
+def restore_data(pkg, archive):
+    import frame_android_data
+    return frame_android_data.restore_data(pkg, archive)
+
+
 def main():
     cmd, *args = sys.argv[1:] or ['help']
     try:
@@ -368,6 +384,14 @@ def main():
                 with open(path, 'rb') as f:
                     additions[entry] = f.read()
             r = patch(opts.src, opts.dst, additions)
+        elif cmd == 'install-obb':
+            if len(args) < 2:
+                raise FrameError('install-obb requires PACKAGE OBB [OBB ...]')
+            r = install_obb(args[0], args[1:])
+        elif cmd in ('backup-data', 'restore-data'):
+            if len(args) != 2:
+                raise FrameError(cmd + ' requires PACKAGE ARCHIVE.tar.gz')
+            r = (backup_data if cmd == 'backup-data' else restore_data)(*args)
         elif cmd == 'list':
             r = list_apps()
         elif cmd in ('launch', 'stop', 'probe'):
