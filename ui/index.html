@@ -2010,6 +2010,8 @@ async function searchSources(quiet) {
     if(loading.length)notes.push(`Still fetching ${loading.join(" and ")}; more results will appear in a moment.`);
     if(unavailable.length)notes.push(`${unavailable.join(" and ")} ${unavailable.length===1 ? "isn't" : "aren't"} responding right now. You can still explore the other sources.`);
     result.sources.filter(s=>s.status==='limited').forEach(s=>notes.push(`${s.error}.`));
+    const stale=result.sources.filter(s=>s.stale).map(s=>storeName(s.name));
+    if(stale.length)notes.push(`Showing saved listings from ${stale.join(" and ")} while ${stale.length===1 ? "it refreshes" : "they refresh"}.`);
     $("sourceStatus").innerHTML=notes.map(esc).join(" ")+(result.elsewhere||[]).map(x=>` <a href="${esc(x.url)}" target="_blank" rel="noopener">Browse ${esc(storeName(x.name))} ↗</a>`).join("");
     $("sourceStatus").hidden=!notes.length && !(result.elsewhere||[]).length;
     clearTimeout(sourceState.retry);

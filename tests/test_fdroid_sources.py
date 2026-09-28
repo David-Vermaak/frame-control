@@ -75,8 +75,9 @@ class Repositories(unittest.TestCase):
         self.v1 = False
         self.corrupt = None
         self.files = {}
-        _web._limited.clear()
-        self.addCleanup(_web._limited.clear)
+        for state in (_web._limited, fdroid._stale, fdroid._retry_at, fdroid._refreshing):
+            state.clear()
+            self.addCleanup(state.clear)
 
     def fetch(self, url, path, maximum):
         name = url.rsplit('/', 1)[-1]
@@ -346,6 +347,42 @@ class Repositories(unittest.TestCase):
                 fdroid.download(source, 'org.example.app', 1)
             self.assertEqual(opener.return_value.open.call_count, 1)
         self.fetch_mock = self.fetch_patch.start()
+
+    def expire(self, source):
+        cache = fdroid.frame_host.cache_dir('apk-sources', source['id'] + '.json')
+        old = cache.stat().st_mtime - fdroid.MAX_AGE - 1
+        fdroid.os.utime(str(cache), (old, old))
+
+    def test_expired_index_served_stale_while_refreshing(self):
+        source = self.add()
+        self.expire(source)
+        before = self.fetch_mock.call_count
+        release = __import__('threading').Event()
+        def slow(url, path, maximum):
+            release.wait(5)
+            self.fetch(url, path, maximum)
+        self.fetch_mock.side_effect = slow
+        self.assertEqual(len(fdroid.search(source, 'example')), 1)  # immediately, from the old index
+        self.assertTrue(fdroid.stale(source))
+        refresh = fdroid._refreshing[source['id']]
+        fdroid.search(source, 'example')
+        self.assertIs(fdroid._refreshing.get(source['id']), refresh)  # one refresh at a time
+        release.set()
+        refresh.join(5)
+        self.assertEqual(self.fetch_mock.call_count, before + 2)
+        self.assertFalse(fdroid.stale(source))
+
+    def test_failed_refresh_keeps_serving_stale_index(self):
+        source = self.add()
+        self.expire(source)
+        self.fetch_mock.side_effect = urllib.error.HTTPError(URL, 503, 'unavailable', None, None)
+        self.assertEqual(len(fdroid.search(source, 'example')), 1)
+        fdroid._refreshing[source['id']].join(5)
+        calls = self.fetch_mock.call_count
+        self.assertEqual(fdroid.details(source, 'org.example.app')['version_code'], 2)
+        self.assertTrue(fdroid.stale(source))
+        self.assertNotIn(source['id'], fdroid._refreshing)  # failed refresh waits before retrying
+        self.assertEqual(self.fetch_mock.call_count, calls)
 
     def test_cached_index_does_not_cross_pins(self):
         source = self.add()

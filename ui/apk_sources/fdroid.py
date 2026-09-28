@@ -27,6 +27,10 @@ KIND = 'fdroid'
 CACHE_VERSION = 2
 _LOCK = threading.RLock()  # settings only; never held while downloading
 _load_locks = {}
+_refreshing = {}  # source id -> background refresh thread
+_retry_at = {}  # source id -> time before which a failed refresh isn't retried
+_stale = set()  # source ids currently served from an expired index
+MAX_AGE = 86400
 # Published by the repository operators; a user repository without a pin uses TOFU.
 FDROID_PIN = '43238d512c1e5eb2d6569f4a3afbf5523418b82e0a3ed1552770abb9a9c9ccab'
 IZZY_PIN = '3bf0d6abfeae2f401707b6d966be743bf0eee49c2561b9ba39073711f628937a'
@@ -438,6 +442,40 @@ def _v1(content, path):
     return (index.get('repo') or {}).get('timestamp')
 
 
+def _cached(source, cache):
+    """(apps, pin, expired) from a cache matching this source, or None."""
+    try:
+        saved = json.loads(cache.read_text())
+        if (saved.get('version') == CACHE_VERSION and saved.get('fingerprint') == source.get('fingerprint')
+                and saved.get('url') == source['url']):
+            return saved['apps'], saved['fingerprint'], time.time() - cache.stat().st_mtime >= MAX_AGE
+    except (OSError, ValueError, KeyError, AttributeError):
+        pass
+    return None
+
+
+def stale(source):
+    """True while results come from an expired index that is being (or failed to be) refreshed."""
+    return source['id'] in _stale
+
+
+def _refresh_later(source):
+    with _LOCK:
+        if source['id'] in _refreshing or time.time() < _retry_at.get(source['id'], 0):
+            return
+        def run():
+            try:
+                _load(source, force=True)
+            except Exception:
+                with _LOCK:
+                    _retry_at[source['id']] = time.time() + 600
+            finally:
+                with _LOCK:
+                    _refreshing.pop(source['id'], None)
+        _refreshing[source['id']] = thread = threading.Thread(target=run, daemon=True)
+    thread.start()
+
+
 def _source_lock(source_id):
     with _LOCK:
         return _load_locks.setdefault(source_id, threading.Lock())
@@ -448,15 +486,16 @@ def _load(source, force=False):
         raise SourceError('invalid source id')
     _url(source['url'], source.get('fingerprint'))
     cache = frame_host.cache_dir('apk-sources', source['id'] + '.json')
+    found = None if force else _cached(source, cache)
+    if found:
+        if found[2]:  # expired: serve it now, marked stale, and refresh without blocking anyone
+            _stale.add(source['id'])
+            _refresh_later(source)
+        return found[:2]
     with _source_lock(source['id']):
-        if not force and cache.exists() and time.time() - cache.stat().st_mtime < 86400:
-            try:
-                saved = json.loads(cache.read_text())
-                if (saved.get('version') == CACHE_VERSION and saved.get('fingerprint') == source.get('fingerprint')
-                        and saved.get('url') == source['url']):
-                    return saved['apps'], saved['fingerprint']
-            except (OSError, ValueError, KeyError, AttributeError):
-                pass
+        found = None if force else _cached(source, cache)  # another caller may have just loaded it
+        if found and not found[2]:
+            return found[:2]
         cache.parent.mkdir(parents=True, exist_ok=True)
         try:
             with tempfile.TemporaryDirectory(dir=str(cache.parent)) as tmp:
@@ -486,6 +525,7 @@ def _load(source, force=False):
                 apps = _reduce(raw, source)
                 _write(cache, {'version': CACHE_VERSION, 'url': source['url'], 'fingerprint': pin, 'apps': apps})
                 _accept(source, timestamp, v2)
+                _stale.discard(source['id'])
                 return apps, pin
         except SourceLimited as e:
             raise _limited(source, e) from e

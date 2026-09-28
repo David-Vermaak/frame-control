@@ -87,9 +87,10 @@ class SearchTests(SettingsTest):
                 self.assertEqual(search.search('other', timeout=.03)['sources'][1]['status'], 'loading')
                 search.search('newest', timeout=.03)
                 self.assertEqual(calls, [''])
+                queued = search._pending['slow']
                 release.set()
-                result = search.search('newest', timeout=2)
-                self.assertEqual(result['sources'][1]['status'], 'ok')
+                self.assertTrue(queued['event'].wait(2))
+                self.assertEqual(queued['entries'], [])
                 self.assertEqual(calls, ['', 'newest'])  # 'other' was superseded, never run
         finally:
             release.set()
@@ -105,6 +106,13 @@ class SearchTests(SettingsTest):
         with patch.object(search, 'modules', return_value=([mod], [])):
             search.set_enabled('one', False)
         self.assertEqual(free, [True])
+
+    def test_stale_source_status(self):
+        mod = fake()
+        mod.stale = lambda source: True
+        with patch.object(search, 'modules', return_value=([mod], [])):
+            status = search.search(timeout=1)['sources'][0]
+        self.assertEqual((status['status'], status['stale']), ('ok', True))
 
     def test_limited_source_status(self):
         from apk_sources import SourceLimited

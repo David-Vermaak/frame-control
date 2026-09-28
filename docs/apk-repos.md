@@ -66,7 +66,9 @@ separate work. Built-in sources can be disabled but cannot be removed.
 Settings and pins live in `frame_host.data_dir('apk-repos.json')`
 (`~/Library/Application Support/Frame Control/apk-repos.json` on macOS).
 Authenticated reduced indexes and APKs live under
-`frame_host.cache_dir('apk-sources')`; indexes refresh after 24 hours.
+`frame_host.cache_dir('apk-sources')`; indexes refresh after 24 hours. An
+expired index is still served (marked stale in the store) while it refreshes in
+the background; a failed refresh is retried after 10 minutes.
 The existing catalogue's unverified index cache is never treated as authenticated.
 
 Rollback protection: each repository's newest accepted signed index timestamp

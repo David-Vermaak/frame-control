@@ -237,6 +237,7 @@ def _start(key, task):
         try:
             task['entries'] = [dict(e, source=key, source_name=source['name'], trust=source.get('trust'))
                                for e in module.search(source, query, limit=limit) if e.get('free') is True]
+            task['stale'] = bool(getattr(module, 'stale', lambda s: False)(source))
         except Exception as e:
             task['error'] = str(e)
             task['limited'] = isinstance(e, SourceLimited)
@@ -268,7 +269,7 @@ def search(query='', vr=None, source=None, installable=False, timeout=TIMEOUT, l
         elif 'error' in task:
             status.update(status='limited' if task.get('limited') else 'error', error=task['error'])
         else:
-            status.update(status='ok')
+            status.update(status='ok', stale=task['stale'])
             entries.extend(task['entries'])
         statuses.append(status)
         with _lock:
