@@ -56,12 +56,13 @@ def cache_dir(*parts):
     return base.joinpath(*parts)
 
 
-def control_path():
+def control_path(*, private=False):
     """ssh ControlPath for the shared connection, or None where it isn't supported.
 
     /tmp, not $TMPDIR: macOS's per-user temp path overflows the unix socket path limit.
     """
-    return f"/tmp/frame-ui-{os.getuid()}-%C" if MUX else None
+    suffix = f"-{os.getpid()}" if private else ""
+    return f"/tmp/frame-ui-{os.getuid()}{suffix}-%C" if MUX else None
 
 
 def which(name, *extra):

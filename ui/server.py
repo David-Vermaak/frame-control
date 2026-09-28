@@ -23,6 +23,7 @@ import shlex
 import shutil
 import signal
 import socket
+import socketserver
 import subprocess
 import sys
 import tempfile
@@ -36,6 +37,8 @@ from urllib.parse import parse_qs, unquote, urlparse
 # sys.path, so add it for the sibling modules below.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import frame_agent  # noqa: E402
+import frame_assistant  # noqa: E402
 import frame_android  # noqa: E402
 import frame_apk_versions  # noqa: E402
 import frame_catalog  # noqa: E402
@@ -62,7 +65,7 @@ if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", FRAME):
     sys.exit(f"FRAME_ALIAS must be a plain host alias, not {FRAME!r}")
 # Reuse one SSH connection for the frequent status/screenshot calls, where ssh
 # supports it (not on Windows: there every command connects on its own).
-CONTROL = None if LOCAL else frame_host.control_path()
+CONTROL = None if LOCAL else frame_host.control_path(private=os.environ.get("FRAME_PRIVATE_SSH") == "1")
 MUX = ["ssh", "-o", "BatchMode=yes", *(["-o", f"ControlPath={CONTROL}"] if CONTROL else [])]
 # Commands use the master when it's up and connect directly when it isn't.
 SSH = [*MUX, *(["-o", "ControlMaster=no"] if CONTROL else []), "-o", "ConnectTimeout=5"]
@@ -1299,7 +1302,20 @@ def report_send(body):
         raise Failure(str(e))
 
 
-POST = {"/api/android/display": android_display, "/api/android": android, "/api/titles": titles, "/api/launch": launch, "/api/steam": steam, "/api/volume": set_volume, "/api/clipboard": clipboard,
+def agent_call(body):
+    return frame_agent.call(sys.modules[__name__], body)
+
+
+def assistant_chat(body):
+    return frame_assistant.chat(body, headset_view)
+
+
+def agent_approval(body):
+    return frame_agent.approvals.decide(body.get("confirmation"), body.get("accept"))
+
+
+POST = {"/api/agent/call": agent_call, "/api/agent/approval": agent_approval,
+        "/api/assistant/chat": assistant_chat, "/api/android/display": android_display, "/api/android": android, "/api/titles": titles, "/api/launch": launch, "/api/steam": steam, "/api/volume": set_volume, "/api/clipboard": clipboard,
         "/api/flatpak": flatpak, "/api/open": open_thing, "/api/shots/save": save_shots,
         "/api/webinstall/check": webinstall_check, "/api/webinstall/start": webinstall_start,
         "/api/webinstall/cancel": webinstall_cancel,
@@ -1411,6 +1427,12 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if path in ("/", "/index.html"):
                 self.send_bytes((HERE / "index.html").read_bytes(), "text/html; charset=utf-8")
+            elif path == "/assistant":
+                page = (HERE / "assistant.html").read_text().replace("__FRAME_KEY__", json.dumps(UI_KEY).replace("<", "\\u003c"))
+                self.send_bytes(page.encode(), "text/html; charset=utf-8")
+            elif path == "/api/agent/approval":
+                token = (parse_qs(url.query).get("confirmation") or [""])[0]
+                self.send_json(frame_agent.approvals.inspect(token))
             elif path == "/api/host":
                 self.send_json({"os": "SteamOS", "fileManager": None, "computer": DEVICE, "mobile": True} if LOCAL else
                                {"os": frame_host.NAME, "fileManager": frame_host.FILE_MANAGER,
@@ -1436,6 +1458,8 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json({"apps": frame_catalog.catalog()})
             elif path == "/api/telemetry":
                 self.send_json(frame_telemetry.state())
+            elif path == "/api/computer/state":
+                self.send_json(json.loads(ssh("python3 -", stdin=(HERE / "frame_computer.py").read_text(), timeout=20)))
             elif path == "/api/status":
                 self.send_json(status({}))
             elif path == "/api/steam/owned":
@@ -1459,6 +1483,8 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json({"error": "not found"}, 404)
         except Failure as e:
             self.send_error_json(str(e), e.status, e.apk)
+        except ValueError as e:
+            self.send_json({"error": str(e)}, 400)
         except frame_android.FrameError as e:
             self.send_error_json(str(e), 502)
         except Exception as e:
@@ -1620,6 +1646,15 @@ class Handler(BaseHTTPRequestHandler):
                 shutil.rmtree(tmp, ignore_errors=True)
 
 
+class LoopbackServer(ThreadingHTTPServer):
+    def server_bind(self):
+        # HTTPServer.server_bind resolves socket.getfqdn(host), a reverse-DNS
+        # lookup that can stall for seconds (verified on GitHub's macOS runners).
+        # Loopback needs no hostname.
+        socketserver.TCPServer.server_bind(self)
+        self.server_name, self.server_port = "127.0.0.1", self.server_address[1]
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--port", type=int, default=int(os.environ.get("PORT", 47810)))
@@ -1627,7 +1662,7 @@ def main():
                     help="stop cleanly when stdin closes (the app closes it on quit; "
                          "Windows has no SIGTERM to catch)")
     args = ap.parse_args()
-    httpd = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
+    httpd = LoopbackServer(("127.0.0.1", args.port), Handler)
     sweep_tmp()
     frame_telemetry.start()
     if not frame_host.WINDOWS:
