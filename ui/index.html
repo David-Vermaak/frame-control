@@ -923,6 +923,8 @@ const savesToDevice = () => !!(window.frameApp && window.frameApp.saveImages);
 // Bumped when the app moves to another headset: answers to requests made before
 // then are about the old one, so they're dropped rather than shown.
 let devGen = 0;
+// Answers that don't depend on the headset (this computer's data, the catalogue, jobs).
+const HEADSET_FREE = /^\/api\/(devices|connection|host|job|titles\/job|webinstall\/job|apk-versions|android\/(catalog|reports)|steam\/search)\b/;
 async function api(path, body) {
   const gen = devGen;
   // Changes name the headset the page was showing, so the server refuses one meant
@@ -937,9 +939,9 @@ async function api(path, body) {
                                                          : "Frame Control's local server isn't running. Restart the app (Frame → Restart Server).");
   }
   const data = await r.json().catch(() => ({ error: `HTTP ${r.status}` }));
-  if (gen !== devGen && !path.startsWith("/api/devices") && !path.startsWith("/api/connection")) {
+  if (gen !== devGen && !HEADSET_FREE.test(path)) {
     const err = new Error("Switched headsets");
-    err.offline = true;  // panels show "Waiting for the Frame" and reload from the new one
+    err.offline = err.stale = true;  // failed() leaves the panel alone: the new headset's answer fills it
     throw err;
   }
   if (!r.ok) {
@@ -953,6 +955,7 @@ async function api(path, body) {
 // What a panel shows when its data couldn't be read: a quiet placeholder while
 // the Frame is unreachable (the banner explains), the real error otherwise.
 function failed(el, e) {
+  if (e.stale) return;  // about the previous headset: leave the panel to the new one
   el.innerHTML = e.offline ? `<div class="wait">Waiting for the Frame</div>` : `<div class="sub">${esc(e.message)}</div>`;
 }
 async function act(label, fn, btn) {
@@ -2553,6 +2556,11 @@ function onConnection(s) {
     // The lists behind those panels too, so filters can't bring the old ones back.
     gm.owned = null; gm.byId = new Map(); gm.results = []; gm.store = []; gm.storeQ = null; gm.shown = 0; gm.seq++;
     androidApps = []; shots.list = [];
+    titlesSeq++; disp.seq++;  // answers to loads already on their way are ignored
+    if (cat.apps) filterCatalog();  // "Installed" tags were the other headset's
+    // Confirmations still open were checked against the other headset.
+    ["titleDlg", "apkAltDlg", "pwDlg", "repDlg"].forEach(id => { if ($(id) && $(id).open) $(id).close(); });
+    if ($("wiDlg").open && !wi.job && !wi.starting) $("wiDlg").close();
     $("dispSel").innerHTML = "<option>Loading…</option>"; $("dispSel").disabled = true; $("dispCtl").hidden = true;
     link.reload = true;     // everything on the page was the other headset's
     $("battChip").hidden = true;
@@ -2839,7 +2847,8 @@ function askRemove(d) {
   $("rmDevTitle").textContent = `Remove ${d.name}?`;
   $("rmDevText").textContent = `Frame Control forgets this headset, its ${d.addresses.length} address${d.addresses.length === 1 ? "" : "es"} and its saved identity. Its SSH keys stay.`;
   $("rmDevConfigText").textContent = `Also remove the '${d.alias}' entry from ~/.ssh/config (Terminal's ssh ${d.alias} stops working)`;
-  $("rmDevConfig").checked = false; $("rmMsg").textContent = "";
+  // The only headset: its entry has to go too, or the app would go on using that alias.
+  $("rmDevConfig").checked = dv.list.filter(x => !x.transient).length === 1; $("rmMsg").textContent = "";
   $("rmDevConfig").parentElement.hidden = !d.managed;
   $("rmCancel").onclick = () => $("rmDevDlg").close();
   $("rmDevForm").onsubmit = async e => {

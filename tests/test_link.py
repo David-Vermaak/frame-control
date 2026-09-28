@@ -354,6 +354,11 @@ class Connecting(unittest.TestCase):
         for body in bad:
             with self.assertRaises(fd.DeviceError, msg=body):
                 fl.devices_action(self.link, body, open_setup=lambda *a: self.fail("setup ran"))
+        # The only headset, whose ssh alias would stay: not without removing that too.
+        (self.dir / "ssh" / "config").write_text("# >>> steam-frame (frame-t) >>>\nHost frame-t\n  HostName localhost\n"
+                                                "Host *\n# <<< steam-frame (frame-t) <<<\n")
+        with self.assertRaises(fd.DeviceError):
+            fl.devices_action(self.link, {"action": "remove", "id": d["id"]}, None)
         opened = []
         out = fl.devices_action(self.link, {"action": "setup", "alias": "frame-9", "host": "192.168.1.50"},
                                 open_setup=lambda alias, host: opened.append((alias, host)) or "a terminal")

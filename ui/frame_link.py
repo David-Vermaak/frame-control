@@ -904,6 +904,11 @@ def devices_action(link, body, open_setup, busy=lambda: 0):
             raise frame_devices.DeviceError(f"Saved, but couldn't update ~/.ssh/config: {e}")
         msg = f"Saved {d['name']}"
     elif action == "remove":
+        if not body.get("config") and len(reg.devices()) == 1 and reg.get(did)["alias"] in {
+                b["alias"] for b in frame_devices.parse_blocks(frame_devices.read_config())}:
+            # Its ssh alias would stay, and the app would go on using it as a bare alias.
+            raise frame_devices.DeviceError("This is your only headset. To remove it completely, also remove its "
+                                            "entry from ~/.ssh/config (the box below)")
         d = reg.remove_device(did)
         if is_active:
             link.override = None

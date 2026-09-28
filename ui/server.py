@@ -106,8 +106,13 @@ _work = [0]
 
 
 @contextlib.contextmanager
-def working():
+def working(meant=None):
+    """Counts as running work. `meant`: the headset the page made this change for; if the
+    app has switched away from it, refuse (checked together with counting, so a switch
+    can't slip in between)."""
     with _work_lock:
+        if LINK and meant and meant != LINK.active_device()["id"]:
+            raise Failure("Frame Control switched headsets; try again on this one", 409)
         _work[0] += 1
     try:
         yield
@@ -689,7 +694,8 @@ def stage_title(path, temp_dir=None, name=None):
         raise
     token = secrets.token_hex(12)
     with _titles_lock:
-        _staged[token] = {"plan": plan, "dir": temp_dir, "time": time.time()}
+        _staged[token] = {"plan": plan, "dir": temp_dir, "time": time.time(),
+                          "device": LINK.active_device()["id"] if LINK else None}
     return {"message": f"Read {plan['source']}: {plan['target']} with {plan['runtime_label']}",
             "token": token, "plan": frame_titles.public(plan)}
 
@@ -730,6 +736,9 @@ def titles(body):
         if action == "discard":
             _drop_staged(entry)
             return {"message": "Discarded"}
+        if LINK and entry.get("device") != LINK.active_device()["id"]:
+            _drop_staged(entry)  # it was checked against the other headset's titles
+            raise Failure("Frame Control switched headsets since this was read; drop the file again", 409)
         with _titles_lock:
             _title_jobs[token] = {"stage": "Starting", "fraction": 0, "done": False, "error": None,
                                   "message": None, "title": None, "time": time.time()}
@@ -1468,15 +1477,10 @@ class Handler(BaseHTTPRequestHandler):
         if not self.local_request():
             return
         path = urlparse(self.path).path
-        # A change the page made for a headset the app has since switched away from
-        # (its buttons were still showing): refuse it rather than do it to this one.
         meant = self.headers.get("X-Frame-Device")
-        if LINK and meant and path != "/api/devices" and meant != LINK.active_device()["id"]:
-            self.send_json({"error": "Frame Control switched headsets; try again on this one"}, 409)
-            return
         try:
             if path == "/api/upload":
-                with working():
+                with working(meant):
                     self.send_json(self.upload())
                 return
             handler = POST.get(path)
@@ -1489,7 +1493,7 @@ class Handler(BaseHTTPRequestHandler):
             body = json.loads(self.rfile.read(length) or b"{}")
             if not isinstance(body, dict):
                 raise Failure("request body must be a JSON object", 400)
-            with (contextlib.nullcontext() if path == "/api/devices" else working()):
+            with (contextlib.nullcontext() if path == "/api/devices" else working(meant)):
                 result = handler(body)
             self.send_json(result)
         except Failure as e:
