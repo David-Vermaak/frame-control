@@ -153,7 +153,7 @@ Steam accepts.
 
 `tests/test_media.py` covers layout evidence and overrides, OU eye ordering,
 hardware-decoder command construction, malformed splats, stereo parallax and
-fake-Frame library/process ownership. `tests/e2e/test_media.py` checks the real
+fake-Frame library/process ownership. `tests/e2e/test_media_transfer.py` checks the real
 HTTP/SSH upload and library listing without pretending the fake renders VR.
 Real decode timings and captured stereo output are recorded in
 [vr-video.md](vr-video.md). Generated media only; no external player required.

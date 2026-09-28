@@ -48,7 +48,7 @@ class Media(unittest.TestCase):
             self.assertIn(decoder, cmd)
             self.assertIn('-re', cmd)
             self.assertIn('pulse', cmd)
-            self.assertIn('/tmp/a file.mp4', cmd)
+            self.assertIn(str(Path('/tmp/a file.mp4')), cmd)
         with self.assertRaises(ValueError):
             player.decoder_command(Path('x.webm'), {'codec_name': 'vp9'}, 640, 480, False)
         cmd = player.decoder_command(Path('x.png'), {'codec_name': 'png'}, 640, 480, False, True)
