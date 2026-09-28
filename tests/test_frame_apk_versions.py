@@ -1,4 +1,5 @@
 """Offline version lookup with small index-v2 fixtures."""
+import sandbox  # noqa: F401  (first: keeps tests off real data and services)
 import io
 import json
 import os

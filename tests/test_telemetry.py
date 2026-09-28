@@ -3,6 +3,7 @@ what's scrubbed, and that nothing is sent without a key, the notice, or consent.
 
 Run: python3 -m unittest discover -s tests
 """
+import sandbox  # noqa: F401  (first: keeps tests off real data and services)
 import json
 import os
 import sys
