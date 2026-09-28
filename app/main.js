@@ -184,12 +184,20 @@ function serverDied(why) {
   if (win) win.loadURL(errorPage(`The server stopped unexpectedly (${why}). See ${LOG}.`));
 }
 
-async function restartServer() {
-  const old = server;
-  server = null;
-  url = null;
-  if (old) await endServer(old);
-  await load();
+// Restarts that overlap share one: two could each start a server, and the one
+// that lost the lock would leave the app pointing at nothing.
+let restarting = null;
+function restartServer() {
+  if (!restarting) {
+    restarting = (async () => {
+      const old = server;
+      server = null;
+      url = null;
+      if (old) await endServer(old);
+      await load();
+    })().finally(() => { restarting = null; });
+  }
+  return restarting;
 }
 
 // On macOS the page's sticky header becomes the title bar, clear of the traffic lights.
@@ -201,10 +209,11 @@ const CHROME_CSS = IS_MAC && `
 // Restart Server can start a new load while an older one is still waiting for
 // its server; only the newest load may touch the window.
 let loadGen = 0;
+let starting = null;  // loads that overlap share one server start
 async function load() {
   const gen = ++loadGen;
   try {
-    if (!url) await startServer();
+    if (!url) await (starting ||= startServer().finally(() => { starting = null; }));
     if (gen === loadGen && win) { await win.loadURL(url); firstRunCheck(); }
   } catch (e) {
     if (gen === loadGen && win) await win.loadURL(errorPage(e.message));
