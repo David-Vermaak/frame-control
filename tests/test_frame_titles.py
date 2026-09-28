@@ -347,13 +347,25 @@ class Zips(unittest.TestCase):
 class Names(unittest.TestCase):
     def test_title_id(self):
         self.assertEqual(frame_titles.title_id('Hollow Knight: Silksong!'), 'Hollow_Knight_Silksong')
-        self.assertEqual(frame_titles.title_id('steam'), 'steam-game')     # Valve's reserved sideload names
+        self.assertEqual(frame_titles.title_id('steam'), 'steam_game')     # Valve's reserved sideload names
         self.assertEqual(frame_titles.title_id('Devkit Steam'), 'Devkit_Steam')
-        self.assertEqual(frame_titles.title_id('devkit-steam'), 'devkit-steam-game')  # the trampoline file
-        self.assertEqual(frame_titles.title_id('--rm -rf /'), 'rm_-rf')
+        self.assertEqual(frame_titles.title_id('--rm -rf /'), 'rm_rf')
         self.assertEqual(len(frame_titles.title_id('x' * 200)), 64)
         with self.assertRaises(FrameError):
             frame_titles.title_id('!!!')
+
+    def test_title_id_is_one_steam_accepts(self):
+        # The Frame's Steam refused "fc-smoke-exe" ("missing/invalid arguments") and took
+        # "FCSmokeProbe" (2026-09-27): Valve's client allows ^[A-Za-z_][A-Za-z0-9_.]+$ only.
+        self.assertEqual(frame_titles.title_id('Half-Life 2'), 'Half_Life_2')
+        self.assertEqual(frame_titles.title_id('fc-smoke-exe'), 'fc_smoke_exe')
+        self.assertEqual(frame_titles.title_id('2048'), '_2048')
+        self.assertEqual(frame_titles.title_id('X'), 'X_game')
+        self.assertEqual(frame_titles.title_id('devkit-steam'), 'devkit_steam')
+        for name in ('Half-Life 2', '2048', 'X', 'steam', 'a' * 90, 'Ünïcödé game', '9' * 70):
+            gid = frame_titles.title_id(name)
+            self.assertRegex(gid, r'^[A-Za-z_][A-Za-z0-9_.]+$', name)
+            self.assertTrue(frame_titles.NEW_ID_RE.match(gid) and frame_titles.ID_RE.match(gid), gid)
 
     def test_display_name(self):
         self.assertEqual(frame_titles.display_name('MyGame-linux-arm64.zip'), 'MyGame')

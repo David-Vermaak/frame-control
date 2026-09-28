@@ -33,14 +33,19 @@ build 20260922.6101926, kernel 6.18, aarch64):
 - **10.** `install-apps.sh remmina --vnc-host <mac>.local` installed Remmina as
   a `--user` Flatpak over SSH and wrote the profile. The desktop's
   `XDG_DATA_DIRS` includes the user Flatpak exports, so it shows up in the menu.
-  The Frame can reach the Mac's Screen Sharing port (5900). The Remmina
-  connection itself hasn't been tried in the headset yet (part of 11).
+  The Frame can reach the Mac's Screen Sharing port (5900).
+- **11.** Answered 2026-09-27 (BUILD_ID 20260925.6191901, macOS 27.0): the
+  pre-seeded profile connects and shows the Mac in its own panel. It asks for
+  the Mac account login rather than the VNC password, needs scale-to-fit at
+  Retina resolutions, and doesn't show the Mac cursor without
+  `scripts/mac-cursor-ring.lua`. It's usable but noticeably laggy. See
+  [streaming.md](streaming.md).
 
 - **Panels.** An X11 window on gamescope's `:0` with its own `STEAM_GAME` id
   gets its own SteamVR overlay (`valve.steam.desktopgame.<id>`). Three were
   created side by side with `panel-on-frame.sh`. See [panels.md](panels.md).
 
-Still open: 4, 6, 7, 11 (in-headset connect), 12–15, 16 (off-LAN and after a reboot), 17–21.
+Still open: 4, 6, 7, 12–15, 16 (off-LAN and after a reboot), 17–21.
 
 ## Check on the headset (in order)
 
@@ -70,12 +75,10 @@ Still open: 4, 6, 7, 11 (in-headset connect), 12–15, 16 (off-LAN and after a r
    `ssh frame 'command -v wl-copy xclip rsync flatpak'`.
 10. **Can Flatpaks be installed `--user` over SSH, and do they appear in the
     headset's desktop?** Test with `./scripts/install-apps.sh remmina`.
-11. **Remmina → macOS Screen Sharing:** does it connect, and is it usable at
-    Retina resolutions? Is the pre-seeded profile path
-    (`~/.var/app/org.remmina.Remmina/data/remmina/`) the one Remmina
-    actually reads?
-12. **Moonlight Flatpak (aarch64) + Sunshine on macOS:** worth trying only if
-    VNC is too slow.
+11. ~~**Remmina → macOS Screen Sharing**~~: answered 2026-09-27; see above
+    and [streaming.md](streaming.md).
+12. **Moonlight Flatpak (aarch64) + Sunshine on macOS:** VNC works but is
+    noticeably laggy, so this is worth trying.
 13. **KDE Connect**: is it preinstalled or installable on the Frame, and does
     it pair with KDE Connect for macOS?
 14. **Bluetooth keyboard pairing** on the Frame, for the rare times you do need
@@ -86,8 +89,9 @@ Still open: 4, 6, 7, 11 (in-headset connect), 12–15, 16 (off-LAN and after a r
     runs as a lingering user service with no sudo; see [tailscale.md](tailscale.md).
     Still open: reaching the Frame from outside the home network, and the service
     starting after a reboot.
-17. **Floating panels in the headset** (see [panels.md](panels.md)): do the
-    panels from `panel-on-frame.sh` show up, take input, and offer **Float in
+17. **Floating panels in the headset** (see [panels.md](panels.md)): panels
+    from `panel-on-frame.sh` show up and take controller input (verified
+    2026-09-27 with `mac-screen`). Still open: do they offer **Float in
     World** / **Move** / **Size**? Do floating positions survive closing and
     reopening the app, or a reboot?
 18. **`LEPTON_NO_CLEANUP=1 %command%`** as Lepton Development's launch
@@ -103,12 +107,32 @@ Still open: 4, 6, 7, 11 (in-headset connect), 12–15, 16 (off-LAN and after a r
     the colour-coded test clips play in 3D (red left eye, cyan right) for both
     H.264 and H.265? Does the DLNA browser find a server on the Mac?
 
+## Verified 2026-09-27
+
+- **Recovery images exist** for the Frame at
+  `https://steamdeck-images.steamos.cloud/recovery/`; the root filesystem inside
+  is btrfs and runs, as a userland, on ARM64 Linux. See
+  [recovery-and-images.md](recovery-and-images.md).
+- **Frame Control's server runs on the Frame itself** (the iPhone app does
+  this), including headset capture, 31 fps live video and file uploads. See
+  [iphone.md](iphone.md).
+- **Password pairing and `sudo -S`** work against the recovery image's own
+  sshd and sudo (not yet against the headset, whose password we don't hold).
+
+## Still open (2026-09-27)
+
+- Does `podman exec <lepton container> /system/bin/sh -c 'wm size'` change an
+  instance's display the way `adb shell wm size` does?
+- Can the recovery image, or its kernel, boot in a VM at all?
+- Does a real sleep, restart or shut down from the iPhone app work (via
+  `sudo -S systemctl`)?
+- The Mac EDL flashing script in `~/Downloads/steam-frame-recovery/` hasn't
+  been run against a Frame.
+
 ## Unconfirmed claims made in these docs
 
 - `/home` and `/etc` persist across Frame OS updates. This is inferred from
   Steam Deck behaviour.
-- The whole Mac → Frame desktop path (VNC → Remmina). Each part is documented
-  separately, but the combination is untested.
 - Steam Remote Play with a Mac as host is broken. That's based on community
   reports, not tested with the Frame.
 - `connect.sh --harden`, `serve-bootstrap.sh` and

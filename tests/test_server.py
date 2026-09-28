@@ -185,9 +185,123 @@ class ServerGuards(unittest.TestCase):
         self.assertEqual(self.request("GET", "/api/webinstall/job?id=x", headers={"X-Frame-UI": "1"})[0], 404)
         self.assertEqual(self.post("/api/webinstall/cancel", {"job": "x"})[0], 404)
 
+    def test_unreachable_frame_is_one_clear_offline_error(self):
+        status, _, payload = self.request("GET", "/api/status", headers={"X-Frame-UI": "1"})
+        body = json.loads(payload)
+        self.assertEqual(status, 503, body)
+        self.assertTrue(body["offline"])
+        self.assertIn("Can't find the Frame", body["error"])
+        self.assertIn("frame-control-test.invalid", body["detail"])  # ssh's own words stay available
+
+    def test_flatpak_install_runs_as_a_job(self):
+        status, started = self.post("/api/flatpak", {"id": "org.example.App", "action": "install"})
+        self.assertEqual(status, 200, started)
+        for _ in range(200):
+            status, _, payload = self.request("GET", f"/api/job?id={started['job']}", headers={"X-Frame-UI": "1"})
+            job = json.loads(payload)
+            if job["done"]:
+                break
+            time.sleep(0.05)
+        self.assertEqual(status, 200)
+        self.assertTrue(job["done"])
+        self.assertIn("Can't find the Frame", job["error"])
+        self.assertEqual(self.request("GET", "/api/job?id=nope", headers={"X-Frame-UI": "1"})[0], 404)
+
+    def test_android_install_checks_the_package_before_starting(self):
+        status, body = self.post("/api/android", {"action": "install", "package": "org.example.not.in.catalogue"})
+        self.assertNotEqual(status, 200, body)
+        self.assertNotIn("job", body)
+
     def test_unknown_routes(self):
         self.assertEqual(self.request("GET", "/nope")[0], 404)
         self.assertEqual(self.post("/api/nope", {})[0], 404)
+
+
+@unittest.skipIf(os.name == "nt", "runs on the Frame (Linux); local-bin/ssh is a POSIX shell script")
+class LocalMode(unittest.TestCase):
+    """FRAME_LOCAL=1, as the iPhone app starts the server on the Frame: its own key
+    guards /api/, and ssh goes to ui/local-bin/ssh, which runs commands here."""
+
+    KEY = "0123456789abcdef0123456789abcdef"
+
+    @classmethod
+    def setUpClass(cls):
+        env = {**os.environ, "FRAME_LOCAL": "1", "FRAME_UI_KEY": cls.KEY, "FRAME_DEVICE": "iPhone",
+               "PYTHONDONTWRITEBYTECODE": "1"}
+        cls.log = tempfile.TemporaryFile()
+        cls.proc = subprocess.Popen([sys.executable, str(ROOT / "ui" / "server.py"), "--port", "0", "--exit-on-eof"],
+                                    env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=cls.log, text=True)
+        line = cls.proc.stdout.readline()
+        cls.port = int(line.split("127.0.0.1:")[1].split()[0])  # --port 0: the server prints the port it took
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.proc.stdin.close()  # --exit-on-eof: the phone disconnecting
+        cls.proc.wait(timeout=15)
+        cls.proc.stdout.close()
+        cls.log.close()
+
+    def request(self, method, path, body=None, key=KEY):
+        conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=20)
+        conn.request(method, path, body=json.dumps(body).encode() if body is not None else None,
+                     headers={"X-Frame-UI": key, "Content-Type": "application/json"})
+        r = conn.getresponse()
+        data = json.loads(r.read() or b"{}")
+        conn.close()
+        return r.status, data
+
+    def test_needs_the_session_key(self):
+        self.assertEqual(self.request("GET", "/api/host", key="1")[0], 403)
+        self.assertEqual(self.request("GET", "/api/host", key="")[0], 403)
+        status, host = self.request("GET", "/api/host")
+        self.assertEqual(status, 200)
+        self.assertEqual(host, {"os": "SteamOS", "fileManager": None, "computer": "iPhone", "mobile": True})
+
+    def test_commands_run_locally(self):
+        # frame_titles lists ~/devkit-game here; with nothing there, the list is empty rather than an ssh error.
+        status, body = self.request("GET", "/api/titles")
+        self.assertEqual(status, 200, body)
+        self.assertIsInstance(body["titles"], list)
+
+    def test_open_is_for_the_app_and_power_needs_a_password(self):
+        self.assertEqual(self.request("POST", "/api/open", {"what": "terminal"})[0], 400)
+        status, body = self.request("POST", "/api/open", {"what": "reboot"})
+        self.assertEqual(status, 400)
+        self.assertIn("password", body["error"])
+        self.assertEqual(self.request("POST", "/api/open", {"what": "reboot", "password": "a\nb"})[0], 400)
+
+
+class UnreachableMessages(unittest.TestCase):
+    """Only ssh's own connection failures are reworded; other errors keep their text."""
+
+    @classmethod
+    def setUpClass(cls):
+        sys.path.insert(0, str(ROOT / "ui"))
+        import server
+        cls.server = server
+
+    def test_ssh_connection_failures(self):
+        cases = {
+            "ssh: Could not resolve hostname frame: nodename nor servname provided": "Can't find",
+            "ssh: connect to host frame.local port 22: Operation timed out": "isn't answering",
+            "ssh: connect to host 192.168.1.9 port 22: Host is down": "isn't answering",
+            "ssh: connect to host 192.168.1.9 port 22: No route to host": "isn't answering",
+            "ssh: connect to host 192.168.1.9 port 22: Connection refused": "refused",
+            "steamos@192.168.1.9: Permission denied (publickey,password).": "SSH key",
+            "Host key verification failed.": "identity changed",
+            "kex_exchange_identification: read: Connection reset by peer": "dropped",
+            "Timed out talking to frame": "too long",
+        }
+        for raw, words in cases.items():
+            body, status = self.server.error_body(raw)
+            self.assertEqual(status, 503, raw)
+            self.assertIn(words, body["error"], raw)
+            self.assertTrue(body["offline"])
+
+    def test_other_errors_pass_through(self):
+        for raw in ("bad Flatpak app ID", "error: No remote refs found for 'org.example.App'",
+                    "cp: cannot open 'x': Permission denied", "timed out waiting for Steam"):
+            self.assertEqual(self.server.error_body(raw), ({"error": raw}, None), raw)
 
 
 class StatusProbe(unittest.TestCase):

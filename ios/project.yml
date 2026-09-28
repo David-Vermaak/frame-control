@@ -1,0 +1,79 @@
+name: FrameControl
+options:
+  bundleIdPrefix: com.saphid
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+packages:
+  Citadel:
+    url: https://github.com/orlandos-nl/Citadel.git
+    exactVersion: 0.12.1
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+targets:
+  FrameControl:
+    type: application
+    platform: iOS
+    sources:
+      - path: FrameControl
+    dependencies:
+      - package: Citadel
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.saphid.framecontrol
+        PRODUCT_NAME: Frame Control
+        TARGETED_DEVICE_FAMILY: "1,2"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_FILE: FrameControl/Info.plist
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
+    info:
+      path: FrameControl/Info.plist
+      properties:
+        CFBundleDisplayName: Frame Control
+        UILaunchScreen:
+          UIColorName: ""
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
+        UISupportedInterfaceOrientations~ipad: [UIInterfaceOrientationPortrait, UIInterfaceOrientationPortraitUpsideDown, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
+        UIUserInterfaceStyle: Dark
+        NSLocalNetworkUsageDescription: Frame Control finds your Steam Frame on your network and connects to it.
+        NSBonjourServices: [_steamos-devkit._tcp]
+        NSPhotoLibraryAddUsageDescription: Frame Control saves headset captures and screenshots to your photo library when you ask it to.
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+        LSApplicationQueriesSchemes: [ssh, sftp, steamlink, rdp]
+        CFBundleURLTypes:
+          - CFBundleURLName: com.saphid.framecontrol.install
+            CFBundleURLSchemes: [frame-control]
+    preBuildScripts:
+      - name: Pack the Frame bundle
+        # The server, headset helpers and catalogue, as the app copies them to the Frame.
+        script: |
+          mkdir -p "${DERIVED_FILE_DIR}"
+          python3 "${SRCROOT}/scripts/make_frame_bundle.py" "${DERIVED_FILE_DIR}/frame-bundle.tar.gz" > "${DERIVED_FILE_DIR}/frame-bundle.version"
+          mkdir -p "${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}"
+          cp "${DERIVED_FILE_DIR}/frame-bundle.tar.gz" "${DERIVED_FILE_DIR}/frame-bundle.version" "${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/"
+        basedOnDependencyAnalysis: false
+  FrameControlTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: FrameControlTests
+    dependencies:
+      - target: FrameControl
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Frame Control.app/Frame Control"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+schemes:
+  FrameControl:
+    build:
+      targets:
+        FrameControl: all
+        FrameControlTests: [test]
+    test:
+      targets: [FrameControlTests]
