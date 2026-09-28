@@ -25,7 +25,10 @@ as its transport too), so the desktop and phone share one code path. Android
 display settings use `podman exec` into each Lepton container instead of adb,
 which the Frame doesn't have.
 
-Nothing is left running on the Frame after the phone disconnects; the copied
+The app server stops after the phone disconnects. An explicitly started
+[comfort session](family-comfort.md) keeps its timer and headset reminders running
+until the session ends or is cancelled; phone notifications require the app to
+remain connected and running. The copied
 files stay in `~/.cache/frame-control` (delete it any time).
 
 ## Pairing
@@ -107,3 +110,11 @@ running), a real sleep/restart/shut down on the Frame, and a physical iPhone.
 Debug builds have Simulator test hooks (`FRAME_TEST_HOST`, `FRAME_TEST_PAGE`,
 `FRAME_TEST_JS`, and the tunnel URL in the app's Caches folder); release builds
 don't.
+
+## Family and comfort
+
+The shared Home card sets session limits, breaks and check-ins, and offers
+**Cast headset view**. **Enable / test notifications** requests iOS notification
+permission and sends a local test. These are local notifications, not APNs push;
+iOS background suspension can interrupt phone alerts. The headset timer still
+runs. See [the behavior and verification limits](family-comfort.md).

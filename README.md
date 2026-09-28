@@ -90,7 +90,11 @@ SSH, SFTP, Steam Link, remote desktop, volume, sleep, restart and shut down.
 </tr>
 </table>
 
-Nothing is installed on the Frame for any of this: the app uses what SteamOS
+The optional [Family and comfort](docs/family-comfort.md) card adds session
+limits, breaks, local alerts and one-click casting. A session copies a small
+Frame Control worker into your headset user account.
+
+For the other features, nothing is installed on the Frame: the app uses what SteamOS
 already ships (sideloading a game copies Valve's own devkit scripts to
 `~/devkit-utils`, as Valve's Devkit Client does). [How each feature works](docs/frame-control.md).
 

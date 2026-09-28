@@ -8,6 +8,7 @@
 const { contextBridge, ipcRenderer, webUtils } = require("electron");
 
 contextBridge.exposeInMainWorld("frameApp", {
+  notify: (message, request) => ipcRenderer.invoke("comfort:notify", message, request),
   readClipboard: () => ipcRenderer.invoke("clipboard:read"),
   setUpConnection: () => ipcRenderer.invoke("connection:setup"),
   pathForFile: (file) => { try { return webUtils.getPathForFile(file) || ""; } catch { return ""; } },

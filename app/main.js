@@ -1,7 +1,7 @@
 // Frame Control as a desktop app (macOS, Windows, Linux): starts ui/server.py on
 // a free loopback port and shows it in a native window. The server does all the
 // work over the `frame` SSH alias; this file only hosts it.
-const { app, BrowserWindow, Menu, clipboard, dialog, ipcMain, shell } = require("electron");
+const { app, BrowserWindow, Menu, Notification, clipboard, dialog, ipcMain, shell } = require("electron");
 const { execFile, spawn } = require("child_process");
 const { promisify } = require("util");
 const fs = require("fs");
@@ -245,6 +245,21 @@ function fromUi(e) {
 ipcMain.handle("clipboard:read", (e) => fromUi(e) ? clipboard.readText() : "");
 ipcMain.handle("connection:setup", (e) => { if (fromUi(e)) setUpConnection(); });
 
+ipcMain.handle("comfort:notify", (e, message) => {
+  if (!fromUi(e) || typeof message !== "string" || message.length > 500) throw new Error("Invalid notification");
+  if (!Notification.isSupported()) throw new Error("System notifications are unavailable");
+  return new Promise((resolve, reject) => {
+    const notification = new Notification({title: "Frame Control", body: message});
+    const timer = setTimeout(() => reject(new Error("Notification delivery was not confirmed. Check system notification settings.")), 5000);
+    notification.once("show", () => { clearTimeout(timer); resolve(true); });
+    notification.once("failed", (_event, error) => {
+      clearTimeout(timer);
+      reject(new Error("Notification delivery failed. Check system notification settings: " + error));
+    });
+    notification.show();
+  });
+});
+
 // frame-control://install links from websites (docs/web-install.md). They can
 // arrive before the window or server exists (macOS open-url on a cold launch),
 // so they wait here until the page asks for them. The page checks the link with
@@ -292,7 +307,7 @@ function createWindow() {
     title: "Frame Control", backgroundColor: BG, show: false,
     ...(IS_MAC ? { titleBarStyle: "hiddenInset", trafficLightPosition: { x: 18, y: 26 } }
                : { icon: path.join(__dirname, "build", "icon.png") }),
-    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true,
+    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, backgroundThrottling: false,
                       preload: path.join(__dirname, "preload.js") },
   });
   win.once("ready-to-show", () => win.show());

@@ -148,3 +148,12 @@ For example, on 2026-09-27 the smoke test found that Steam's `create-shortcut`
 refuses ids with a hyphen (`missing/invalid arguments`), which the fake had
 accepted. The fake now refuses them the same way, and Frame Control makes ids
 Steam accepts.
+
+## Family and comfort
+
+`tests/test_comfort.py` uses an injected clock, fake headset sensor readings and
+actions, plus a Node fake of Steam's Home API. It covers warnings before Home,
+late/suspended sessions, cancellation, failed actions, duplicate alerts, reboot
+invalidation, per-zone thermal trips and shared on-headset state. The server
+guards reject invalid session settings before SSH. See
+[real-device evidence and limits](family-comfort.md#verification).

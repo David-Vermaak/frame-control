@@ -318,7 +318,7 @@
   .disp .k2 { color: var(--muted); font-size: 11px; letter-spacing: 1px; text-transform: uppercase; margin: 12px 0 5px; }
   .disp .seg { flex-wrap: wrap; }
   .disp .seg button { padding: 0 10px; }
-  .disp input[type=number] { width: 72px; background: rgba(0,0,0,.28); color: var(--text); border: 1px solid transparent;
+  .disp input[type=number], #comfort input[type=number] { width: 72px; background: rgba(0,0,0,.28); color: var(--text); border: 1px solid transparent;
                              border-radius: 3px; height: 32px; padding: 0 8px; font: inherit; font-size: 13px; }
   /* Touch screens can't hover: keep the library's name and Play button showing. */
   @media (hover: none) { .capsule .over { opacity: 1; } .capsule:hover { transform: none; } }
@@ -470,6 +470,34 @@
       </div>
     </section>
   </div>
+
+  <section class="panel" id="comfort" style="margin:20px 0;padding:16px">
+    <div class="shelf-head"><h2>Family and comfort</h2><span class="spacer"></span>
+      <button class="action small" id="castBtn">Cast headset view</button>
+    </div>
+    <p class="hint">Share this screen with people in the room. Casting shows everything the wearer sees, including private content.</p>
+    <form id="comfortForm">
+      <div class="row" style="flex-wrap:wrap;gap:12px">
+        <label>Session limit (minutes) <input id="sessionMinutes" type="number" min="1" max="240" value="30" required style="width:75px"></label>
+        <label>Break every <input id="breakMinutes" type="number" min="0" max="120" value="20" required style="width:75px"> minutes</label>
+        <label>Check in after <input id="stillMinutes" type="number" min="0" max="240" value="30" required style="width:75px"> active minutes</label>
+      </div>
+      <div class="row" style="flex-wrap:wrap;margin:14px 0;gap:14px">
+        <label><input id="batteryAlert" type="checkbox" checked> Low battery</label>
+        <label><input id="heatAlert" type="checkbox" checked> Overheating</label>
+        <button class="action small" id="sessionStart" type="submit">Start session</button>
+        <button class="small" id="sessionCancel" type="button" disabled>Cancel session</button>
+        <button class="small" id="testNotification" type="button">Enable / test notifications</button>
+      </div>
+    </form>
+    <p id="comfortStatus" role="status">Checking session…</p>
+    <p class="hint">A one-minute warning, then Steam Home. Games stay running: save and pause first. Keep this app open and connected for notifications.</p>
+    <details class="hint"><summary>How sessions and alerts work</summary>
+      <p>This is a reminder, not a parental lock. The timer continues on the Frame if you disconnect; a headset restart cancels it. Cancel before changing settings. Set break/check-in to 0 to turn them off.</p>
+      <p>Alerts run during a session. iOS may suspend phone notifications in the background. Breaks and check-ins count SteamVR activity, not confirmed wear time.</p>
+    </details>
+    <div id="comfortEvents" class="hint" aria-live="polite"></div>
+  </section>
 
   <section id="shots">
     <div class="shelf-head"><h2>Screenshots</h2><span class="count" id="shotCount"></span><span class="spacer"></span>
@@ -896,6 +924,78 @@ function refresh() {
   })();
   return refreshing;
 }
+
+// The Frame owns the clock. Poll independently of status and the selected tab.
+let comfortBusy = false, comfortSeen = new Set(), comfortSession = null;
+async function localNotification(message, request = false) {
+  if (window.frameApp?.notify) return window.frameApp.notify(message, request);
+  if (!("Notification" in window)) throw new Error("This browser has no notifications; use the Frame Control app.");
+  const permission = request ? await Notification.requestPermission() : Notification.permission;
+  if (permission !== "granted") throw new Error("Notifications are off. Enable them in system settings.");
+  new Notification("Frame Control", {body: message});
+}
+function renderComfort(s) {
+  $("sessionStart").disabled = !!s.active;
+  for (const id of ["sessionMinutes", "breakMinutes", "stillMinutes", "batteryAlert", "heatAlert"])
+    $(id).disabled = !!s.active;
+  $("sessionCancel").disabled = !s.active;
+  if (s.id !== comfortSession) {
+    comfortSession = s.id;
+    comfortSeen.clear();
+    if (s.options) for (const [key, value] of Object.entries(s.options)) {
+      const el = $(key === "minutes" ? "sessionMinutes" : key);
+      if (el.type === "checkbox") el.checked = value; else el.value = value;
+    }
+  }
+  $("comfortStatus").textContent = s.error || (s.active
+    ? `${Math.ceil(s.remaining / 60)} min until Steam Home · ${s.activity == null ? "activity unknown" : s.activity === 3 ? "headset in standby" : "monitoring"}`
+    : "No session running.");
+  if (s.active && s.unavailable?.length)
+    $("comfortStatus").textContent += " · No readings: " + s.unavailable.join(", ");
+  for (const e of s.events || []) {
+    if (comfortSeen.has(e.id)) continue;
+    comfortSeen.add(e.id);
+    // Historical events remain visible but never produce a burst on reconnect.
+    if (s.time - e.time >= 0 && s.time - e.time < 30 && !["started", "cancelled"].includes(e.kind)) {
+      log(e.message); toast(e.message, e.kind === "error");
+      localNotification(e.message).catch(err => { $("comfortStatus").textContent += " · " + err.message; });
+    }
+  }
+  $("comfortEvents").textContent = (s.events || []).slice(-3).map(e => e.message).join(" · ");
+}
+async function pollComfort() {
+  if (!comfortBusy) {
+    comfortBusy = true;
+    try { renderComfort(await api("/api/comfort", {action: "status"})); }
+    catch (e) { $("comfortStatus").textContent = "Session status unavailable: " + e.message; }
+    finally { comfortBusy = false; }
+  }
+  setTimeout(pollComfort, 5000);
+}
+$("comfortForm").onsubmit = async e => {
+  e.preventDefault();
+  const result = await act("Start session", () => api("/api/comfort", {
+    action: "start", minutes: Number($("sessionMinutes").value), breakMinutes: Number($("breakMinutes").value),
+    stillMinutes: Number($("stillMinutes").value), batteryAlert: $("batteryAlert").checked, heatAlert: $("heatAlert").checked,
+  }), $("sessionStart"));
+  if (result) renderComfort(result);
+};
+$("sessionCancel").onclick = async () => {
+  const result = await act("Cancel session", () => api("/api/comfort", {action: "cancel"}), $("sessionCancel"));
+  if (result) renderComfort(result);
+};
+$("testNotification").onclick = () => act("Test notification", async () => {
+  await localNotification("Comfort notifications are enabled on this device.", true);
+  return {message: "Test notification sent. Check your device's notification settings if it didn't appear."};
+});
+$("castBtn").onclick = () => {
+  setView("headset");
+  if (!live) toggleLive(true);
+  $("viewer").scrollIntoView({behavior: "smooth", block: "center"});
+  // Fullscreen is a direct user gesture; iPhone falls back to its inline viewer.
+  $("viewer").requestFullscreen?.().catch(() => {});
+};
+pollComfort();
 
 // ---- battery ----
 function battery(b, power) {
