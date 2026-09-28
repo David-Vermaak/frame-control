@@ -284,10 +284,40 @@ def config_block(host, port=22, user=FRAME_USER):
             "  IdentitiesOnly yes", "  ServerAliveInterval 30", "Host *", END]
 
 
+class config_lock:
+    """The lock Frame Control takes to edit ~/.ssh/config (frame_devices.file_lock), so a
+    running app and this setup never write over each other's change."""
+
+    def __enter__(self):
+        self.fh = open(SSH_DIR / "config.frame-control.lock", "a+")
+        for _ in range(300):
+            try:
+                if os.name == "nt":
+                    import msvcrt
+                    self.fh.seek(0)
+                    msvcrt.locking(self.fh.fileno(), msvcrt.LK_NBLCK, 1)
+                else:
+                    import fcntl
+                    fcntl.lockf(self.fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                return self
+            except OSError:
+                time.sleep(0.1)
+        return self  # 30 s: go ahead rather than fail the setup
+
+    def __exit__(self, *exc):
+        self.fh.close()  # closing releases the lock
+        return False
+
+
 def write_config(host, port=22, user=FRAME_USER):
+    make_ssh_dir()
+    with config_lock():
+        _write_config(host, port, user)
+
+
+def _write_config(host, port, user):
     """Replace our managed block and put it first: ssh uses the first value it sees per
     option. The trailing "Host *" returns the rest of the file to global scope."""
-    make_ssh_dir()
     old = CONFIG.read_text(encoding="utf-8") if CONFIG.exists() else ""
     kept, skip = [], False
     for line in old.splitlines():
@@ -298,7 +328,7 @@ def write_config(host, port=22, user=FRAME_USER):
         elif not skip:
             kept.append(line)
     block = config_block(host, port, user)
-    tmp = CONFIG.with_name("config.frame-control.tmp")
+    tmp = CONFIG.with_name(f"config.frame-control.{os.getpid()}.tmp")
     tmp.write_text("\n".join(block + kept) + "\n", encoding="utf-8")
     if os.name != "nt":
         tmp.chmod(0o600)

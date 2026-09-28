@@ -27,6 +27,7 @@ different device answering at a remembered IP is caught.
 
 Python stdlib only.
 """
+import contextlib
 import copy
 import json
 import os
@@ -179,9 +180,48 @@ def read_config(path=None):
         return ""
 
 
-# One edit of ~/.ssh/config at a time from this app (the connector and the page can
-# both want one); _edit_config also notices another program writing in between.
+# One edit of ~/.ssh/config at a time: between this app's threads (_config_lock) and
+# with Set Up Connection (frame_connect.py and scripts/connect.sh take the same lock
+# file). _edit_config also notices any other program writing in between.
 _config_lock = threading.Lock()
+LOCK_NAME = "config.frame-control.lock"
+
+
+@contextlib.contextmanager
+def file_lock(path, timeout=30):
+    """An exclusive lock on `path` (created if need be) shared with other processes:
+    POSIX record locks (what zsh's `zsystem flock` takes), or msvcrt on Windows."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fh = open(path, "a+")
+    try:
+        deadline = time.monotonic() + timeout
+        while True:
+            try:
+                if frame_host.WINDOWS:
+                    import msvcrt
+                    fh.seek(0)
+                    msvcrt.locking(fh.fileno(), msvcrt.LK_NBLCK, 1)
+                else:
+                    import fcntl
+                    fcntl.lockf(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except OSError:
+                if time.monotonic() > deadline:
+                    raise OSError(f"{path} stayed locked (is Set Up Connection running?)")
+                time.sleep(0.1)
+        yield
+    finally:
+        try:
+            if frame_host.WINDOWS:
+                import msvcrt
+                fh.seek(0)
+                msvcrt.locking(fh.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                import fcntl
+                fcntl.lockf(fh, fcntl.LOCK_UN)
+        except OSError:
+            pass
+        fh.close()
 
 
 def _write_config(path, text, expected):
@@ -211,7 +251,7 @@ def _write_config(path, text, expected):
 def _edit_config(path, change):
     """Apply change(lines) -> new lines or None to the file, retrying if another program
     wrote it meanwhile. -> True if the file changed."""
-    with _config_lock:
+    with _config_lock, file_lock(path.with_name(LOCK_NAME)):
         for _ in range(5):
             text = read_config(path)
             new = change(text.splitlines())
@@ -283,6 +323,10 @@ def _keygen(*args):
         return None
 
 
+def _pin_lock(target):
+    return file_lock(target.with_name(target.name + ".lock"))
+
+
 def pinned(device_id, path=None):
     """Whether a key is saved for the device. The app's own entries are plain text (it
     passes HashKnownHosts=no), but ask ssh-keygen too in case one was hashed."""
@@ -322,11 +366,11 @@ def seed_pin(device_id, hosts, port=22, sources=None, path=None):
                     keys.append(f"{name} {f[1]} {f[2]}")
         if keys:
             target = Path(path or known_hosts())
-            target.parent.mkdir(parents=True, exist_ok=True)
-            with open(target, "a", encoding="utf-8") as fh:
-                fh.write("\n".join(dict.fromkeys(keys)) + "\n")
-            if not frame_host.WINDOWS:
-                target.chmod(0o600)
+            with _pin_lock(target):
+                with open(target, "a", encoding="utf-8") as fh:
+                    fh.write("\n".join(dict.fromkeys(keys)) + "\n")
+                if not frame_host.WINDOWS:
+                    target.chmod(0o600)
             return True
     return False
 
@@ -336,17 +380,30 @@ def forget_pin(device_id, path=None):
     trusts whatever key the headset shows, as a first connection does."""
     target = Path(path or known_hosts())
     name = host_key_alias(device_id)
-    lines = _pin_lines(target)
-    kept = [line for line in lines if not (line.strip() and name in line.split(None, 1)[0].split(","))]
-    removed = kept != lines
-    if removed:
-        target.write_text("".join(line + "\n" for line in kept), encoding="utf-8")
-    if target.is_file() and pinned(device_id, target):  # a hashed entry: ssh-keygen finds it
-        r = _keygen("-R", name, "-f", str(target))
-        removed = removed or bool(r and r.returncode == 0)
-        old = target.with_name(target.name + ".old")  # ssh-keygen -R leaves a backup
-        if old.exists():
-            old.unlink()
+    with _pin_lock(target):
+        # ssh itself may append a first-seen key meanwhile (accept-new): swap the file
+        # only if it still holds what was read, else read it again.
+        removed = False
+        for _ in range(5):
+            text = "\n".join(_pin_lines(target))
+            lines = text.splitlines()
+            kept = [line for line in lines if not (line.strip() and name in line.split(None, 1)[0].split(","))]
+            if kept == lines:
+                break
+            fd_, tmp = tempfile.mkstemp(prefix=target.name + ".", dir=str(target.parent))
+            with os.fdopen(fd_, "w", encoding="utf-8") as fh:
+                fh.write("".join(line + "\n" for line in kept))
+            if "\n".join(_pin_lines(target)) == text:
+                os.replace(tmp, target)
+                removed = True
+                break
+            os.unlink(tmp)
+        if target.is_file() and pinned(device_id, target):  # a hashed entry: ssh-keygen finds it
+            r = _keygen("-R", name, "-f", str(target))
+            removed = removed or bool(r and r.returncode == 0)
+            old = target.with_name(target.name + ".old")  # ssh-keygen -R leaves a backup
+            if old.exists():
+                old.unlink()
     return removed
 
 

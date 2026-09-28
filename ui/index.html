@@ -920,7 +920,11 @@ async function saveToDevice(items) {
 }
 const savesToDevice = () => !!(window.frameApp && window.frameApp.saveImages);
 
+// Bumped when the app moves to another headset: answers to requests made before
+// then are about the old one, so they're dropped rather than shown.
+let devGen = 0;
 async function api(path, body) {
+  const gen = devGen;
   const opts = body === undefined ? { headers: {"X-Frame-UI": UI_KEY} } : {
     method: "POST", headers: {"Content-Type": "application/json", "X-Frame-UI": UI_KEY}, body: JSON.stringify(body) };
   let r;
@@ -930,6 +934,11 @@ async function api(path, body) {
                                                          : "Frame Control's local server isn't running. Restart the app (Frame → Restart Server).");
   }
   const data = await r.json().catch(() => ({ error: `HTTP ${r.status}` }));
+  if (gen !== devGen && !path.startsWith("/api/devices") && !path.startsWith("/api/connection")) {
+    const err = new Error("Switched headsets");
+    err.offline = true;  // panels show "Waiting for the Frame" and reload from the new one
+    throw err;
+  }
   if (!r.ok) {
     const err = new Error(data.error || `HTTP ${r.status}`);
     err.offline = !!data.offline;
@@ -2522,7 +2531,9 @@ function onConnection(s) {
     log(`Now using ${s.device.name}`, "ok");
     state = null;
     online = null;
-    link.reload = true;  // everything on the page was the other headset's
+    devGen++;               // answers still on their way are about the other headset
+    refreshing = null;      // and the next status check must be a new one
+    link.reload = true;     // everything on the page was the other headset's
     $("battChip").hidden = true;
   }
   if (s.phase !== link.phase || devId !== link.device) {
@@ -2616,6 +2627,7 @@ $("devSel").onchange = e => useDevice(e.target.value);
 async function useDevice(id) {
   const d = dv.list.find(x => x.id === id);
   if (!d || d.active) return;
+  devGen++;  // from here on, answers about the last headset are dropped
   await act(`Switch to ${d.name}`, () => api("/api/devices", { action: "use", id }));
 }
 async function devAction(label, body, btn) {

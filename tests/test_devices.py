@@ -179,7 +179,7 @@ class ConfigRewrite(Base):
             t.join()
         blocks = fd.parse_blocks((self.ssh / "config").read_text())
         self.assertEqual([b["hostname"] for b in blocks], ["10.0.0.14", "10.0.1.14"])
-        self.assertEqual([p.name for p in self.ssh.iterdir() if "frame-control." in p.name], [])  # no temp files left
+        self.assertEqual([p.name for p in self.ssh.iterdir() if "frame-control." in p.name and not p.name.endswith(".lock")], [])  # no temp files left
 
     def test_zone_is_escaped_and_read_back(self):
         fd.rewrite_block("frame", hostname="fe80::1%en0")

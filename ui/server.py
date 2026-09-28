@@ -114,16 +114,18 @@ def working():
             _work[0] -= 1
 
 
-def busy_while(fn):
-    def run(*args, **kwargs):
-        with working():
-            return fn(*args, **kwargs)
-    return run
-
-
-def busy():
+def busy_thread(fn, *args):
+    """A thread that counts as work from before it starts until it ends."""
     with _work_lock:
-        return _work[0]
+        _work[0] += 1
+
+    def run():
+        try:
+            fn(*args)
+        finally:
+            with _work_lock:
+                _work[0] -= 1
+    return threading.Thread(target=run, daemon=True)
 
 APPID = re.compile(r"^\d{1,10}$")
 FLATPAK_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*(\.[A-Za-z0-9_-]+){2,}$")
@@ -215,8 +217,7 @@ def start_job(label, work):
     def run():
         fields = {}
         try:
-            with working():
-                result = work()
+            result = work()
             fields = {"message": result.get("message") or f"{label}: done", "result": result}
         except (Failure, frame_android.FrameError) as e:
             fields = {"error": unreachable(str(e)) or str(e)}
@@ -226,7 +227,7 @@ def start_job(label, work):
             with _jobs_lock:
                 _jobs[job].update(fields, done=True, time=time.time())
 
-    threading.Thread(target=run, daemon=True).start()
+    busy_thread(run).start()
     return {"message": f"{label}…", "job": job}
 
 
@@ -691,7 +692,6 @@ def stage_title(path, temp_dir=None, name=None):
             "token": token, "plan": frame_titles.public(plan)}
 
 
-@busy_while
 def _run_title_install(token, entry, name, exe, runtime):
     def update(**fields):  # the page reads jobs from other threads; change them under the lock
         with _titles_lock:
@@ -733,8 +733,7 @@ def titles(body):
                                   "message": None, "title": None, "time": time.time()}
         ensure_master()
         opt = lambda k: str(body.get(k) or "") or None  # noqa: E731
-        threading.Thread(target=_run_title_install, daemon=True,
-                         args=(token, entry, opt("name"), opt("exe"), opt("runtime"))).start()
+        busy_thread(_run_title_install, token, entry, opt("name"), opt("exe"), opt("runtime")).start()
         return {"message": f"Installing {entry['plan']['source']}", "job": token}
     if action not in ("launch", "remove"):
         raise Failure("unknown action", 400)
@@ -1120,13 +1119,12 @@ def webinstall_start(body):
         _web_jobs.clear()
         _web_jobs[pid] = job
         # Started under the lock, so shutdown never sees a thread it can't join.
-        worker = threading.Thread(target=_webinstall_run, args=(plan, job), daemon=True)
+        worker = busy_thread(_webinstall_run, plan, job)
         _web_workers.add(worker)
         worker.start()
     return {"job": pid}
 
 
-@busy_while
 def _webinstall_run(plan, job):
     tmp = None
     try:
@@ -1281,7 +1279,9 @@ def devices_post(body):
     if not LINK:
         raise Failure("Headsets are managed from the computer app", 400)
     try:
-        return frame_link.devices_action(LINK, body, open_setup, busy)
+        # Under the work lock: nothing can start on the old headset while it switches.
+        with _work_lock:
+            return frame_link.devices_action(LINK, body, open_setup, lambda: _work[0])
     except frame_devices.DeviceError as e:
         raise Failure(str(e), 400)
 

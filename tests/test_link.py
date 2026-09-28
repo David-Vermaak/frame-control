@@ -208,12 +208,30 @@ class Connecting(unittest.TestCase):
     def test_a_bare_alias_lets_ssh_config_decide(self):
         self.link.override = "frame-bare"
         self.hosts({"frame-bare": "ok"})  # the stand-in ssh has no config: the alias is the host
-        with mock.patch.object(fl, "ssh_g", return_value=("localhost", self.port, "tester")):
+        with mock.patch.object(fl, "ssh_g", return_value=("localhost", self.port, "tester", False)):
             self.link.connect(["start"])
         s = self.link.snapshot()
         self.assertEqual(s["phase"], "connected", s["error"])
         self.assertTrue(s["device"]["transient"])
         self.assertEqual(self.routes[-1], ("frame-bare", []))  # no HostName override, ssh's own known_hosts
+
+    def test_a_bare_alias_behind_a_jump_host_is_left_to_ssh(self):
+        self.link.override = "frame-jump"
+        self.hosts({"frame-jump": "ok"})
+        with mock.patch.object(fl, "ssh_g", return_value=("10.99.99.99", 22, "tester", True)):
+            self.link.connect(["start"])
+        s = self.link.snapshot()
+        self.assertEqual(s["phase"], "connected", s["error"])
+        self.assertEqual(s["via"]["why"], "through a jump host")
+
+    def test_changing_the_port_reroutes_even_if_the_attempt_fails(self):
+        d = self.device("localhost")
+        self.hosts({"localhost": "ok"})
+        self.link.connect(["start"])
+        self.reg.update_device(d["id"], port=1)  # nothing listens there
+        self.link.connect(["switch"])
+        self.assertEqual(self.link.snapshot()["phase"], "failed")
+        self.assertIn("Port=1", self.routes[-1][1])
 
     def test_test_now_checks_every_address_without_touching_the_connection(self):
         d = self.device("127.0.0.1", "localhost", "nothing.invalid")
@@ -234,6 +252,9 @@ class Connecting(unittest.TestCase):
         other = self.reg.add_device("frame-other", port=self.port)
         self.reg.add_address(other["id"], "nothing.invalid")
         self.link.use(other["id"])
+        self.assertEqual(self.routes[-1][0], "frame-other")  # at once, before any attempt
+        self.assertEqual(self.link.snapshot()["phase"], "connecting")
+        self.assertFalse(self.link.alive())  # so ensure() waits instead of using the old master
         self.link.connect(["switch"])
         self.assertEqual(self.link.snapshot()["phase"], "failed")
         alias, opts = self.routes[-1]

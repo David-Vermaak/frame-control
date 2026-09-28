@@ -68,7 +68,8 @@ def now():
 
 
 def ssh_g(alias):
-    """(hostname, port, user) from `ssh -G ALIAS`, for a headset that's only an ssh alias."""
+    """(hostname, port, user, proxied) from `ssh -G ALIAS`, for a headset that's only an
+    ssh alias. proxied: it goes through ProxyJump or ProxyCommand, so only ssh can reach it."""
     try:
         out = subprocess.run(["ssh", "-G", alias], capture_output=True, stdin=subprocess.DEVNULL, text=True,
                              timeout=10).stdout
@@ -77,10 +78,11 @@ def ssh_g(alias):
     got = {}
     for line in out.splitlines():
         k, _, v = line.partition(" ")
-        if k in ("hostname", "port", "user") and k not in got:
+        if k in ("hostname", "port", "user", "proxyjump", "proxycommand") and k not in got:
             got[k] = v.strip()
     port = int(got["port"]) if got.get("port", "").isdigit() else 22
-    return got.get("hostname") or alias, port, got.get("user")
+    proxied = any(got.get(k) not in (None, "", "none") for k in ("proxyjump", "proxycommand"))
+    return got.get("hostname") or alias, port, got.get("user"), proxied
 
 
 def probe(host, port, timeout=PROBE_TIMEOUT, update=None):
@@ -246,11 +248,27 @@ class Link:
                                                         self.state["phase"] != "connecting"), wait)
 
     def use(self, device_id):
-        """Switch to another headset."""
+        """Switch to another headset. Commands go to it from now on (never the last one),
+        and wait in ensure() for the connector to reach it."""
         self.reg.set_active(device_id)
         self.override = None
+        device = self.active_device()
+        self.apply(device["alias"], self.first_route(device))
+        with self.cond:
+            self.state["phase"] = "connecting"
+            self.kicks.append("switch")
+            self.version += 1
+            self.cond.notify_all()
         self.devices_changed()
-        self.kick("switch")
+
+    def first_route(self, device):
+        """Where commands go before any address has answered: the first one, with the
+        headset's own pinned identity, so nothing reaches another device meanwhile."""
+        return self.host_opts(device, device["addresses"][0]["host"] if device["addresses"] else None)
+
+    @staticmethod
+    def route_key(device):
+        return device["id"], device.get("user"), device.get("port")
 
     def lost(self, message):
         """A command couldn't reach the headset (Windows has no master to watch)."""
@@ -357,13 +375,12 @@ class Link:
         self.last_attempt = now()
         self.close_master()
         device = self.active_device()
-        if device["id"] != self.routed:
-            # Another headset: nothing may go on reaching the last one, even if this one
-            # never answers. Its first address (and its own pinned identity) until one does.
-            first = device["addresses"][0]["host"] if device["addresses"] else None
-            self.alias, self.opts = device["alias"], self.host_opts(device, first)
+        if self.route_key(device) != self.routed:
+            # Another headset, or a new user or port: nothing may go on using the old
+            # route, even if this attempt fails.
+            self.alias, self.opts = device["alias"], self.first_route(device)
             self.apply(self.alias, self.opts)
-            self.routed = device["id"]
+            self.routed = self.route_key(device)
         with self.cond:
             self.state.update(phase="connecting", reason=why, device=self.public_device(device), via=None,
                               error=None, retry_at=None, attempt=self.state["attempt"] + 1, started=now(),
@@ -432,12 +449,21 @@ class Link:
         # 2. find the headset
         self.stage("find", "active")
         port = device.get("port") or 22
-        if device.get("transient") or not device["addresses"]:
-            host, port, user = ssh_g(device["alias"])
+        bare = device.get("transient") or not device["addresses"]
+        if bare:
+            host, port, user, proxied = ssh_g(device["alias"])
             if user and not device.get("user"):
                 device["user"] = user
-            ranked = [({"host": host, "kind": frame_network.guess_kind(host), "label": "from ~/.ssh/config"},
-                       "from ~/.ssh/config")]
+            a = {"host": host, "kind": frame_network.guess_kind(host), "label": "from ~/.ssh/config"}
+            if proxied:
+                # Reached through a jump host: only ssh itself can find it.
+                with self.cond:
+                    self.state["probes"] = [dict(a, why="through a jump host", state="answered", ip=None, rtt_ms=None,
+                                                 detail="ssh's ProxyJump or ProxyCommand connects")]
+                self.stage("find", "done", f"{device['alias']} goes through a jump host; ssh finds it")
+                return self.handshake(device, a, {"ip": None, "rtt_ms": None}, device.get("user") or user) == "ok" \
+                    and self.finish_bare(a, net)
+            ranked = [(a, "from ~/.ssh/config")]
         else:
             ranked = frame_devices.order_addresses(device["addresses"], net.get("id"), bool(ts.get("up")))
         with self.cond:
@@ -502,6 +528,11 @@ class Link:
         self.fail("find", message, raw)
         return False
 
+    def finish_bare(self, a, net):
+        self.publish(via={"host": a["host"], "kind": a["kind"], "ip": None, "rtt_ms": None,
+                          "why": "through a jump host", "network": net.get("id"), "network_name": net["name"]})
+        return True
+
     @staticmethod
     def pick(results, tried, done, deadline=None):
         """The next address to use: the best-ranked answer once every better-ranked
@@ -534,12 +565,25 @@ class Link:
         if device.get("transient"):
             return
         self.reg.record_success(device["id"], host, net.get("id"), rtt)
+        # Set Up Connection may have changed the block while this attempt ran: take that
+        # in (and reconnect) rather than writing this attempt's older settings over it.
+        self.watch_config()
+        try:
+            now_dev = self.reg.get(device["id"])
+        except frame_devices.DeviceError:
+            return
+        if self.route_key(now_dev) != self.route_key(device):
+            return
         # Terminal's `ssh ALIAS` and the helper scripts use ~/.ssh/config: point it here too.
         try:
-            if frame_devices.rewrite_block(device["alias"], hostname=host, user=device["user"],
-                                           port=device["port"]):
+            block = next((b for b in frame_devices.parse_blocks(frame_devices.read_config())
+                          if b["alias"] == device["alias"]), None)
+            moved = block and block["hostname"] != device.get("config_host") and device.get("config_host")
+            if not moved and frame_devices.rewrite_block(device["alias"], hostname=host, user=device["user"],
+                                                         port=device["port"]):
                 self.config_mtime = frame_devices.ssh_config().stat().st_mtime
-            self.reg.set_config_host(device["id"], host)
+            if block and not moved:
+                self.reg.set_config_host(device["id"], host)
         except OSError:
             pass  # not fatal: the app itself doesn't need the file
         self.devices_changed()

@@ -189,7 +189,7 @@ async function restartServer() {
 // On macOS the page's sticky header becomes the title bar, clear of the traffic lights.
 const CHROME_CSS = IS_MAC && `
   header { padding-left: 92px !important; -webkit-app-region: drag; user-select: none; }
-  header a, header button, header input, header .chip { -webkit-app-region: no-drag; }
+  header a, header button, header input, header select, header .chip { -webkit-app-region: no-drag; }
 `;
 
 // Restart Server can start a new load while an older one is still waiting for
