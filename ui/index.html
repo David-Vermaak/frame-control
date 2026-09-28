@@ -2590,7 +2590,11 @@ function onConnection(s) {
     }
   }
   renderBanner();
-  if (s.devices_rev !== link.rev || devId !== link.device) { link.rev = s.devices_rev; loadDevices(); }
+  const netId = s.network ? s.network.id || s.network.gateway || "" : null;
+  if (s.devices_rev !== link.rev || devId !== link.device || (netId !== null && netId !== link.net)) {
+    link.rev = s.devices_rev; link.net = netId;  // also when only the network changed: the Devices tab shows it
+    loadDevices();
+  }
   link.phase = s.phase; link.device = devId;
   if (page === "devices") renderTests();
 }

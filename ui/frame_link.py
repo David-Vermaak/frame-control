@@ -320,7 +320,7 @@ class Link:
 
     @staticmethod
     def route_key(device):
-        return device["id"], device.get("user"), device.get("port")
+        return device["id"], device.get("user"), device.get("port"), tuple(device.get("frozen") or ())
 
     def lost(self, message):
         """A command couldn't reach the headset (Windows has no master to watch)."""
@@ -359,7 +359,7 @@ class Link:
         if device.get("none"):
             return ["-o", "HostName=no-headset.invalid"]  # fails at once, with ssh's own "can't resolve"
         if device.get("transient"):
-            return []
+            return list(device.get("frozen") or [])  # what ~/.ssh/config said when it was routed
         if not host:  # a headset with no addresses: reach nothing, not whatever ~/.ssh/config says
             return ["-o", "HostName=no-address.invalid"]
         # StrictHostKeyChecking=yes: whatever ~/.ssh/config says for Host *, every command
@@ -451,6 +451,13 @@ class Link:
         with self.work_lock, self.route_lock:
             gen = self.attempt_gen = self.gen
             device = self.active_device()
+            if device.get("transient") and not device.get("none") and "frozen" not in device:
+                # A bare alias: pin down where ~/.ssh/config sends it now, so an edit to that
+                # file can't move the commands of an install that's running.
+                h, p, u, _ = ssh_g(device["alias"])
+                device = dict(device, user=device.get("user") or u, port=p, frozen=[
+                    "-o", f"HostName={frame_devices.ssh_host(h)}", "-o", f"Port={p}",
+                    *(["-o", f"User={u}"] if u else [])])
             if self.routed and self.routed_device and device["alias"] == self.routed_device["alias"] \
                     and self.route_key(device) != self.routed and self.work():
                 # Set Up Connection changed this headset in ~/.ssh/config (its login, or a bare
@@ -947,6 +954,20 @@ def devices_view(link):
             "kinds": frame_devices.KIND_LABEL}
 
 
+def login_change(reg, did, body):
+    """Whether an update asks for another user or port (the page sends both every time)."""
+    try:
+        d = reg.get(did)
+    except frame_devices.DeviceError:
+        return False
+    user, port = body.get("user"), body.get("port")
+    try:
+        port = int(port) if port is not None else None
+    except (TypeError, ValueError):
+        return True  # it will be refused anyway
+    return (user is not None and user != d["user"]) or (port is not None and port != d["port"])
+
+
 def devices_action(link, body, open_setup, busy=lambda: 0):
     """POST /api/devices {"action": ..., "id": device id, ...}. -> {"message", ...devices_view}.
     busy() counts installs in progress: nothing may move them to another headset."""
@@ -958,7 +979,7 @@ def devices_action(link, body, open_setup, busy=lambda: 0):
     moves = action == "use" or (action == "retry" and link.alive()) or (is_active and (
         # (a retry while connected would cut the install's connection)
         action in ("remove", "address-remove", "forget-identity")
-        or (action == "update" and (body.get("user") is not None or body.get("port") is not None))
+        or (action == "update" and login_change(reg, did, body))
         or (action == "address-update" and body.get("newHost") not in (None, body.get("host")))))
     if moves and busy():
         raise frame_devices.DeviceError(

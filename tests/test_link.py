@@ -264,7 +264,7 @@ class Connecting(unittest.TestCase):
         self.assertIn("alias-frame-bare", [d["id"] for d in fl.devices_view(self.link)["devices"]])  # still there
         fl.devices_action(self.link, {"action": "use", "id": "alias-frame-bare"}, None)
         self.assertEqual(self.link.active_device()["alias"], "frame-bare")
-        self.assertEqual(self.routes[-1], ("frame-bare", []))
+        self.assertEqual(self.routes[-1][0], "frame-bare")
 
     def test_removing_the_headset_frame_alias_named_doesnt_bring_it_back_bare(self):
         d = self.device("localhost")
@@ -311,17 +311,19 @@ class Connecting(unittest.TestCase):
 
     def test_a_bare_alias_lets_ssh_config_decide(self):
         self.link.override = "frame-bare"
-        self.hosts({"frame-bare": "ok"})  # the stand-in ssh has no config: the alias is the host
+        self.hosts({"localhost": "ok"})
         with mock.patch.object(fl, "ssh_g", return_value=("localhost", self.port, "tester", False)):
             self.link.connect(["start"])
         s = self.link.snapshot()
         self.assertEqual(s["phase"], "connected", s["error"])
         self.assertTrue(s["device"]["transient"])
-        self.assertEqual(self.routes[-1], ("frame-bare", []))  # no HostName override, ssh's own known_hosts
+        # Where ~/.ssh/config sends it, pinned down for the connection (ssh's own known_hosts).
+        self.assertEqual(self.routes[-1], ("frame-bare", ["-o", "HostName=localhost", "-o", f"Port={self.port}",
+                                                          "-o", "User=tester"]))
 
     def test_a_bare_alias_behind_a_jump_host_is_left_to_ssh(self):
         self.link.override = "frame-jump"
-        self.hosts({"frame-jump": "ok"})
+        self.hosts({"10.99.99.99": "ok"})  # ssh's ProxyJump would get there
         with mock.patch.object(fl, "ssh_g", return_value=("10.99.99.99", 22, "tester", True)):
             self.link.connect(["start"])
         s = self.link.snapshot()
@@ -417,6 +419,13 @@ class Connecting(unittest.TestCase):
         self.assertEqual(alias, "frame-t")
         self.assertIn("HostName=localhost", opts)
         self.assertIn(f"HostKeyAlias=frame-control-{d['id']}", opts)
+
+    def test_renaming_during_an_install_is_fine(self):
+        d = self.device("localhost")
+        # The page sends the user and port along with the name, unchanged.
+        fl.devices_action(self.link, {"action": "update", "id": d["id"], "name": "Desk", "user": "steamos",
+                                      "port": str(self.port)}, None, busy=lambda: 1)
+        self.assertEqual(self.reg.get(d["id"])["name"], "Desk")
 
     def test_a_rename_shows_at_once(self):
         d = self.device("localhost")
