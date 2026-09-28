@@ -1,0 +1,69 @@
+// node --test site/test/*.test.mjs
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import { buildIssue, defang, hashIp, MIN_FILL_MS, validate } from "../lib/feedback.js";
+
+const now = 1_800_000_000_000;
+const form = (over = {}) => ({
+  kind: "bug",
+  title: "Live view freezes",
+  message: "After about a minute the live view stops updating.",
+  started: now - MIN_FILL_MS - 1,
+  ...over,
+});
+
+test("accepts a normal report and trims it", () => {
+  const { value, error } = validate(form({ title: "  Live   view freezes ", os: " macOS 26 " }), now);
+  assert.equal(error, undefined);
+  assert.equal(value.title, "Live view freezes");
+  assert.equal(value.os, "macOS 26");
+  assert.equal(value.kind, "bug");
+});
+
+test("flags the honeypot and too-fast submissions as spam", () => {
+  assert.deepEqual(validate(form({ website: "http://spam" }), now), { spam: true });
+  assert.deepEqual(validate(form({ started: now - 500 }), now), { spam: true });
+  assert.deepEqual(validate(form({ started: undefined }), now), { spam: true });
+});
+
+test("rejects short, long and malformed input", () => {
+  assert.match(validate(form({ title: "hi" }), now).error, /title/);
+  assert.match(validate(form({ message: "short" }), now).error, /more/);
+  assert.match(validate(form({ message: "x".repeat(5001) }), now).error, /under/);
+  assert.match(validate(form({ github: "not a user!" }), now).error, /GitHub/);
+  assert.match(validate(null, now).error, /JSON/);
+});
+
+test("unknown kinds become other feedback", () => {
+  assert.equal(validate(form({ kind: "__proto__" }), now).value.kind, "other");
+});
+
+test("builds a labelled issue that credits a GitHub user", () => {
+  const { value } = validate(form({ github: "@octocat", version: "0.3.1", steamos: "20260922" }), now);
+  const issue = buildIssue(value);
+  assert.equal(issue.title, "Bug report: Live view freezes");
+  assert.deepEqual(issue.labels, ["feedback", "bug"]);
+  assert.match(issue.body, /\| Frame Control version \| 0\.3\.1 \|/);
+  assert.match(issue.body, /by @octocat\.$/);
+});
+
+test("anonymous feedback says replies won't reach the sender", () => {
+  const issue = buildIssue(validate(form({ kind: "other" }), now).value);
+  assert.deepEqual(issue.labels, ["feedback"]);
+  assert.match(issue.body, /won't see replies/);
+});
+
+test("breaks mentions, issue refs and table cells in user text", () => {
+  assert.equal(defang("ping @valve about #12"), "ping @​valve about #​12");
+  assert.equal(defang("email me@example.com"), "email me@​example.com");
+  const issue = buildIssue(validate(form({ os: "a | b" }), now).value);
+  assert.match(issue.body, /\| a \\\| b \|/);
+});
+
+test("hashes IPs without keeping them", async () => {
+  const a = await hashIp("203.0.113.9", "salt");
+  assert.equal(a.length, 24);
+  assert.equal(a, await hashIp("203.0.113.9", "salt"));
+  assert.notEqual(a, await hashIp("203.0.113.10", "salt"));
+  assert.ok(!a.includes("203"));
+});
