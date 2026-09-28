@@ -56,6 +56,7 @@ test("breaks mentions, issue refs and table cells in user text", () => {
   assert.equal(defang("ping @valve about #12"), "ping @\u200bvalve about #\u200b12");
   assert.equal(defang("email me@example.com"), "email me@\u200bexample.com");
   assert.equal(defang("see valve/steam#7 and GH-8"), "see valve/steam#\u200b7 and GH\u200b-8");
+  assert.equal(defang("&commat;valve &#64;valve &num;3"), "&amp;commat;valve &amp;#\u200b64;valve &amp;num;3");
   assert.equal(defang("https://github.com/a/b/issues/1"), "https://github\u200b.com/a/b/issues/1");
   const issue = buildIssue(validate(form({ os: "a | b" })).value);
   assert.match(issue.body, /\| a \\\| b \|/);

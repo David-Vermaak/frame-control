@@ -19,10 +19,12 @@ const oneLine = (value, max) => String(value ?? "").replace(/\s+/g, " ").trim().
 
 // Mentions in someone else's text would ping strangers, and issue references
 // (#1, owner/repo#1, GH-1, github.com links) would add backlinks to other
-// people's issues, so break them all with a zero-width space.
+// people's issues, so break them all with a zero-width space. Escaping & first
+// stops &commat; and &num; from turning back into @ and # when GitHub renders.
 const ZWSP = "\u200b";
 export function defang(text) {
   return text
+    .replace(/&/g, "&amp;")
     .replace(/@(?=[A-Za-z0-9])/g, `@${ZWSP}`)
     .replace(/#(?=\d)/g, `#${ZWSP}`)
     .replace(/\b(GH)-(?=\d)/gi, `$1${ZWSP}-`)

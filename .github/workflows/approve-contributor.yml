@@ -7,13 +7,14 @@ on:
   issue_comment:
     types: [created]
 
-# One approval at a time, so two lgtm replies can't race on the same commit.
-concurrency:
-  group: approve-contributor
-  cancel-in-progress: false
-
 jobs:
   approve:
+    # Only comments that might approve someone join the queue, and they run one
+    # at a time so two lgtm replies can't race on APPROVED_CONTRIBUTORS.
+    if: contains(github.event.comment.body, 'lgtm')  # contains() ignores case
+    concurrency:
+      group: approve-contributor
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     permissions:
       contents: write
