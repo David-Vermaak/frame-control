@@ -50,6 +50,14 @@
         ]
       },
       {
+        "from": "../ui/apk_sources",
+        "to": "ui/apk_sources",
+        "filter": [
+          "*.py",
+          "*.json"
+        ]
+      },
+      {
         "from": "../scripts",
         "to": "scripts",
         "filter": [
