@@ -1462,7 +1462,9 @@ function showApkAlternatives(reason, result) {
     const res = await runJob(`Install ${result.package} ${v.version}`, result.package, () => api("/api/android", {
       action: "install", package: result.package, url: v.url
     }));
-    if (res) { $("apkAltDlg").close(); loadAndroid(); } else { b.disabled = false; b.textContent = "Install"; }
+    if (res) $("apkAltDlg").close(); else { b.disabled = false; b.textContent = "Install"; }
+    await loadAndroid();
+    if (cat.apps) { const y = window.scrollY; filterCatalog(); window.scrollTo(0, y); }
   };
   if (!$("apkAltDlg").open) $("apkAltDlg").showModal();
 }

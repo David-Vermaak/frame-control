@@ -213,8 +213,13 @@ class ServerGuards(unittest.TestCase):
         self.assertNotIn("job", body)
 
     def test_android_install_of_another_version_runs_as_a_job(self):
-        status, started = self.post("/api/android", {"action": "install", "package": "org.example.app",
-                                                     "url": "https://f-droid.org/repo/org.example.app_1.apk"})
+        pkg = "org.example.frame_control.not_in_any_repo"
+        sys.path.insert(0, str(ROOT / "ui"))
+        import frame_apk_versions
+        # The job must fail on the cached lookup, before any download: nothing is cached for this package.
+        self.assertEqual(frame_apk_versions._versions(pkg, cached_only=True)[0], [])
+        status, started = self.post("/api/android", {"action": "install", "package": pkg,
+                                                     "url": f"https://f-droid.org/repo/{pkg}_1.apk"})
         self.assertEqual(status, 200, started)
         for _ in range(200):
             job = json.loads(self.request("GET", f"/api/job?id={started['job']}", headers={"X-Frame-UI": "1"})[2])
@@ -222,7 +227,7 @@ class ServerGuards(unittest.TestCase):
                 break
             time.sleep(0.05)
         self.assertTrue(job["done"])
-        self.assertIn("no longer available", job["error"])  # nothing cached for this package
+        self.assertIn("no longer available", job["error"])
 
     def test_unknown_routes(self):
         self.assertEqual(self.request("GET", "/nope")[0], 404)
