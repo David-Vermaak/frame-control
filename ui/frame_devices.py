@@ -464,8 +464,10 @@ class Registry:
                 # The headset in use is this server's own choice: another server picking a
                 # different one mustn't move commands (an install, say) under it. The file's
                 # choice is only where a server starts.
+                # Kept even if another server removed it, so the connector can see that
+                # (and not quietly move to another headset in the middle of an install).
                 mine = self.data.get("active")
-                if mine and any(d["id"] == mine for d in data["devices"]):
+                if mine:
                     data["active"] = mine
                 self.data = data
 

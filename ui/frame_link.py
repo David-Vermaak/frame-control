@@ -242,6 +242,11 @@ class Link:
 
     # ---- control from the server ----
     def start(self):
+        # Route to the saved headset before the server takes requests: until the connector
+        # has run, commands (an upload by scp, say) would otherwise go to the default alias.
+        device = self.active_device()
+        with self.route_lock:
+            self.apply(device["alias"], self.first_route(device))
         self.thread = threading.Thread(target=self.run, name="frame-link", daemon=True)
         self.thread.start()
 
@@ -348,7 +353,10 @@ class Link:
             try:
                 return self.reg.get(want)
             except frame_devices.DeviceError:
-                pass
+                # Removed (by another server). Mid-install, fail closed: the rest of the
+                # install, or its clean-up, mustn't land on whichever headset comes next.
+                if self.work():
+                    return self.NONE
         devices = self.reg.devices()
         if devices:
             return devices[0]

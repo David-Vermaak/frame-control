@@ -118,6 +118,27 @@ class Connecting(unittest.TestCase):
                             explain=explain)
         self.addCleanup(self.link.stop)
 
+    def test_start_routes_to_the_saved_headset_before_serving(self):
+        a = self.reg.add_device("frame", hosts=["192.0.2.1"])
+        b = self.reg.add_device("frame-2", hosts=["192.0.2.2"])
+        self.reg.set_active(b["id"])
+        with mock.patch.object(self.link, "run", lambda: None):  # no connector: only what start() applies
+            self.link.start()
+        self.assertEqual(self.routes[0][0], "frame-2")
+        self.assertIn("HostName=192.0.2.2", self.routes[0][1])
+        self.assertNotEqual(a["id"], b["id"])
+
+    def test_headset_removed_elsewhere_mid_install_reaches_nothing(self):
+        a = self.reg.add_device("frame", hosts=["192.0.2.1"])
+        self.reg.add_device("frame-2", hosts=["192.0.2.2"])
+        self.reg.set_active(a["id"])
+        other = fd.Registry(self.dir / "devices.json")  # another Frame Control server
+        other.remove_device(a["id"])
+        self.link.work = lambda: 1
+        self.assertTrue(self.link.active_device().get("none"))
+        self.link.work = lambda: 0
+        self.assertEqual(self.link.active_device()["alias"], "frame-2")  # idle: move on
+
     def listen6(self):
         """A "different device": the same port on IPv6 loopback."""
         try:
