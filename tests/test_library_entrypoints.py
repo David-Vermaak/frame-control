@@ -108,6 +108,25 @@ class EntryPoints(unittest.TestCase):
         self.assertTrue(all(c.kwargs == {'fill_only': True} for c in refresh.call_args_list))
         title_refresh.assert_called_once_with('G', fill_only=True)
 
+    def test_bulk_fill_only_refresh_keeps_names_and_art(self):
+        meta = {**self.info, 'instance':2800000001, 'shortcut':3346865537, 'flatscreen':False}
+        with patch.object(android, 'list_apps', return_value=[{'package':self.info['package']}]), \
+                patch.object(android, '_meta_or_fail', return_value=meta), \
+                patch.object(android, 'ssh', side_effect=lambda cmd, **kw: json.dumps({'icon_png':''}) if cmd == 'python3 -' else '/home/steamos'), \
+                patch.object(android, '_write_meta'):
+            android.refresh_art(fill_only=True)
+        options = json.loads(next(c.args for c in self.api.call_args_list if c.args[0] == 'configure')[8])
+        self.assertTrue(options['fill_only'])
+        self.api.reset_mock()
+        with patch.object(titles, 'list_titles', return_value=[{'id':'Game','name':'Game','frame_control':True}]), \
+                patch.object(titles, '_check_id', side_effect=lambda gid: gid), \
+                patch.object(titles, '_library_shortcut', return_value=7), \
+                patch.object(titles, 'ssh', side_effect=lambda cmd, **kw: '{"name":"Game"}' if cmd.startswith('cat devkit')
+                             else '{"artwork":{},"icon":""}' if cmd == 'python3 -' else '/home/steamos'):
+            titles.refresh_art(fill_only=True)
+        options = json.loads(next(c.args for c in self.api.call_args_list if c.args[0] == 'configure')[8])
+        self.assertTrue(options['fill_only'])
+
     def test_upgrade_leaves_legacy_customised_titles_alone(self):
         # A title installed before art_pending existed, whose art the user has customised in Steam.
         legacy = [{'id':'Game','settings':{'compat_tool':'proton-experimental'},'argv':['game.exe'],

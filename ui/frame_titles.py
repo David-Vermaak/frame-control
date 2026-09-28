@@ -780,7 +780,7 @@ def refresh_art(gid=None, artwork=None, fill_only=False):
             if not t['frame_control']:
                 continue
             try:
-                results.append(refresh_art(t['id'], artwork))
+                results.append(refresh_art(t['id'], artwork, fill_only))
             except Exception as e:  # report each title; one failure doesn't stop the rest
                 results.append({'id': t['id'], 'name': t['name'], 'error': str(e) or type(e).__name__})
         return results

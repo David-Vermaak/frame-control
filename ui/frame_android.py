@@ -287,7 +287,7 @@ def refresh_art(pkg=None, artwork=None, fill_only=False):
         results = []
         for app in list_apps():
             try:
-                results.append(refresh_art(app['package'], artwork))
+                results.append(refresh_art(app['package'], artwork, fill_only))
             except Exception as e:  # one app's failure must not stop the others
                 results.append({'package': app['package'], 'label': app.get('label'), 'error': str(e) or type(e).__name__})
         return results
