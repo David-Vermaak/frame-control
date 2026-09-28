@@ -153,7 +153,7 @@ section.alt { background: var(--bg-2); border-block: 1px solid var(--line); }
 /* ---- footer ---- */
 footer { border-top: 1px solid var(--line); padding: 48px 0 56px; color: var(--dim); font-size: 14px; }
 footer .wrap { display: flex; flex-wrap: wrap; gap: 24px 48px; justify-content: space-between; }
-footer .cols { display: flex; gap: 28px; flex-wrap: wrap; }
+footer .cols { display: flex; gap: 12px 28px; flex-wrap: wrap; }
 footer a { color: var(--muted); }
 footer .legal { flex-basis: 100%; font-size: 13px; }
 
