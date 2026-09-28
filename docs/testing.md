@@ -148,3 +148,11 @@ For example, on 2026-09-27 the smoke test found that Steam's `create-shortcut`
 refuses ids with a hyphen (`missing/invalid arguments`), which the fake had
 accepted. The fake now refuses them the same way, and Frame Control makes ids
 Steam accepts.
+
+## Agent interfaces
+
+`tests/test_agent.py` exercises MCP stdio, exact-action human approvals and the
+assistant against an in-process HTTP endpoint with canned responses (no keys or
+external calls). `tests/e2e/test_agents.py` runs the MCP/HTTP/SSH path against the
+fake Frame for approved installs, clipboard and file transfer. Headset Chromium
+rendering and real screenshots still need a device; see [agent evidence](agents.md#evidence-and-limits).

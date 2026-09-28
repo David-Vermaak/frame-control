@@ -3,6 +3,7 @@ steamos-devkit-service, the ~/.ssh/config block, and the mDNS output parsers.
 
 Run: python3 -m unittest discover -s tests
 """
+import sandbox  # noqa: F401  (first: keeps tests off real data and services)
 import json
 import socket
 import sys
