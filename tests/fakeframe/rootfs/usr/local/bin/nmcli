@@ -1,0 +1,11 @@
+#!/usr/bin/env python3
+"""Stub for nmcli: the Wi-Fi network frame_status.py reads with
+`nmcli -t -f active,ssid,signal dev wifi` (':' inside fields escaped as '\\:')."""
+import sys
+
+sys.path.insert(0, '/usr/local/lib/fakeframe')
+import fakeframe_state as fs  # noqa: E402
+
+fs.log('nmcli', args=sys.argv[1:])
+print('yes:Fake\\:Frame Wi-Fi:72')
+print('no:Neighbours:31')

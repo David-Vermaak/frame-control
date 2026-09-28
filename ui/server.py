@@ -7,6 +7,9 @@ up by scripts/connect.sh or ui/frame_connect.py.
 
 Usage: ui/server.py [--port 47810] [--exit-on-eof]   (normally started by the app)
 Env:   FRAME_ALIAS (default frame)
+       FRAME_LOCAL=1   run on the Frame itself (the iPhone app starts it there over SSH)
+       FRAME_UI_KEY    required X-Frame-UI value (the iPhone app passes a fresh one)
+       FRAME_DEVICE    what to call the device the page runs on (e.g. iPhone)
 """
 import argparse
 import base64
@@ -34,6 +37,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import frame_android  # noqa: E402
+import frame_apk_versions  # noqa: E402
 import frame_catalog  # noqa: E402
 import frame_host  # noqa: E402
 import frame_store  # noqa: E402
@@ -43,12 +47,20 @@ import frame_webinstall  # noqa: E402
 frame_host.trust_bundled_cas()
 
 HERE = Path(__file__).resolve().parent
+# On the Frame itself, every `ssh frame COMMAND` the server and its helpers run
+# goes to local-bin/ssh, which runs COMMAND here instead, so one code path serves
+# both. Nothing listens beyond 127.0.0.1; the phone reaches it through SSH.
+LOCAL = os.environ.get("FRAME_LOCAL") == "1"
+if LOCAL:
+    os.environ["PATH"] = f"{HERE / 'local-bin'}{os.pathsep}{os.environ.get('PATH', '')}"
+UI_KEY = os.environ.get("FRAME_UI_KEY") or "1"
+DEVICE = os.environ.get("FRAME_DEVICE") or "phone"
 FRAME = os.environ.get("FRAME_ALIAS", "frame")
 if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", FRAME):
     sys.exit(f"FRAME_ALIAS must be a plain host alias, not {FRAME!r}")
 # Reuse one SSH connection for the frequent status/screenshot calls, where ssh
 # supports it (not on Windows: there every command connects on its own).
-CONTROL = frame_host.control_path()
+CONTROL = None if LOCAL else frame_host.control_path()
 MUX = ["ssh", "-o", "BatchMode=yes", *(["-o", f"ControlPath={CONTROL}"] if CONTROL else [])]
 # Commands use the master when it's up and connect directly when it isn't.
 SSH = [*MUX, *(["-o", "ControlMaster=no"] if CONTROL else []), "-o", "ConnectTimeout=5"]
@@ -80,9 +92,93 @@ exit 1
 
 
 class Failure(Exception):
-    def __init__(self, message, status=502):
+    def __init__(self, message, status=502, apk=None):
         super().__init__(message)
         self.status = status
+        self.apk = apk
+
+
+# What ssh prints when it never reached the Frame, and what to tell the user
+# instead. Only ssh's own wording is matched, so a command that ran on the Frame
+# and failed keeps its real error.
+UNREACHABLE = [
+    (re.compile(r"Could not resolve hostname"),
+     "Can't find the Frame on the network. Check it's on and connected, or run Set Up Connection."),
+    (re.compile(r"port \d+: (Operation timed out|Connection timed out|Host is down|No route to host|"
+                r"Network is unreachable)"),
+     "The Frame isn't answering. It may be asleep, switched off, or on another network."),
+    (re.compile(r"[Tt]imed out talking to "),
+     "The Frame took too long to answer. It may be asleep or busy; try again."),
+    (re.compile(r"port \d+: Connection refused"),
+     "The Frame refused the connection. Check Developer Mode is still on."),
+    (re.compile(r"Permission denied \(publickey"),
+     "The Frame didn't accept this computer's SSH key. Run Set Up Connection again."),
+    (re.compile(r"Host key verification failed"),
+     "The Frame's SSH identity changed (after a reinstall, or a different device). Run Set Up Connection again."),
+    (re.compile(r"kex_exchange_identification|Connection closed by .* port \d+|Connection reset by .* port \d+"),
+     "The connection to the Frame dropped. Try again."),
+]
+
+
+def unreachable(message):
+    """The plain-language reason the Frame couldn't be reached, or None if it was."""
+    for pattern, friendly in UNREACHABLE:
+        if pattern.search(message):
+            return friendly
+    return None
+
+
+def error_body(message):
+    """A JSON error body and status; SSH connection failures become one clear offline message."""
+    friendly = unreachable(message)
+    if friendly:
+        return {"error": friendly, "offline": True, "detail": message}, 503
+    return {"error": message}, None
+
+
+# ---- Background jobs: installs that can outlast a request ------------------
+#
+# Flatpak and Android installs can take many minutes. The request starts the
+# work and returns a job id at once; the page polls /api/job for the outcome.
+
+JOB_TTL = 3600
+_jobs_lock = threading.Lock()
+_jobs = {}  # id -> {"label", "done", "error", "message", "result", "time"}
+
+
+def start_job(label, work):
+    """Run work() in the background. It returns a dict with a "message"."""
+    now = time.time()
+    with _jobs_lock:
+        for j in [j for j, v in _jobs.items() if v["done"] and now - v["time"] > JOB_TTL]:
+            del _jobs[j]
+        job = secrets.token_hex(8)
+        _jobs[job] = {"label": label, "done": False, "error": None, "message": None, "result": None, "time": now}
+
+    def run():
+        fields = {}
+        try:
+            result = work()
+            fields = {"message": result.get("message") or f"{label}: done", "result": result}
+        except (Failure, frame_android.FrameError) as e:
+            fields = {"error": unreachable(str(e)) or str(e)}
+        except Exception as e:
+            fields = {"error": f"{type(e).__name__}: {e}"}
+        finally:
+            with _jobs_lock:
+                _jobs[job].update(fields, done=True, time=time.time())
+
+    threading.Thread(target=run, daemon=True).start()
+    return {"message": f"{label}…", "job": job}
+
+
+def job_status(query):
+    with _jobs_lock:
+        job = _jobs.get((parse_qs(query).get("id") or [""])[0])
+        snapshot = job and {k: v for k, v in job.items() if k != "time"}
+    if not snapshot:
+        raise Failure("no such job (the app may have restarted)", 404)
+    return snapshot
 
 
 _master_lock = threading.Lock()
@@ -408,19 +504,43 @@ def flatpak(body):
     if not FLATPAK_ID.match(app):
         raise Failure("bad Flatpak app ID", 400)
     if action == "install":
-        # Per-user, so it survives SteamOS updates and needs no sudo (as install-apps.sh).
-        ssh("flatpak remote-add --user --if-not-exists flathub "
-            "https://dl.flathub.org/repo/flathub.flatpakrepo && "
-            f"flatpak install --user -y --noninteractive flathub {shlex.quote(app)}", timeout=900)
-        return {"message": f"Installed {app}"}
+        def work():
+            # Per-user, so it survives SteamOS updates and needs no sudo (as install-apps.sh).
+            ssh("flatpak remote-add --user --if-not-exists flathub "
+                "https://dl.flathub.org/repo/flathub.flatpakrepo && "
+                f"flatpak install --user -y --noninteractive flathub {shlex.quote(app)}", timeout=1800)
+            return {"message": f"Installed {app}"}
+        return start_job(f"Install {app}", work)
     if action == "uninstall":
         out = ssh(f"flatpak uninstall --user -y -- {shlex.quote(app)}", timeout=300)
         return {"message": strip_ansi(out).strip() or f"Removed {app}"}
     raise Failure("action must be install or uninstall", 400)
 
 
+def power(what, password):
+    """Sleep, restart or shut down from the Frame itself: sudo takes the Developer Mode password on stdin."""
+    if not isinstance(password, str) or not password or "\n" in password:
+        raise Failure("enter the Developer Mode password", 400)
+    try:
+        r = subprocess.run(["sudo", "-S", "-k", "-p", "", "systemctl", what], input=password + "\n",
+                           capture_output=True, text=True, timeout=30)
+    except subprocess.TimeoutExpired:
+        raise Failure(f"systemctl {what} didn't answer")
+    if r.returncode != 0:
+        err = r.stderr.strip()
+        raise Failure("that password wasn't accepted" if "incorrect password" in err or "Sorry" in err
+                      else err or f"systemctl {what} failed", 400)
+    return {"message": {"suspend": "Going to sleep", "reboot": "Restarting", "poweroff": "Shutting down"}[what]}
+
+
 def open_thing(body):
     what = body.get("what")
+    if LOCAL:
+        # Terminals, Steam Link and remote desktop open on the phone (its app does
+        # that); what's left here is power, with the password the page asked for.
+        if what in ("reboot", "poweroff", "suspend"):
+            return power(what, body.get("password"))
+        raise Failure("open that from the app", 400)
     try:
         if what == "terminal":
             return {"message": f"Opened an SSH session in {terminal(['ssh', FRAME])}"}
@@ -443,14 +563,31 @@ def open_thing(body):
     raise Failure("unknown target", 400)
 
 
+def apk_versions(query):
+    args = parse_qs(query, keep_blank_values=True)
+    packages, codes = args.get('package', []), args.get('code', [])
+    if len(packages) != 1 or not frame_android.PKG_RE.match(packages[0]):
+        raise Failure('invalid Android package id', 400)
+    if codes and (len(codes) != 1 or not re.fullmatch(r'[0-9]{1,19}', codes[0])):
+        raise Failure('invalid version code', 400)
+    return frame_apk_versions.alternatives(packages[0], int(codes[0]) if codes else None)
+
+
 def android(body):
     """Android apps, each in its own persistent Lepton instance (frame_android.py)."""
     action, pkg = body.get("action"), str(body.get("package", ""))
     ensure_master()
     try:
         if action == "install":
-            m = frame_catalog.install(pkg)
-            return {"message": f"Installed {m['label']}. It's in the Steam library; launching it opens its own panel.", "app": m}
+            url = body.get("url")
+            if not url:
+                frame_catalog.app(pkg)  # an unknown package fails now, not in the background
+
+            def work():
+                m = frame_apk_versions.install(pkg, url) if url else frame_catalog.install(pkg)
+                return {"message": f"Installed {m['label']}. It's in the Steam library; launching it opens its own panel.",
+                        "app": m}
+            return start_job(f"Install {pkg}", work)
         if action in ("launch", "stop"):
             m = getattr(frame_android, action)(pkg)
             return {"message": f"{'Launching' if action == 'launch' else 'Stopped'} {m['label']}"}
@@ -739,6 +876,30 @@ class AdbTunnel:
         return False
 
 
+class PodmanShell:
+    """AdbTunnel's stand-in on the Frame itself: there's no adb there, but each
+    instance is a podman container, so run Android's shell inside it."""
+
+    def __init__(self, ports, containers):
+        self.containers = containers
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def shell(self, port, command, timeout=20):
+        ctr = self.containers.get(port)
+        if not ctr:
+            raise Failure(f"port {port} isn't a Lepton container this app can reach")
+        return ssh(f"podman exec {shlex.quote(ctr)} /system/bin/sh -c {shlex.quote(command)}", timeout=timeout)
+
+
+def android_shell(ports, containers):
+    return PodmanShell(ports, containers) if LOCAL else AdbTunnel(ports)
+
+
 DISPLAY_READ = "echo @@pkgs; pm list packages -3; echo @@size; wm size; echo @@density; wm density; " \
                "echo @@font; settings get system font_scale"
 
@@ -811,7 +972,7 @@ def android_displays():
     if not ports:
         return {"instances": []}
     instances = []
-    with AdbTunnel(ports) as t:
+    with android_shell(ports, containers) as t:
         for p in ports:
             item = {"port": p, "container": containers.get(p)}
             try:
@@ -865,10 +1026,10 @@ def android_display(body):
 
     if not cmds:
         raise Failure("nothing to change: give density, size or fontScale", 400)
-    ports, _, _ = lepton_ports()
+    ports, containers, _ = lepton_ports()
     if port not in ports:
         raise Failure(f"no Lepton instance is listening on Frame port {port}", 404)
-    with AdbTunnel([port]) as t:
+    with android_shell([port], containers) as t:
         for c in cmds:
             out = t.shell(port, c)
             # wm prints usage or an exception on failure but may still exit 0.
@@ -1135,8 +1296,8 @@ class Handler(BaseHTTPRequestHandler):
         # All of /api/*, not just POST: an <img> on any website could otherwise
         # trigger a headset capture and display it.
         api = urlparse(self.path).path.startswith("/api/")
-        if (self.command == "POST" or api) and self.headers.get("X-Frame-UI") != "1":
-            self.send_json({"error": "missing X-Frame-UI header"}, 403)
+        if (self.command == "POST" or api) and not secrets.compare_digest(self.headers.get("X-Frame-UI") or "", UI_KEY):
+            self.send_json({"error": "missing or wrong X-Frame-UI header"}, 403)
             return False
         return True
 
@@ -1156,6 +1317,12 @@ class Handler(BaseHTTPRequestHandler):
     def send_json(self, obj, status=200):
         self.send_bytes(json.dumps(obj).encode(), "application/json", status)
 
+    def send_error_json(self, message, status, apk=None):
+        body, offline_status = error_body(message)
+        if apk is not None:
+            body["apk"] = apk
+        self.send_json(body, offline_status or status)
+
     def do_GET(self):
         if not self.local_request():
             return
@@ -1165,8 +1332,11 @@ class Handler(BaseHTTPRequestHandler):
             if path in ("/", "/index.html"):
                 self.send_bytes((HERE / "index.html").read_bytes(), "text/html; charset=utf-8")
             elif path == "/api/host":
-                self.send_json({"os": frame_host.NAME, "fileManager": frame_host.FILE_MANAGER,
+                self.send_json({"os": "SteamOS", "fileManager": None, "computer": DEVICE, "mobile": True} if LOCAL else
+                               {"os": frame_host.NAME, "fileManager": frame_host.FILE_MANAGER,
                                 "computer": "Mac" if frame_host.MAC else "PC"})
+            elif path == "/api/apk-versions":
+                self.send_json(apk_versions(url.query))
             elif path == "/api/android":
                 ensure_master()
                 self.send_json({"apps": frame_android.list_apps()})
@@ -1175,6 +1345,8 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json({"titles": frame_titles.list_titles()})
             elif path == "/api/titles/job":
                 self.send_json(title_job(url.query))
+            elif path == "/api/job":
+                self.send_json(job_status(url.query))
             elif path == "/api/android/displays":
                 self.send_json(android_displays())
             elif path == "/api/android/reports":
@@ -1204,9 +1376,9 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 self.send_json({"error": "not found"}, 404)
         except Failure as e:
-            self.send_json({"error": str(e)}, e.status)
+            self.send_error_json(str(e), e.status, e.apk)
         except frame_android.FrameError as e:
-            self.send_json({"error": str(e)}, 502)
+            self.send_error_json(str(e), 502)
         except Exception as e:
             self.send_json({"error": f"{type(e).__name__}: {e}"}, 500)
 
@@ -1230,11 +1402,11 @@ class Handler(BaseHTTPRequestHandler):
                 raise Failure("request body must be a JSON object", 400)
             self.send_json(handler(body))
         except Failure as e:
-            self.send_json({"error": str(e)}, e.status)
+            self.send_error_json(str(e), e.status, e.apk)
         except (ValueError, TypeError) as e:
             self.send_json({"error": f"bad request: {e}"}, 400)
         except frame_android.FrameError as e:
-            self.send_json({"error": str(e)}, 502)
+            self.send_error_json(str(e), 502)
         except Exception as e:
             self.send_json({"error": f"{type(e).__name__}: {e}"}, 500)
 
@@ -1335,6 +1507,14 @@ class Handler(BaseHTTPRequestHandler):
                 keep = True  # stage_title owns tmp now, and removes it on failure
                 return stage_title(str(dest), temp_dir=str(tmp))
             if mode == "apk":
+                try:
+                    info = frame_android.apk_info(str(dest))
+                except frame_android.FrameError as e:
+                    raise Failure(str(e), 400)
+                try:
+                    frame_android.check_installable(info)
+                except frame_android.FrameError as e:
+                    raise Failure(str(e), 400, {"package": info["package"], "version_code": info.get("version_code"), "blocker": str(e)})
                 ensure_master()
                 try:
                     display = self.headers.get("X-APK-Display", "auto")
@@ -1369,7 +1549,8 @@ def main():
             sys.stdin.buffer.read()
             threading.Thread(target=httpd.shutdown, daemon=True).start()
         threading.Thread(target=watch_stdin, daemon=True).start()
-    print(f"Frame Control on http://127.0.0.1:{args.port}  (alias: {FRAME}; Ctrl-C to stop)", flush=True)
+    # The real port, which --port 0 leaves to the system (the iPhone app reads it from here).
+    print(f"Frame Control on http://127.0.0.1:{httpd.server_address[1]}  (alias: {FRAME}; Ctrl-C to stop)", flush=True)
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:

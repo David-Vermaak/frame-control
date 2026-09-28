@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Frame Control</title>
 <style>
   /* Motiva Sans is Steam's UI font; Valve's CDN serves it with CORS open. */
@@ -27,8 +27,8 @@
   }
   * { box-sizing: border-box; }
   [hidden] { display: none !important; }  /* class display rules would otherwise win */
-  html { scroll-behavior: smooth; scroll-padding-top: 76px; }
-  body { margin: 0; color: var(--text); min-height: 100vh; padding-bottom: 46px;
+  html { scroll-behavior: smooth; scroll-padding-top: calc(76px + env(safe-area-inset-top)); }
+  body { margin: 0; color: var(--text); min-height: 100vh; padding-bottom: calc(46px + env(safe-area-inset-bottom));
          font: 14px/1.45 "Motiva Sans", -apple-system, "Segoe UI", Arial, sans-serif;
          background: radial-gradient(1400px 700px at 15% -15%, #2a475e 0%, transparent 60%),
                      linear-gradient(180deg, var(--bg) 0%, #16202d 40%, var(--bg-deep) 100%) fixed; }
@@ -39,7 +39,7 @@
 
   /* ---- top bar (Steam's STORE / LIBRARY / COMMUNITY strip) ---- */
   header { position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 30px;
-           height: 64px; padding: 0 28px; background: rgba(23, 29, 37, .94); backdrop-filter: blur(12px);
+           height: calc(64px + env(safe-area-inset-top)); padding: env(safe-area-inset-top) calc(28px + env(safe-area-inset-right)) 0 calc(28px + env(safe-area-inset-left)); background: rgba(23, 29, 37, .94); backdrop-filter: blur(12px);
            box-shadow: 0 1px 0 rgba(255,255,255,.04), 0 6px 18px rgba(0,0,0,.35); }
   .brand { display: flex; align-items: center; gap: 11px; color: var(--bright); text-decoration: none; }
   .brand svg { width: 30px; height: 30px; }
@@ -57,10 +57,41 @@
   .dot.on { background: var(--green); box-shadow: 0 0 6px rgba(89,191,64,.8); }
   .dot.off { background: var(--bad); }
 
-  main { max-width: 1480px; margin: 0 auto; padding: 22px 28px 30px; display: flex; flex-direction: column; gap: 26px; }
+  main { max-width: 1480px; margin: 0 auto; padding: 22px calc(28px + env(safe-area-inset-right)) 30px calc(28px + env(safe-area-inset-left)); display: flex; flex-direction: column; gap: 26px; }
   .grid-top { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(330px, 1fr); gap: 22px; }
   .grid-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 22px; }
-  @media (max-width: 1150px) { .grid-top, .grid-3 { grid-template-columns: 1fr; } nav { display: none; } }
+  @media (max-width: 1150px) { .grid-top, .grid-3 { grid-template-columns: 1fr; } header { gap: 16px; padding: env(safe-area-inset-top) calc(18px + env(safe-area-inset-right)) 0 calc(18px + env(safe-area-inset-left)); } nav a { padding: 0 10px; } }
+  @media (max-width: 820px) { .brand b { display: none; } }
+  nav svg { display: none; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { -webkit-tap-highlight-color: transparent; }
+  .mobile-only { display: none; }
+  body.mobile .mobile-only { display: revert; }
+  body.mobile .desk-only { display: none; }
+
+
+  /* ---- pages: one per tab; the header nav switches between them ---- */
+  .page { display: flex; flex-direction: column; gap: 26px; }
+  .page:not(.on) { display: none; }
+  nav kbd { font: inherit; font-size: 10.5px; color: var(--dim); margin-left: 7px; letter-spacing: 0; }
+  @media (max-width: 1150px) { nav kbd { display: none; } }
+
+  /* ---- offline banner ---- */
+  .banner { display: flex; align-items: center; gap: 14px; padding: 12px 16px; border-radius: 4px;
+            background: rgba(217,65,38,.12); box-shadow: inset 3px 0 0 var(--bad); }
+  .banner svg { width: 22px; height: 22px; flex: none; color: #ff8a73; }
+  .banner .grow { flex: 1; min-width: 0; }
+  .banner .t { color: var(--bright); font-weight: 500; }
+  .banner .s { color: var(--muted); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .wait { color: var(--muted); font-size: 13px; display: flex; align-items: center; gap: 8px; }
+  .wait::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--dim); flex: none; }
+
+  /* ---- drop anywhere ---- */
+  .dropzone { position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; pointer-events: none;
+              background: rgba(14,20,27,.82); backdrop-filter: blur(3px); }
+  .dropzone > div { padding: 42px 60px; border: 2px dashed var(--blue); border-radius: 8px; text-align: center;
+                    background: rgba(26,159,255,.08); color: var(--text); max-width: 520px; }
+  .dropzone b { display: block; color: var(--bright); font-size: 20px; font-weight: 500; margin-bottom: 6px; }
 
   /* ---- panels and section headers ---- */
   .panel { background: linear-gradient(180deg, rgba(42,47,56,.72) 0%, rgba(30,35,41,.9) 100%);
@@ -90,7 +121,7 @@
   .seg { display: inline-flex; background: rgba(0,0,0,.3); border-radius: 3px; padding: 2px; }
   .seg button { background: transparent; height: 28px; font-size: 12.5px; letter-spacing: .6px; text-transform: uppercase; }
   .seg button.on { background: var(--btn-hi); color: var(--bright); }
-  input[type=text], textarea { width: 100%; background: rgba(0,0,0,.28); color: var(--text); border: 1px solid transparent;
+  input[type=text], input[type=password], textarea { width: 100%; background: rgba(0,0,0,.28); color: var(--text); border: 1px solid transparent;
                                border-radius: 3px; padding: 9px 11px; font: inherit; }
   textarea { resize: vertical; min-height: 76px; }
   input:focus, textarea:focus { outline: none; border-color: var(--blue); background: rgba(0,0,0,.4); }
@@ -200,19 +231,21 @@
   .links div { margin: 5px 0; }
 
   /* ---- bottom bar (Steam's DOWNLOADS strip) ---- */
-  .bottombar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; height: 42px; display: flex; align-items: center; gap: 14px;
-               padding: 0 28px; background: rgba(23,29,37,.96); box-shadow: 0 -1px 0 rgba(255,255,255,.04); cursor: pointer; }
+  .bottombar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; height: calc(42px + env(safe-area-inset-bottom)); display: flex; align-items: center; gap: 14px;
+               padding: 0 calc(28px + env(safe-area-inset-right)) env(safe-area-inset-bottom) calc(28px + env(safe-area-inset-left)); background: rgba(23,29,37,.96); box-shadow: 0 -1px 0 rgba(255,255,255,.04); cursor: pointer; }
   .bottombar .label { font-size: 12px; font-weight: 700; letter-spacing: 1.6px; color: var(--muted); }
+  .bottombar .jobs { display: inline-flex; align-items: center; gap: 8px; color: var(--link); font-size: 12.5px; }
+  .bottombar .jobs .spinner { width: 13px; height: 13px; border-width: 2px; }
   .bottombar .last { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); font-size: 13px; }
   .bottombar .last.e { color: #ff8a73; }
-  .drawer { position: fixed; left: 0; right: 0; bottom: 42px; z-index: 19; max-height: 0; overflow: hidden;
+  .drawer { position: fixed; left: 0; right: 0; bottom: calc(42px + env(safe-area-inset-bottom)); z-index: 19; max-height: 0; overflow: hidden;
             background: rgba(14,20,27,.98); transition: max-height .25s ease; box-shadow: 0 -10px 30px rgba(0,0,0,.5); }
   .drawer.open { max-height: 300px; }
   .log { font: 12px/1.55 ui-monospace, "SF Mono", Menlo, monospace; color: #b8c4d2; max-height: 300px; overflow: auto;
-         white-space: pre-wrap; padding: 12px 28px; }
+         white-space: pre-wrap; padding: 12px calc(28px + env(safe-area-inset-right)) 12px calc(28px + env(safe-area-inset-left)); }
   .log:empty::before { content: "Actions you take here are logged with their output."; color: var(--dim); }
   .log .e { color: #ff8a73; } .log .ok { color: #a4d007; } .log time { color: var(--dim); }
-  .toast { position: fixed; bottom: 58px; right: 28px; z-index: 30; max-width: 460px; padding: 12px 16px; border-radius: 3px;
+  .toast { position: fixed; bottom: calc(58px + env(safe-area-inset-bottom)); right: calc(28px + env(safe-area-inset-right)); z-index: 30; max-width: 460px; padding: 12px 16px; border-radius: 3px;
            background: #3d4450; color: #fff; box-shadow: 0 10px 30px rgba(0,0,0,.5); border-left: 3px solid var(--blue);
            opacity: 0; transform: translateY(10px); transition: opacity .2s, transform .2s; pointer-events: none; }
   .toast.show { opacity: 1; transform: none; }
@@ -221,10 +254,10 @@
   .and-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 22px; align-items: start; }
   .and-col { display: grid; gap: 22px; align-content: start; }
   .rep-item .s { white-space: normal; }
-  #repDlg, #titleDlg, #wiDlg { background: #1e2329; color: var(--text); border: 1px solid rgba(255,255,255,.1); border-radius: 4px;
+  #repDlg, #titleDlg, #wiDlg, #pwDlg, #apkAltDlg { background: #1e2329; color: var(--text); border: 1px solid rgba(255,255,255,.1); border-radius: 4px;
             padding: 22px; width: min(560px, 92vw); box-shadow: 0 20px 60px rgba(0,0,0,.6); }
-  #repDlg::backdrop, #titleDlg::backdrop, #wiDlg::backdrop { background: rgba(0,0,0,.55); }
-  #repDlg h2, #titleDlg h2, #wiDlg h2 { margin: 0 0 14px; font-size: 15px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--bright); }
+  #repDlg::backdrop, #titleDlg::backdrop, #wiDlg::backdrop, #pwDlg::backdrop, #apkAltDlg::backdrop { background: rgba(0,0,0,.55); }
+  #repDlg h2, #titleDlg h2, #wiDlg h2, #pwDlg h2, #apkAltDlg h2 { margin: 0 0 14px; font-size: 15px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--bright); }
   #repForm label, #titleForm label { display: block; font-size: 12.5px; color: var(--muted); margin-top: 10px; }
   #repForm label input[type=text], #repForm textarea, #titleForm label input, #titleForm label select { margin-top: 5px; }
   #titleForm select { width: 100%; background: rgba(0,0,0,.28); color: var(--text); border: 1px solid transparent;
@@ -270,8 +303,8 @@
   .game-card .art { width: 100%; aspect-ratio: 231 / 87; border-radius: 2px; object-fit: cover; background: rgba(0,0,0,.25); display: block; }
   .game-card .price { color: var(--bright); font-size: 13px; }
   .game-card .price s { color: var(--dim); margin-right: 6px; }
-  .game-card .row a { color: var(--link); text-decoration: none; font-size: 13px; }
-  .game-card .row a:hover { color: #fff; }
+  .cat-card .row a { color: var(--link); text-decoration: none; font-size: 13px; padding: 0 4px; }
+  .cat-card .row a:hover { color: #fff; }
   .game-card .bar { height: 3px; background: rgba(255,255,255,.08); border-radius: 2px; overflow: hidden; }
   .game-card .bar > i { display: block; height: 100%; background: var(--action); }
   .f-0 { color: var(--muted); }
@@ -280,17 +313,59 @@
                  padding: 8px 10px; font: inherit; font-size: 13px; }
   .disp select:focus { outline: none; border-color: var(--blue); }
   .disp .stats { grid-template-columns: repeat(3, 1fr); margin: 12px 0 4px; }
+  .disp select:disabled { opacity: .6; }
   .disp .stat .v { font-size: 15px; }
   .disp .k2 { color: var(--muted); font-size: 11px; letter-spacing: 1px; text-transform: uppercase; margin: 12px 0 5px; }
   .disp .seg { flex-wrap: wrap; }
   .disp .seg button { padding: 0 10px; }
   .disp input[type=number] { width: 72px; background: rgba(0,0,0,.28); color: var(--text); border: 1px solid transparent;
                              border-radius: 3px; height: 32px; padding: 0 8px; font: inherit; font-size: 13px; }
+  /* Touch screens can't hover: keep the library's name and Play button showing. */
+  @media (hover: none) { .capsule .over { opacity: 1; } .capsule:hover { transform: none; } }
+  /* ---- phones, upright or on their side: tabs move to a bottom bar, as in iOS apps. Every edge keeps clear of
+     the safe area (notch or Dynamic Island, rounded corners, home indicator); env() is zero on desktops. ---- */
+  @media (max-width: 640px), (max-height: 500px) and (hover: none) {
+    html { scroll-padding-top: calc(64px + env(safe-area-inset-top)); }
+    /* No blur here: it would make the header the containing block of the fixed tab bar. */
+    header { height: calc(52px + env(safe-area-inset-top)); padding: env(safe-area-inset-top) calc(14px + env(safe-area-inset-right)) 0 calc(14px + env(safe-area-inset-left)); gap: 10px;
+             backdrop-filter: none; background: rgb(23, 29, 37); }
+    .brand svg { width: 26px; height: 26px; }
+    header .chip { height: 30px; padding: 0 10px; }
+    nav { position: fixed; left: 0; right: 0; bottom: 0; z-index: 25; gap: 0;
+          height: calc(58px + env(safe-area-inset-bottom)); padding: 0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+          background: rgba(23,29,37,.97); backdrop-filter: blur(12px); box-shadow: 0 -1px 0 rgba(255,255,255,.07); }
+    nav a { flex: 1; flex-direction: column; justify-content: center; gap: 3px; padding: 0; font-size: 10.5px;
+            letter-spacing: .5px; border-bottom: 0; color: var(--muted); }
+    nav a.on { border-bottom: 0; }
+    nav svg { display: block; width: 23px; height: 23px; }
+    .bottombar, .drawer { display: none; }
+    body { padding-bottom: calc(70px + env(safe-area-inset-bottom)); }
+    .toast { left: calc(14px + env(safe-area-inset-left)); right: calc(14px + env(safe-area-inset-right)); max-width: none; bottom: calc(70px + env(safe-area-inset-bottom)); }
+    main, .page { gap: 16px; }
+    main { padding: 12px calc(12px + env(safe-area-inset-right)) 20px calc(12px + env(safe-area-inset-left)); }
+    .panel { padding: 14px; }
+    .grid-top, .grid-3, .and-grid, .and-col { gap: 14px; }
+    .toolbar { gap: 8px; }
+    .toolbar .spacer { display: none; }
+    .shelf-head { flex-wrap: wrap; row-gap: 8px; }
+    .shelf { grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 10px; }
+    .cat-grid { grid-template-columns: 1fr; }
+    .shot-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .and-btns { padding-left: 0; }
+    .banner { flex-wrap: wrap; }
+    .banner .s { white-space: normal; }
+    button { height: 38px; }
+    button.small { height: 32px; }
+    .actions button { height: 46px; }
+    .cat-tools select { max-width: none; flex: 1 1 100%; }
+    /* The on-screen keyboard covers the bottom of the screen; the tab bar would ride on top of it. */
+    body.typing nav { display: none; }
+  }
 </style>
 </head>
 <body>
 <header>
-  <a class="brand" href="#view" aria-label="Frame Control">
+  <a class="brand" href="#home" aria-label="Frame Control">
     <svg viewBox="0 0 32 32" aria-hidden="true">
       <defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1a9fff"/><stop offset="1" stop-color="#1a44c2"/></linearGradient></defs>
       <circle cx="16" cy="16" r="15" fill="url(#lg)"/>
@@ -300,18 +375,13 @@
     <b>FRAME CONTROL</b>
   </a>
   <nav id="nav">
-    <a href="#view" class="on">View</a>
-    <a href="#shots">Shots</a>
-    <a href="#library">Library</a>
-    <a href="#getgames">Games</a>
-    <a href="#android">Android</a>
-    <a href="#transfer">Transfer</a>
-    <a href="#apps">Apps</a>
-    <a href="#display">Display</a>
-    <a href="#power">Power</a>
+    <a href="#home" class="on" title="Headset view, status and screenshots (1)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="7" width="19" height="10" rx="4"/><circle cx="8.5" cy="12" r="1.6"/><circle cx="15.5" cy="12" r="1.6"/></svg>Home<kbd>1</kbd></a>
+    <a href="#games" title="Steam games and sideloaded titles (2)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8h12a4 4 0 0 1 4 4v1a4 4 0 0 1-7 2.6h-6A4 4 0 0 1 2 13v-1a4 4 0 0 1 4-4z"/><path d="M7 11v3M5.5 12.5h3"/><circle cx="16" cy="11.5" r=".6"/><circle cx="18" cy="13.5" r=".6"/></svg>Games<kbd>2</kbd></a>
+    <a href="#android" title="Android apps and their display (3)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="9" width="14" height="11" rx="2"/><path d="M8 9a4 4 0 0 1 8 0M8 5l1.5 2M16 5l-1.5 2M9.5 13h.01M14.5 13h.01"/></svg>Android<kbd>3</kbd></a>
+    <a href="#tools" title="Files, clipboard, Linux apps, remote and power (4)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a4 4 0 0 0-5.2 5.2L3.5 17.5a2.1 2.1 0 0 0 3 3l6-6a4 4 0 0 0 5.2-5.2l-2.5 2.5-2.5-2.5z"/></svg>Tools<kbd>4</kbd></a>
   </nav>
   <div class="spacer"></div>
-  <span class="chip" id="conn"><span class="dot"></span><span>Connecting…</span></span>
+  <span class="chip" id="conn" role="status"><span class="dot"></span><span>Connecting…</span></span>
   <span class="chip" id="battChip" title="Battery">—</span>
   <button id="refreshAll" title="Refresh (R)" aria-label="Refresh">
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
@@ -319,6 +389,15 @@
 </header>
 
 <main>
+  <div class="banner" id="offline" role="alert" hidden>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M2 8.5a15 15 0 0 1 20 0M5.5 12a10 10 0 0 1 13 0M9 15.5a5 5 0 0 1 6 0"/><circle cx="12" cy="19" r="1.2" fill="currentColor"/><path d="M3 3l18 18"/></svg>
+    <div class="grow"><div class="t" id="offMsg">Can't reach the Frame</div>
+      <div class="s" id="offDetail">Retrying every few seconds. Everything fills in when it answers.</div></div>
+    <button class="small" id="offSetup" hidden>Set Up Connection…</button>
+    <button class="action small" id="offRetry">Retry now</button>
+  </div>
+
+  <div class="page on" data-page="home">
   <div class="grid-top" id="view">
     <section class="panel">
       <div class="toolbar">
@@ -401,12 +480,21 @@
     <div class="shot-grid" id="shotGrid"><div class="sub">Loading…</div></div>
     <div class="hint">Screenshots you take in the headset with Steam's screenshot shortcut. Click one to open it in the viewer; Save copies it to <code>~/Pictures/SteamFrame</code>.</div>
   </section>
+  </div>
 
+  <div class="page" data-page="games">
   <section id="library">
-    <div class="shelf-head"><h2>Library</h2><span class="count" id="gameCount"></span></div>
+    <div class="shelf-head"><h2>Installed</h2><span class="count" id="gameCount"></span></div>
     <div class="shelf" id="games"><div class="sub">Loading…</div></div>
   </section>
 
+  <section class="panel" id="sideloaded">
+    <div class="shelf-head"><h2>Sideloaded titles</h2><span class="count" id="titleCount"></span><span class="spacer"></span>
+      <button class="small" id="titleAdd" title="Pick a game's .zip or .exe to add to the Steam library">+ Add a game…</button></div>
+    <div class="list" id="titleList"><div class="sub">Loading…</div></div>
+    <div class="hint">Your own Linux or Windows builds, added to the Steam library as Devkit Games. Drop a game's
+      <code>.zip</code>, folder or <code>.exe</code> anywhere in this window.</div>
+  </section>
 
   <section id="getgames">
     <div class="shelf-head"><h2>Get games</h2><span class="count" id="gmCount"></span><span class="spacer"></span>
@@ -429,7 +517,9 @@
         compatibility categories.</div>
     </div>
   </section>
+  </div>
 
+  <div class="page" data-page="android">
   <section id="android">
     <div class="shelf-head"><h2>Android apps</h2><span class="count" id="andCount"></span><span class="spacer"></span>
       <button class="action small" id="repNew" title="Report how any APK worked on the Frame">+ Report an APK</button></div>
@@ -442,68 +532,13 @@
           library under its own name and opens in its own panel. Test launches it and records
           whether it stays up; Report records how it worked for you.</div>
       </div>
-      <div class="panel">
-        <div class="shelf-head"><h2>Recent reports</h2><span class="count" id="repCount"></span></div>
-        <div class="list" id="repList"><div class="sub">Loading…</div></div>
-        <div class="hint" id="repHint">Reports change the verdicts in the catalogue. Any APK can be
-          reported, including ones not on F-Droid.</div>
-      </div>
-      </div>
-      <div class="panel">
-        <div class="shelf-head"><h2>Find apps</h2><span class="count" id="catCount"></span></div>
-        <div class="cat-tools">
-          <input type="text" id="catQ" placeholder="Search F-Droid apps rated for the Frame…">
-          <select id="catCat" aria-label="Category"><option value="">All categories</option></select>
-        </div>
-        <div class="vchips" id="catChips"></div>
-        <div class="cat-grid" id="catGrid"><div class="sub">Loading the catalogue…</div></div>
-        <div class="row" style="margin-top:12px"><button class="small" id="catMore" hidden>Show more</button></div>
-        <div class="hint">Verdicts come from checks of each APK against what Lepton supports (Android 11,
-          64-bit ARM, no clipboard or Play Services) and from reports made on a Frame. See docs/apks.md.</div>
-      </div>
-    </div>
-  </section>
-
-  <div class="grid-3">
-    <section class="panel" id="transfer">
-      <div class="shelf-head"><h2>Send to Frame</h2></div>
-      <div class="drop" id="drop" tabindex="0" role="button" aria-label="Choose files to send">
-        <b>Drop files here</b>
-        Files land in <code>~/Downloads</code>. <code>.apk</code> files install as their own Android app;
-        a game's <code>.zip</code>, folder or <code>.exe</code> becomes a title in the Steam library.
-        <input type="file" id="fileInput" multiple hidden>
-      </div>
-      <label class="sub" for="apkDisplay">Android display</label>
-      <select id="apkDisplay" aria-label="Android app display mode">
-        <option value="auto">Automatic (detect VR)</option>
-        <option value="flat">Flat screen</option>
-        <option value="vr">VR app</option>
-      </select>
-      <div class="progress" id="prog"><i></i></div>
-      <div class="shelf-head" style="margin-top:16px"><h2>Sideloaded titles</h2><span class="count" id="titleCount"></span></div>
-      <div class="list" id="titleList"><div class="sub">Loading…</div></div>
-      <textarea id="clipText" style="margin-top:16px" placeholder="Text to put on the Frame's clipboard…"></textarea>
-      <div class="row" style="margin-top:8px">
-        <button class="action small" id="clipSend">Send text</button>
-        <button class="small" id="clipMac">Send this computer's clipboard</button>
-      </div>
-      <div class="hint">Clipboard needs the desktop panel open in the headset.</div>
-    </section>
-
-    <section class="panel" id="apps">
-      <div class="shelf-head"><h2>Linux apps</h2><span class="count">Flatpak</span></div>
-      <div class="list" id="flatpaks"><div class="sub">Loading…</div></div>
-      <div class="row" style="margin-top:14px; flex-wrap:nowrap">
-        <input type="text" id="fpId" placeholder="Flathub ID, e.g. org.mozilla.firefox">
-        <button class="action" id="fpInstall">Install</button>
-      </div>
-      <div class="row" style="margin-top:8px" id="fpQuick"></div>
-    </section>
-
-    <section class="panel disp" id="display">
+      <section class="panel disp" id="display">
       <div class="shelf-head"><h2>Android display</h2><span class="count">Lepton</span><span class="spacer"></span>
         <button class="small" id="dispReload" title="Read the current values again">Refresh</button></div>
       <select id="dispSel" aria-label="Lepton instance"><option>Loading…</option></select>
+      <div class="hint" id="dispEmpty" hidden>Open an Android app in the headset, then Refresh, to change its
+        resolution, UI scale and text size here.</div>
+      <div id="dispCtl">
       <div class="stats">
         <div class="stat"><div class="k">Resolution</div><div class="v" id="dispSize">—</div><div class="d" id="dispSizeD">&nbsp;</div></div>
         <div class="stat"><div class="k">UI scale</div><div class="v" id="dispDens">—</div><div class="d" id="dispDensD">&nbsp;</div></div>
@@ -529,7 +564,69 @@
       <div class="row" style="margin-top:14px"><button class="small danger" id="dispReset" title="wm size reset, wm density reset, and clear font_scale">Reset all</button></div>
       <div class="hint">Changes apply at once, and the app may redraw or restart its screen. They may not survive the app
         relaunching (not yet verified). Sharp gives Android more pixels in the same panel, which should make text crisper.</div>
+      </div>
     </section>
+      <div class="panel">
+        <div class="shelf-head"><h2>Recent reports</h2><span class="count" id="repCount"></span></div>
+        <div class="list" id="repList"><div class="sub">Loading…</div></div>
+        <div class="row" style="margin-top:10px"><button class="small" id="repMore" hidden>Show all</button></div>
+        <div class="hint" id="repHint">Reports change the verdicts in the catalogue. Any APK can be
+          reported, including ones not on F-Droid.</div>
+      </div>
+      </div>
+      <div class="panel">
+        <div class="shelf-head"><h2>Find apps</h2><span class="count" id="catCount"></span></div>
+        <div class="cat-tools">
+          <input type="text" id="catQ" placeholder="Search F-Droid apps rated for the Frame…">
+          <select id="catCat" aria-label="Category"><option value="">All categories</option></select>
+        </div>
+        <div class="vchips" id="catChips"></div>
+        <div class="cat-grid" id="catGrid"><div class="sub">Loading the catalogue…</div></div>
+        <div class="row" style="margin-top:12px"><button class="small" id="catMore" hidden>Show more</button></div>
+        <div class="hint">Verdicts come from checks of each APK against what Lepton supports (Android 11,
+          64-bit ARM, no clipboard or Play Services) and from reports made on a Frame. See docs/apks.md.</div>
+      </div>
+    </div>
+  </section>
+  </div>
+
+  <div class="page" data-page="tools">
+  <div class="grid-3">
+    <section class="panel" id="transfer">
+      <div class="shelf-head"><h2>Send to Frame</h2></div>
+      <div class="drop" id="drop" tabindex="0" role="button" aria-label="Choose files to send">
+        <b><span class="desk-only">Drop files here, or click to choose</span><span class="mobile-only">Tap to choose files</span></b>
+        Files land in <code>~/Downloads</code>. <code>.apk</code> files install as their own Android app;
+        a game's <code>.zip</code>, folder or <code>.exe</code> becomes a title in the Steam library.
+        <span class="desk-only">You can also drop files anywhere in this window.</span>
+        <input type="file" id="fileInput" multiple hidden>
+      </div>
+      <label class="sub" for="apkDisplay">Android display</label>
+      <select id="apkDisplay" aria-label="Android app display mode">
+        <option value="auto">Automatic (detect VR)</option>
+        <option value="flat">Flat screen</option>
+        <option value="vr">VR app</option>
+      </select>
+      <div class="progress" id="prog"><i></i></div>
+      <div class="shelf-head" style="margin-top:18px"><h2>Clipboard</h2></div>
+      <textarea id="clipText" placeholder="Text to put on the Frame's clipboard…"></textarea>
+      <div class="row" style="margin-top:8px">
+        <button class="action small" id="clipSend">Send text</button>
+        <button class="small" id="clipMac">Send this computer's clipboard</button>
+      </div>
+      <div class="hint">Clipboard needs the desktop panel open in the headset.</div>
+    </section>
+
+    <section class="panel" id="apps">
+      <div class="shelf-head"><h2>Linux apps</h2><span class="count">Flatpak</span></div>
+      <div class="list" id="flatpaks"><div class="sub">Loading…</div></div>
+      <div class="row" style="margin-top:14px; flex-wrap:nowrap">
+        <input type="text" id="fpId" placeholder="Flathub ID, e.g. org.mozilla.firefox">
+        <button class="action" id="fpInstall">Install</button>
+      </div>
+      <div class="row" style="margin-top:8px" id="fpQuick"></div>
+    </section>
+
 
     <section class="panel" id="power">
       <div class="shelf-head"><h2>Remote &amp; power</h2></div>
@@ -542,22 +639,39 @@
         <button data-open="reboot" data-confirm="Restart the Frame?"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>Restart</button>
         <button data-open="poweroff" data-confirm="Shut the Frame down?" class="danger"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 3v9"/><path d="M6.3 7.3a8 8 0 1 0 11.4 0"/></svg>Shut down</button>
       </div>
-      <div class="hint">Sleep, Restart and Shut down open a terminal window for the Developer Mode password.</div>
-      <div class="links">
+      <div class="hint desk-only">Sleep, Restart and Shut down open a terminal window for the Developer Mode password.</div>
+      <div class="hint mobile-only">Sleep, Restart and Shut down ask for the Developer Mode password. SSH, SFTP, Steam Link and remote desktop open in the app that handles them.</div>
+      <div class="row mobile-only" style="margin-top:14px"><button class="small" id="changeHeadset">Change headset…</button></div>
+      <div class="links desk-only">
         <div><a href="https://store.steampowered.com/remoteplay" target="_blank">Steam Link</a>: Valve's remote view of the headset</div>
         <div><a href="https://streamframe.app/" target="_blank">Stream Frame</a>: third-party recorder (macOS 14+)</div>
         <div><a href="https://framedropvr.com" target="_blank">FrameDrop</a>: sideloader (Windows only for now)</div>
       </div>
     </section>
   </div>
+  </div>
 </main>
+<div class="dropzone" id="dropzone" hidden><div><b>Drop to send to the Frame</b>
+  <span class="sub">Files go to <code>~/Downloads</code>; <code>.apk</code> files install as Android apps;
+  a game's <code>.zip</code>, folder or <code>.exe</code> becomes a Steam library title.</span></div></div>
 
 <div class="drawer" id="drawer"><div class="log" id="log"></div></div>
 <div class="bottombar" id="bottombar" role="button" aria-label="Show activity">
   <span class="label">ACTIVITY</span>
+  <span class="jobs" id="jobs" hidden><span class="spinner"></span><span id="jobsText"></span></span>
   <span class="last" id="lastLog">Ready</span>
   <span class="sub" id="drawerHint">Show ▴</span>
 </div>
+<dialog id="apkAltDlg" aria-labelledby="apkAltTitle">
+  <h2 id="apkAltTitle">Try another APK version</h2>
+  <p id="apkAltReason"></p>
+  <div class="list" id="apkAltVersions"></div>
+  <p class="sub" id="apkAltNote"></p>
+  <div id="apkAltLinks"></div>
+  <p class="sub" id="apkAltErrors"></p>
+  <div class="actions"><button id="apkAltClose">Close</button></div>
+</dialog>
+
 <dialog id="repDlg" aria-labelledby="repTitle">
   <form method="dialog" id="repForm">
     <h2 id="repTitle">Report an APK</h2>
@@ -613,10 +727,23 @@
     <button type="button" class="small" id="wiCancel">Cancel</button>
     <button type="button" class="action small" id="wiGo" disabled>Install</button></div>
 </dialog>
+<dialog id="pwDlg" aria-labelledby="pwTitle">
+  <form method="dialog" id="pwForm">
+    <h2 id="pwTitle">Restart the Frame?</h2>
+    <div class="sub">SteamOS asks for the Developer Mode password for this. It's used once and not saved.</div>
+    <input type="password" id="pwInput" autocomplete="current-password" placeholder="Developer Mode password" style="margin-top:12px">
+    <div class="row rep-actions"><span class="sub" id="pwMsg"></span><span class="spacer"></span>
+      <button type="button" class="small" id="pwCancel">Cancel</button>
+      <button type="submit" class="action small" id="pwGo">Restart</button></div>
+  </form>
+</dialog>
 <div class="toast" id="toast"></div>
 
 <script>
 const $ = (id) => document.getElementById(id);
+// Every /api/ request carries this header. The desktop server takes "1"; the
+// iPhone app's server, on the Frame, takes a fresh key it puts in the page URL.
+const UI_KEY = new URLSearchParams(location.search).get("key") || "1";
 const QUICK = [["Remmina", "org.remmina.Remmina"], ["Moonlight", "com.moonlight_stream.Moonlight"],
                ["Firefox", "org.mozilla.firefox"], ["VLC", "org.videolan.VLC"]];
 const CDN = "https://cdn.cloudflare.steamstatic.com/steam/apps";
@@ -663,18 +790,51 @@ $("bottombar").onclick = () => {
 const HOST = { computer: "computer" };
 function applyHostWording(h) {
   Object.assign(HOST, h);
-  $("shotsFolder").textContent = h.fileManager === "your file manager" ? "Open folder" : `Show in ${h.fileManager}`;
-  $("shotsSaveNew").textContent = `Save new to ${h.computer}`;
+  // The iPhone app: the server runs on the Frame, and saving goes to the phone's Photos.
+  document.body.classList.toggle("mobile", !!h.mobile);
+  $("shotsFolder").hidden = !!h.mobile;
+  if (!h.mobile) $("shotsFolder").textContent = h.fileManager === "your file manager" ? "Open folder" : `Show in ${h.fileManager}`;
+  $("shotsSaveNew").textContent = h.mobile ? `Save all to ${h.computer}` : `Save new to ${h.computer}`;
   $("clipMac").textContent = `Send ${h.computer} clipboard`;
+  if (h.mobile) $("offSetup").textContent = "Change headset…";
 }
+// Images to the phone (the app offers Save Image to Photos, Files and so on).
+function blobBase64(blob) {
+  return new Promise((ok, bad) => {
+    const r = new FileReader();
+    r.onload = () => ok(String(r.result).split(",")[1]);
+    r.onerror = () => bad(new Error("couldn't read the image"));
+    r.readAsDataURL(blob);
+  });
+}
+async function saveToDevice(items) {
+  const images = await Promise.all(items.map(async i => ({ name: i.name, data: await blobBase64(i.blob) })));
+  return window.frameApp.saveImages(images);
+}
+const savesToDevice = () => !!(window.frameApp && window.frameApp.saveImages);
 
 async function api(path, body) {
-  const opts = body === undefined ? { headers: {"X-Frame-UI": "1"} } : {
-    method: "POST", headers: {"Content-Type": "application/json", "X-Frame-UI": "1"}, body: JSON.stringify(body) };
-  const r = await fetch(path, opts);
+  const opts = body === undefined ? { headers: {"X-Frame-UI": UI_KEY} } : {
+    method: "POST", headers: {"Content-Type": "application/json", "X-Frame-UI": UI_KEY}, body: JSON.stringify(body) };
+  let r;
+  try { r = await fetch(path, opts); }
+  catch {
+    throw new Error(window.frameApp?.platform === "ios" ? "Lost the connection to the Frame. The app reconnects on its own."
+                                                         : "Frame Control's local server isn't running. Restart the app (Frame → Restart Server).");
+  }
   const data = await r.json().catch(() => ({ error: `HTTP ${r.status}` }));
-  if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+  if (!r.ok) {
+    const err = new Error(data.error || `HTTP ${r.status}`);
+    err.offline = !!data.offline;
+    if (err.offline) setOnline(false, err.message);
+    throw err;
+  }
   return data;
+}
+// What a panel shows when its data couldn't be read: a quiet placeholder while
+// the Frame is unreachable (the banner explains), the real error otherwise.
+function failed(el, e) {
+  el.innerHTML = e.offline ? `<div class="wait">Waiting for the Frame</div>` : `<div class="sub">${esc(e.message)}</div>`;
 }
 async function act(label, fn, btn) {
   if (btn) btn.disabled = true;
@@ -693,17 +853,54 @@ function setConn(ok, text) {
   $("conn").innerHTML = `<span class="dot ${ok ? "on" : "off"}"></span><span>${esc(text)}</span>`;
 }
 
-async function refresh() {
-  $("refreshAll").disabled = true;
-  try {
-    state = await api("/api/status");
-    render(state);
-    setConn(true, state.hostname);
-  } catch (e) {
+// Whether the Frame answers. Any request that couldn't reach it flips this off;
+// the next successful status check flips it back and reloads what failed.
+let online = null;
+function setOnline(ok, why) {
+  const was = online;
+  online = ok;
+  $("offline").hidden = ok;
+  if (!ok) {
+    $("offMsg").textContent = why || "Can't reach the Frame";
     setConn(false, "Offline");
-    $("battChip").textContent = "—";
-    log("Status failed: " + e.message, "e");
-  } finally { $("refreshAll").disabled = false; }
+    $("battChip").hidden = true;
+    if (was !== false) { log(why || "Can't reach the Frame", "e"); schedule(); }
+  } else if (was === false) {
+    log("Connected to the Frame again", "ok");
+    reloadAll();
+  }
+}
+function reloadAll() { loadTitles(); loadOwned(); loadAndroid(); loadDisplays(); loadShots(); }
+$("offRetry").onclick = () => refresh();
+if (window.frameApp && window.frameApp.setUpConnection) {
+  $("offSetup").hidden = false;
+  $("offSetup").onclick = () => window.frameApp.setUpConnection();
+}
+$("conn").onclick = () => { if (online === false) refresh(); };
+
+let refreshing = null, pollTimer = null;
+function schedule() {  // every 30 s while connected, every 8 s while not
+  clearTimeout(pollTimer);
+  pollTimer = setTimeout(() => { if (document.hidden) schedule(); else refresh(); }, online === false ? 8000 : 30000);
+}
+function refresh() {
+  if (refreshing) return refreshing;
+  $("refreshAll").disabled = true; $("offRetry").disabled = true;
+  refreshing = (async () => {
+    try {
+      state = await api("/api/status");
+      render(state);
+      setConn(true, state.hostname);
+      setOnline(true);
+    } catch (e) {
+      if (!e.offline) { setConn(false, "Error"); log("Status failed: " + e.message, "e"); }
+      if (!state) ["games", "flatpaks"].forEach(id => failed($(id), e));
+    } finally {
+      $("refreshAll").disabled = false; $("offRetry").disabled = false;
+      refreshing = null; schedule();
+    }
+  })();
+  return refreshing;
 }
 
 // ---- battery ----
@@ -712,7 +909,9 @@ function battery(b, power) {
   const full = b?.status === "Full" || (!!power && pct >= 100);
   const charging = !full && b?.status === "Charging";
   // A weak charger can lose to the load: plugged in but still draining.
-  const draining = !full && !charging && (!power || b?.status === "Discharging" || b?.watts < 0);
+  // Topped up on a charger it reports Discharging at ~0 W: that's idle, not draining.
+  const idle = !!power && b?.watts != null && Math.abs(b.watts) < 0.5;
+  const draining = !full && !charging && !idle && (!power || b?.status === "Discharging" || b?.watts < 0);
   const low = !charging && !full && pct != null && pct <= 15;
   const color = full || charging ? "#59bf40" : low ? "#d94126" : pct != null && pct <= 30 ? "#d9a23a" : "#dcdedf";
   $("battFill").setAttribute("width", pct == null ? 0 : (55 * Math.min(100, Math.max(0, pct)) / 100).toFixed(1));
@@ -744,6 +943,7 @@ function battery(b, power) {
   $("battChip").innerHTML = pct == null ? "—" :
     `<svg width="22" height="12" viewBox="0 0 22 12" aria-hidden="true"><rect x=".75" y=".75" width="18" height="10.5" rx="2" fill="none" stroke="#8f98a0" stroke-width="1.5"/><rect x="19.8" y="3.5" width="1.8" height="5" rx=".6" fill="#8f98a0"/><rect x="2.5" y="2.5" width="${(14.5 * chipPct / 100).toFixed(1)}" height="7" rx="1" fill="${color}"/></svg>${bolt}<span>${pct}%</span>`;
   $("battChip").title = label;
+  $("battChip").hidden = pct == null;
 }
 
 function render(s) {
@@ -801,7 +1001,8 @@ function render(s) {
     </div>`).join("") : `<div class="sub">No Flatpak apps.</div>`;
   const have = new Set(s.flatpaks.map(f => f.id));
   $("fpQuick").innerHTML = QUICK.filter(([, id]) => !have.has(id))
-    .map(([n, id]) => `<button class="small" data-quick="${esc(id)}">+ ${esc(n)}</button>`).join("");
+    .map(([n, id]) => installing.has(id) ? `<button class="small" disabled>Installing ${esc(n)}…</button>`
+                                         : `<button class="small" data-quick="${esc(id)}">+ ${esc(n)}</button>`).join("");
 }
 
 // ---- view ----
@@ -861,7 +1062,7 @@ $("canvas").addEventListener("pointerdown", e => {
   $("canvas").addEventListener("pointerup", up, { once: true });
 });
 document.addEventListener("keydown", e => {
-  if ($("canvas").hidden || /INPUT|TEXTAREA/.test(document.activeElement.tagName) || e.metaKey || e.ctrlKey) return;
+  if (page !== "home" || $("canvas").hidden || /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName) || e.metaKey || e.ctrlKey) return;
   if (e.key === "+" || e.key === "=") setZoom(zoom * 1.5);
   else if (e.key === "-") setZoom(zoom / 1.5);
   else if (e.key === "0") setZoom(1);
@@ -904,7 +1105,7 @@ async function capture() {
   let url = null;
   try {
     const r = await fetch(view === "headset" ? "/api/screenshot?view=headset" : "/api/screenshot",
-                          { headers: {"X-Frame-UI": "1"} });
+                          { headers: {"X-Frame-UI": UI_KEY} });
     if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `HTTP ${r.status}`);
     const source = r.headers.get("X-Capture-Source") || "gamescope";
     url = URL.createObjectURL(await r.blob());
@@ -1003,7 +1204,7 @@ async function startVideo() {
     },
     error: e => log("Video decoder: " + e.message, "e"),
   });
-  const r = await fetch(`/api/stream?${STREAM_QUERY}`, { headers: {"X-Frame-UI": "1"}, signal: ctl.signal });
+  const r = await fetch(`/api/stream?${STREAM_QUERY}`, { headers: {"X-Frame-UI": UI_KEY}, signal: ctl.signal });
   if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `HTTP ${r.status}`);
   const reader = r.body.getReader();
   let buf = new Uint8Array(0), scan = 0, auStart = -1;
@@ -1058,6 +1259,7 @@ $("saveBtn").onclick = () => lastShot ? download(lastShot.blob, lastShot.file) :
   download(b, `frame-${view}-${new Date().toISOString().replace(/[:.]/g, "-")}.png`);
 }, "image/png");
 function download(blob, name) {
+  if (savesToDevice()) return act("Save image", () => saveToDevice([{ blob, name }]));
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
   a.download = name;
@@ -1079,17 +1281,75 @@ document.body.addEventListener("click", async (e) => {
   else if (b.dataset.uninstall) {
     if (confirm(`Remove ${b.dataset.name} from the Frame?`))
       act(`Remove ${b.dataset.name}`, () => api("/api/flatpak", { action: "uninstall", id: b.dataset.uninstall }), b).then(refresh);
-  } else if (b.dataset.quick) installFlatpak(b.dataset.quick, b);
+  } else if (b.dataset.quick) installFlatpak(b.dataset.quick);
   else if (b.dataset.open) {
+    const what = b.dataset.open, label = b.textContent.trim();
+    // On the phone, power needs the password here, and the rest opens other apps.
+    if (HOST.mobile && POWER[what]) return askPower(what);
     if (b.dataset.confirm && !confirm(b.dataset.confirm)) return;
-    act(b.textContent.trim(), () => api("/api/open", { what: b.dataset.open }), b);
+    if (HOST.mobile && window.frameApp?.open) return act(label, () => window.frameApp.open(what), b);
+    act(label, () => api("/api/open", { what }), b);
   }
 });
-function installFlatpak(id, btn) {
-  toast(`Installing ${id}. This can take a few minutes…`);
-  return act(`Install ${id}`, () => api("/api/flatpak", { action: "install", id }), btn).then(refresh);
+// Installs run as server jobs: start one, then poll until it's done. The
+// bottom bar counts what's running; `installing` keeps re-rendered lists from
+// offering Install again for something already on its way.
+const installing = new Set();
+let jobsRunning = 0;
+function showJobs() {
+  $("jobs").hidden = !jobsRunning;
+  $("jobsText").textContent = `${jobsRunning} install${jobsRunning === 1 ? "" : "s"} running`;
 }
-$("fpInstall").onclick = () => { const id = $("fpId").value.trim(); if (id) installFlatpak(id, $("fpInstall")); };
+async function runJob(label, key, start) {
+  installing.add(key); jobsRunning++; showJobs();
+  log(label + "…");
+  try {
+    const { job } = await start();
+    for (let misses = 0; ;) {
+      await new Promise(ok => setTimeout(ok, 1500));
+      let j;
+      try { j = await api(`/api/job?id=${encodeURIComponent(job)}`); misses = 0; }
+      catch (e) { if (++misses >= 20 || /no such job/.test(e.message)) throw e; continue; }
+      if (!j.done) continue;
+      if (j.error) throw new Error(j.error);
+      log(j.message, "ok"); toast(j.message);
+      return j.result || {};
+    }
+  } catch (e) {
+    log(`${label} failed: ${e.message}`, "e"); toast(`${label} failed: ${e.message}`, true);
+  } finally { installing.delete(key); jobsRunning--; showJobs(); }
+}
+const POWER = { suspend: ["Put the Frame to sleep?", "Sleep"], reboot: ["Restart the Frame?", "Restart"],
+                poweroff: ["Shut the Frame down?", "Shut down"] };
+function askPower(what) {
+  const [title, verb] = POWER[what], dlg = $("pwDlg");
+  $("pwTitle").textContent = title; $("pwGo").textContent = verb;
+  $("pwInput").value = ""; $("pwMsg").textContent = "";
+  $("pwCancel").onclick = () => dlg.close();
+  $("pwForm").onsubmit = async e => {
+    e.preventDefault();
+    const password = $("pwInput").value;
+    if (!password) return ($("pwMsg").textContent = "Enter the password");
+    $("pwGo").disabled = true; $("pwMsg").textContent = "";
+    try {
+      const res = await api("/api/open", { what, password });
+      dlg.close(); log(res.message, "ok"); toast(res.message);
+    } catch (err) { $("pwMsg").textContent = err.message; }
+    finally { $("pwGo").disabled = false; $("pwInput").value = ""; }
+  };
+  dlg.showModal();
+  $("pwInput").focus();
+}
+$("changeHeadset").onclick = () => window.frameApp?.setUpConnection && window.frameApp.setUpConnection();
+
+function installFlatpak(id) {
+  if (installing.has(id)) return;
+  toast(`Installing ${id}. This can take a few minutes…`);
+  const done = runJob(`Install ${id}`, id, () => api("/api/flatpak", { action: "install", id })).then(refresh);
+  if (state) render(state);  // show it as installing
+  return done;
+}
+$("fpInstall").onclick = () => { const id = $("fpId").value.trim(); if (id) { installFlatpak(id); $("fpId").value = ""; } };
 $("fpId").addEventListener("keydown", e => { if (e.key === "Enter") $("fpInstall").click(); });
 
 function setVolume(pct, muted) {
@@ -1129,10 +1389,26 @@ const drop = $("drop");
 drop.onclick = () => $("fileInput").click();
 drop.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); $("fileInput").click(); } };
 $("fileInput").onchange = () => sendFiles([...$("fileInput").files]);
-["dragenter", "dragover"].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.add("over"); }));
-["dragleave", "drop"].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.remove("over"); }));
-// Folders only show up as directory entries, and only during the drop event itself.
-drop.addEventListener("drop", e => {
+// Files can be dropped anywhere in the window; an overlay says what happens.
+// Dialogs keep their own drops (none take files today), so the overlay stays out of them.
+let dragDepth = 0;
+const carriesFiles = e => [...(e.dataTransfer?.types || [])].includes("Files");
+window.addEventListener("dragenter", e => {
+  if (!carriesFiles(e) || document.querySelector("dialog[open]")) return;
+  e.preventDefault();
+  if (dragDepth++ === 0) { $("dropzone").hidden = false; drop.classList.add("over"); }
+});
+window.addEventListener("dragover", e => { if (carriesFiles(e)) e.preventDefault(); });
+window.addEventListener("dragleave", e => {
+  if (!carriesFiles(e) || dragDepth === 0) return;
+  if (--dragDepth === 0) { $("dropzone").hidden = true; drop.classList.remove("over"); }
+});
+window.addEventListener("drop", e => {
+  if (!carriesFiles(e)) return;
+  e.preventDefault();
+  dragDepth = 0; $("dropzone").hidden = true; drop.classList.remove("over");
+  if (document.querySelector("dialog[open]")) return;
+  // Folders only show up as directory entries, and only during the drop event itself.
   const items = [...(e.dataTransfer.items || [])].filter(it => it.kind === "file");
   const dirs = new Set(items.map((it, i) => it.webkitGetAsEntry && it.webkitGetAsEntry()?.isDirectory ? i : -1).filter(i => i >= 0));
   sendFiles([...e.dataTransfer.files], dirs);
@@ -1141,7 +1417,7 @@ function upload(file, mode) {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open("POST", "/api/upload");
-    xhr.setRequestHeader("X-Frame-UI", "1");
+    xhr.setRequestHeader("X-Frame-UI", UI_KEY);
     xhr.setRequestHeader("X-Filename", encodeURIComponent(file.name));
     xhr.setRequestHeader("X-Mode", mode);
     if (mode === "apk") xhr.setRequestHeader("X-APK-Display", $("apkDisplay").value);
@@ -1151,12 +1427,56 @@ function upload(file, mode) {
     xhr.onload = () => {
       $("prog").style.display = "none";
       let data; try { data = JSON.parse(xhr.responseText); } catch { data = { error: `HTTP ${xhr.status}` }; }
+      if (data.apk?.blocker && xhr.status >= 300) checkApkAlternatives(data.apk);
       xhr.status < 300 ? resolve(data) : reject(new Error(data.error));
     };
     xhr.onerror = () => { $("prog").style.display = "none"; reject(new Error("network error")); };
     xhr.send(file);
   });
 }
+let apkLookup = 0;
+async function checkApkAlternatives(apk) {
+  const lookup = ++apkLookup;
+  $("apkAltReason").textContent = apk.blocker;
+  $("apkAltVersions").textContent = "Checking F-Droid for older versions…";
+  $("apkAltVersions").onclick = null;
+  for (const id of ["apkAltNote", "apkAltErrors", "apkAltLinks"]) $(id).textContent = "";
+  if (!$("apkAltDlg").open) $("apkAltDlg").showModal();
+  const query = new URLSearchParams({package: apk.package});
+  if (apk.version_code != null) query.set("code", apk.version_code);
+  try {
+    const result = await api(`/api/apk-versions?${query}`);
+    if (lookup === apkLookup && $("apkAltDlg").open) showApkAlternatives(apk.blocker, result);
+  } catch (e) {
+    if (lookup === apkLookup) $("apkAltVersions").textContent = e.message;
+  }
+}
+function showApkAlternatives(reason, result) {
+  $("apkAltReason").textContent = reason;
+  $("apkAltNote").textContent = `${result.versions.length} of ${result.total} compatible versions. ${result.note}`;
+  $("apkAltErrors").textContent = result.errors.join(" · ");
+  $("apkAltLinks").innerHTML = result.links.map(l => `<a href="${esc(l.url)}" target="_blank" rel="noopener noreferrer">${esc(l.source)}</a>`).join(" · ");
+  $("apkAltVersions").innerHTML = result.versions.length ? result.versions.map((v, i) =>
+    `<div class="item"><div class="grow"><div class="t">${esc(v.version || "?")} <span class="sub">code ${esc(v.version_code)}</span></div>
+    <div class="s">${esc(v.source)} · minimum API ${esc(v.min_sdk)} · ${esc(v.abis.join(", ") || "no native code")}</div></div>
+    <button class="small" data-version="${i}" ${v.sha256 ? "" : "disabled"}>Install</button></div>`).join("") :
+    `<p>No compatible version found in F-Droid. Try the searches below.</p>`;
+  $("apkAltVersions").onclick = async e => {
+    const b = e.target.closest("[data-version]"); if (!b) return;
+    const v = result.versions[+b.dataset.version];
+    if (installing.has(result.package)) return;
+    b.disabled = true; b.textContent = "Installing…";
+    const res = await runJob(`Install ${result.package} ${v.version}`, result.package, () => api("/api/android", {
+      action: "install", package: result.package, url: v.url
+    }));
+    if (res) $("apkAltDlg").close(); else { b.disabled = false; b.textContent = "Install"; }
+    await loadAndroid();
+    if (cat.apps) { const y = window.scrollY; filterCatalog(); window.scrollTo(0, y); }
+  };
+  if (!$("apkAltDlg").open) $("apkAltDlg").showModal();
+}
+$("apkAltClose").onclick = () => $("apkAltDlg").close();
+
 const TITLE_EXT = /\.(zip|exe)$/i;
 async function sendFiles(files, dirs = new Set()) {
   for (const [i, f] of files.entries()) {
@@ -1178,9 +1498,11 @@ async function sendFiles(files, dirs = new Set()) {
 // ---- sideloaded titles (a Linux or Windows build as a Steam Devkit Game) ----
 const RESERVED_IDS = ["steam", "steamdeckard", "steamvr", "steamvrdeckard", "devkit-steam"];
 function titleId(name) {  // mirrors frame_titles.title_id: the name Steam shows
-  const trim = x => x.replace(/^[_-]+|[_-]+$/g, "");
-  let s = trim(trim(String(name).trim().replace(/[^A-Za-z0-9_-]+/g, "_").replace(/_+/g, "_")).slice(0, 64));
-  if (RESERVED_IDS.includes(s.toLowerCase())) s += "-game";
+  const trim = x => x.replace(/^_+|_+$/g, "");
+  let s = trim(trim(String(name).trim().replace(/[^A-Za-z0-9]+/g, "_")).slice(0, 64));
+  if (!s) return s;
+  if (/^[0-9]/.test(s)) s = "_" + s.slice(0, 63);
+  if (s.length < 2 || RESERVED_IDS.includes(s.toLowerCase())) s += "_game";
   return s;
 }
 const ARCH = { arm64: "ARM64", x86_64: "x86-64", x86: "32-bit x86" };
@@ -1291,7 +1613,7 @@ async function loadTitles() {
   let list, err;
   try { list = (await api("/api/titles")).titles; } catch (e) { err = e; }
   if (seq !== titlesSeq) return;
-  if (err) { $("titleList").innerHTML = `<div class="sub">${esc(err.message)}</div>`; return; }
+  if (err) return failed($("titleList"), err);
   $("titleCount").textContent = list.length ? `${list.length}` : "";
   $("titleList").innerHTML = list.length ? list.map(t => `
     <div class="item">
@@ -1299,7 +1621,7 @@ async function loadTitles() {
         <div class="s" title="${esc(t.target)}">${esc(t.runtime_label)}${t.target ? " · " + esc(t.target) : ""}</div></div>
       <button class="play small" data-title="launch" data-id="${esc(t.id)}" title="Launch in the headset">▶</button>
       <button class="small danger" data-title="remove" data-id="${esc(t.id)}">Remove</button>
-    </div>`).join("") : `<div class="sub">None yet. Drop a game's .zip, folder or .exe above.</div>`;
+    </div>`).join("") : `<div class="sub">None yet.</div>`;
 }
 $("titleList").onclick = async e => {
   const b = e.target.closest("[data-title]"); if (!b) return;
@@ -1311,6 +1633,7 @@ $("titleList").onclick = async e => {
   } else await act(`Launch ${id}`, () => api("/api/titles", { action: "launch", id }), b);
 };
 loadTitles();
+$("titleAdd").onclick = () => $("fileInput").click();
 
 
 // ---- Steam games: install owned games, find and buy on the store ----
@@ -1328,8 +1651,8 @@ async function loadOwned() {
     gm.owned = r.games; gm.country = r.country || gm.country; gm.dl = r.download;
     gm.byId = new Map(gm.owned.map(g => [g.id, g]));
   } catch (e) {
-    if (!gm.owned) $("gmGrid").innerHTML = `<div class="sub">${esc(e.message)}</div>`;
-    log("Steam library: " + e.message, "e");
+    if (!gm.owned) failed($("gmGrid"), e);
+    if (!e.offline) log("Steam library: " + e.message, "e");
     // Keep trying while a download was in progress; one failed poll shouldn't freeze it.
     clearTimeout(gm.poll);
     if (gm.dl) gm.poll = setTimeout(loadOwned, 15000);
@@ -1465,7 +1788,7 @@ let androidApps = [];
 async function loadAndroid() {
   try {
     androidApps = (await api("/api/android")).apps;
-  } catch (e) { $("andApps").innerHTML = `<div class="sub">${esc(e.message)}</div>`; return; }
+  } catch (e) { return failed($("andApps"), e); }
   $("andCount").textContent = androidApps.length ? `${androidApps.length} installed` : "";
   $("andApps").innerHTML = androidApps.length ? androidApps.map(a => {
     const c = cat.apps && cat.apps.find(x => x.p === a.package);
@@ -1528,6 +1851,7 @@ function moreCatalog() {
       <div class="why">${esc(a.why[0] || "")}${a.why.length > 1 ? `<span title="${esc(a.why.slice(1).join("\n"))}"> · more</span>` : ""}</div>
       <div class="row">
         ${installed.has(a.p) ? `<span class="tag">Installed</span>`
+          : installing.has(a.p) ? `<span class="tag">Installing…</span>`
           : a.r === "no" ? "" : `<button class="action small" data-and="install" data-pkg="${esc(a.p)}" data-name="${esc(a.n)}">Install</button>`}
         <button class="small" data-and="rate" data-pkg="${esc(a.p)}" data-ver="${esc(a.v)}" data-name="${esc(a.n)}" data-src="F-Droid" title="Report how it worked">Report</button>
         <a class="small" href="https://f-droid.org/packages/${esc(a.p)}/" target="_blank" rel="noopener">F-Droid</a>
@@ -1550,8 +1874,11 @@ document.body.addEventListener("click", async e => {
   const b = e.target.closest("[data-and]"); if (!b) return;
   const pkg = b.dataset.pkg, action = b.dataset.and;
   if (action === "install") {
+    if (installing.has(pkg)) return;
     toast(`Installing ${b.dataset.name}. The first time takes a minute…`);
-    await act(`Install ${b.dataset.name}`, () => api("/api/android", { action, package: pkg }), b);
+    const done = runJob(`Install ${b.dataset.name}`, pkg, () => api("/api/android", { action, package: pkg }));
+    b.outerHTML = `<span class="tag">Installing…</span>`;
+    await done;
   } else if (action === "remove") {
     if (!confirm(`Remove ${b.dataset.name} and its data from the Frame?`)) return;
     await act(`Remove ${b.dataset.name}`, () => api("/api/android", { action, package: pkg }), b);
@@ -1569,7 +1896,7 @@ document.body.addEventListener("click", async e => {
 loadCatalog();
 
 // ---- Android display (wm size / wm density / font_scale per Lepton instance) ----
-const disp = { list: [], port: null };
+const disp = { list: [], port: null, error: null, seq: 0 };
 const DPI = [120, 640];
 const dims = s => { const m = /^(\d+)x(\d+)$/.exec(s || ""); return m ? [+m[1], +m[2]] : null; };
 const clampDpi = d => Math.max(DPI[0], Math.min(DPI[1], Math.round(d)));
@@ -1591,16 +1918,27 @@ function dispCalc(i) {
 }
 async function loadDisplays() {
   $("dispReload").disabled = true;
+  const seq = ++disp.seq;  // an older, slower request mustn't overwrite a newer answer
+  let list = [], error = null;
   try {
-    disp.list = (await api("/api/android/displays")).instances;
+    list = (await api("/api/android/displays")).instances;
   } catch (e) {
-    disp.list = [];
-    log("Android display: " + e.message, "e");
+    error = e;
+    if (!e.offline) log("Android display: " + e.message, "e");
   } finally { $("dispReload").disabled = false; }
+  if (seq !== disp.seq) return;
+  disp.list = list; disp.error = error;
   if (!disp.list.some(i => i.port === disp.port)) disp.port = disp.list.length ? disp.list[0].port : null;
   const sel = $("dispSel");
   sel.innerHTML = disp.list.length ? disp.list.map(i => `<option value="${i.port}">${esc(dispLabel(i))}</option>`).join("")
-                                   : `<option value="">No Lepton instance is running</option>`;
+                                   : `<option value="">${disp.error ? (disp.error.offline ? "Waiting for the Frame" : "Couldn't read Android's display")
+                                                                   : "No Android app is open"}</option>`;
+  sel.disabled = !disp.list.length;
+  // Open-an-app advice only fits a successful, empty answer; otherwise say what went wrong.
+  $("dispEmpty").textContent = !disp.error ? "Open an Android app in the headset, then Refresh, to change its resolution, UI scale and text size here."
+    : disp.error.offline ? "This fills in when the Frame answers." : disp.error.message;
+  $("dispEmpty").hidden = !!disp.list.length;
+  $("dispCtl").hidden = !disp.list.length;
   if (disp.port) sel.value = String(disp.port);
   renderDisplay();
 }
@@ -1668,6 +2006,9 @@ loadDisplays();
 const RLABEL = { works: "Works", issues: "Problems", broken: "Doesn't work", runs: "Runs (test)",
                  crashes: "Crashed (test)", install_failed: "Won't install", instance_failed: "Didn't start (test)" };
 const RCLASS = { works: "works", runs: "works", issues: "maybe" };
+const REPORTS_SHOWN = 5;
+let repsAll = false;
+$("repMore").onclick = () => { repsAll = true; loadReports(); };
 async function loadReports() {
   let reps, shared;
   try { ({ reports: reps, shared } = await api("/api/android/reports")); }
@@ -1676,7 +2017,9 @@ async function loadReports() {
     ? "Reports go to Frame Control's shared compatibility database and change the verdicts in the catalogue. Any APK can be reported, including ones not on F-Droid."
     : "Reports are saved on this computer and change the verdicts you see. They aren't uploaded: the shared database is maintainer-only for now. Any APK can be reported, including ones not on F-Droid.";
   $("repCount").textContent = reps.length ? `${reps.length} newest` : "";
-  $("repList").innerHTML = reps.length ? reps.slice(0, 40).map(r => {
+  $("repMore").hidden = reps.length <= REPORTS_SHOWN || repsAll;
+  $("repMore").textContent = `Show all ${reps.length}`;
+  $("repList").innerHTML = reps.length ? (repsAll ? reps : reps.slice(0, REPORTS_SHOWN)).map(r => {
     const k = r.rating || r.result;
     return `<div class="item rep-item"><div class="grow">
       <div class="t">${esc(r.name)} <span class="sub">v${esc(String(r.version || "?").replace(/^v/i, ""))}</span></div>
@@ -1714,6 +2057,7 @@ $("repFile").onchange = async () => {
     const { apk } = await upload(file, "apkinfo");
     $("repPkg").value = apk.package; $("repVer").value = apk.version; $("repLabel").value = apk.label;
     if (!$("repSrc").value) $("repSrc").value = file.name;
+    if (apk.blocker) checkApkAlternatives(apk);
     $("repFileNote").textContent = apk.blocker ? `Note: ${apk.blocker}` : `${apk.package} ${apk.version}`;
   } catch (e) { $("repFileNote").textContent = e.message; }
   $("repFile").value = "";
@@ -1747,7 +2091,7 @@ function shotApp(appid) {
 }
 async function shotBlob(id, thumb) {
   const r = await fetch(`/api/shots/image?id=${encodeURIComponent(id)}${thumb ? "&thumb=1" : ""}`,
-                        { headers: {"X-Frame-UI": "1"} });
+                        { headers: {"X-Frame-UI": UI_KEY} });
   if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `HTTP ${r.status}`);
   return r.blob();
 }
@@ -1756,19 +2100,18 @@ async function loadShots() {
   try {
     shots.list = (await api("/api/shots")).shots;
   } catch (e) {
-    $("shotGrid").innerHTML = `<div class="sub">${esc(e.message)}</div>`;
-    return;
+    return failed($("shotGrid"), e);
   } finally { $("shotsRefresh").disabled = false; }
   shots.urls.forEach(URL.revokeObjectURL); shots.urls = [];
   const unsaved = shots.list.filter(s => !s.saved).length;
-  $("shotCount").textContent = shots.list.length ? `${shots.list.length} on the Frame` + (unsaved ? ` · ${unsaved} not on this ${HOST.computer}` : "") : "";
-  $("shotsSaveNew").disabled = !unsaved;
+  $("shotCount").textContent = shots.list.length ? `${shots.list.length} on the Frame` + (unsaved && !HOST.mobile ? ` · ${unsaved} not on this ${HOST.computer}` : "") : "";
+  $("shotsSaveNew").disabled = HOST.mobile ? !shots.list.length : !unsaved;
   $("shotGrid").innerHTML = shots.list.length ? shots.list.map((s, i) => `<div class="shot-card">
       <img class="thumb" data-shot="${i}" alt="Screenshot from ${esc(shotApp(s.appid))}" title="Open in the viewer">
       <div class="row"><div class="grow">
           <div class="t">${esc(shotApp(s.appid))}</div>
           <div class="s">${esc(new Date(s.time * 1000).toLocaleString())}</div></div>
-        ${s.saved ? `<span class="tag">On ${HOST.computer}</span>` : `<button class="small" data-shot-save="${i}">Save</button>`}
+        ${s.saved && !HOST.mobile ? `<span class="tag">On ${HOST.computer}</span>` : `<button class="small" data-shot-save="${i}">Save</button>`}
       </div></div>`).join("")
     : `<div class="sub">No screenshots on the Frame yet.</div>`;
   // Thumbnails one at a time over the shared SSH connection.
@@ -1808,6 +2151,10 @@ async function openShot(s) {
 }
 async function saveShots(list, btn) {
   if (!list.length) return;
+  if (HOST.mobile && savesToDevice()) {
+    return act(`Save ${list.length} screenshot${list.length === 1 ? "" : "s"}`,
+               async () => saveToDevice(await Promise.all(list.map(async s => ({ blob: await shotBlob(s.id, false), name: s.file })))), btn);
+  }
   const res = await act(`Save ${list.length} screenshot${list.length === 1 ? "" : "s"}`,
                         () => api("/api/shots/save", { ids: list.map(s => s.id) }), btn);
   if (res) loadShots();
@@ -1822,12 +2169,33 @@ $("shotsRefresh").onclick = loadShots;
 $("shotsSaveNew").onclick = e => saveShots(shots.list.filter(s => !s.saved), e.currentTarget);
 $("shotsFolder").onclick = e => act($("shotsFolder").textContent, () => api("/api/open", { what: "shots" }), e.currentTarget);
 
-// ---- nav highlight follows scroll ----
-const spy = new IntersectionObserver(entries => {
-  const top = entries.filter(e => e.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
-  if (top) document.querySelectorAll("nav a").forEach(a => a.classList.toggle("on", a.getAttribute("href") === "#" + top.target.id));
-}, { rootMargin: "-80px 0px -55% 0px" });
-["view", "shots", "library", "getgames", "android", "transfer", "apps", "display", "power"].forEach(id => spy.observe($(id)));
+// ---- pages: #home, #games, #android, #tools (older section links still work) ----
+const PAGES = ["home", "games", "android", "tools"];
+const SECTION_PAGE = { view: "home", device: "home", shots: "home", library: "games", sideloaded: "games", getgames: "games",
+                       display: "android", transfer: "tools", apps: "tools", power: "tools" };
+let page = "home";
+function showPage() {
+  const id = location.hash.slice(1);
+  const next = PAGES.includes(id) ? id : SECTION_PAGE[id] || "home";
+  if (next !== page && page === "home" && live) toggleLive(false);  // don't stream video nobody is watching
+  page = next;
+  document.querySelectorAll(".page").forEach(p => p.classList.toggle("on", p.dataset.page === page));
+  document.querySelectorAll("nav a").forEach(a => a.classList.toggle("on", a.getAttribute("href") === "#" + page));
+  document.title = page === "home" ? "Frame Control" : `${page[0].toUpperCase() + page.slice(1)} · Frame Control`;
+  const section = !PAGES.includes(id) && id && $(id);
+  if (section) section.scrollIntoView(); else window.scrollTo(0, 0);
+}
+window.addEventListener("hashchange", showPage);
+// While a text field has focus, phones hide the bottom tab bar (see body.typing in the CSS).
+const typesText = el => el?.matches?.('textarea, input:not([type=range], [type=checkbox], [type=radio], [type=file], [type=button])');
+document.addEventListener("focusin", e => document.body.classList.toggle("typing", !!typesText(e.target)));
+document.addEventListener("focusout", () => document.body.classList.remove("typing"));
+showPage();
+document.addEventListener("keydown", e => {
+  if (e.metaKey || e.ctrlKey || e.altKey || /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName) || document.querySelector("dialog[open]")) return;
+  const n = PAGES[+e.key - 1];
+  if (n) location.hash = n;
+});
 
 // ---- install links from websites (frame-control://install, docs/web-install.md) ----
 // The app passes each link here. The server checks it and reads the manifest;
@@ -1935,7 +2303,7 @@ if (window.frameApp && window.frameApp.onInstallLink) {
 
 setView("headset");
 refresh().then(loadShots);  // after status, so app names resolve
-setInterval(() => { if (!document.hidden) refresh(); }, 30000);
+document.addEventListener("visibilitychange", () => { if (!document.hidden && online === false) refresh(); });
 </script>
 </body>
 </html>

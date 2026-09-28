@@ -35,7 +35,7 @@ def manifest(package, label_ref, version_ref, min_sdk, package_raw=True, foreign
     foreign_label adds a non-android `label` attribute after android:label.
     """
     strings = ['label', 'icon', 'versionName', 'minSdkVersion', 'package', 'manifest', 'uses-sdk',
-               'application', package, 'junk', 'label']  # the second 'label' has no android id
+               'application', package, 'junk', 'label', 'versionCode']  # the second 'label' has no android id
     resmap = struct.pack('<4I', 0x01010001, 0x01010002, 0x0101021c, 0x0101020c)
     resmap = struct.pack('<HHI', 0x0180, 8, 8 + len(resmap)) + resmap
 
@@ -48,7 +48,8 @@ def manifest(package, label_ref, version_ref, min_sdk, package_raw=True, foreign
     none = 0xffffffff
     chunks = (pool(strings) + resmap
               + element(5, [(4, 8 if package_raw else none, frame_apk.T_STRING, 8),
-                            (2, none, frame_apk.T_REF, version_ref)])
+                            (2, none, frame_apk.T_REF, version_ref),
+                            (11, none, frame_apk.T_INT_DEC, 210)])
               + element(6, [(3, none, frame_apk.T_INT_DEC, min_sdk)])
               + element(7, [(0, none, frame_apk.T_REF, label_ref), (1, none, frame_apk.T_REF, 0x7f020000)]
                         + ([(10, 9, frame_apk.T_STRING, 9)] if foreign_label else [])))
@@ -108,6 +109,7 @@ class ApkInfo(unittest.TestCase):
         self.assertEqual(info['package'], 'com.example.demo')
         self.assertEqual(info['label'], 'App label')  # the default, not French
         self.assertEqual(info['version'], '2.1')
+        self.assertEqual(info['version_code'], 210)
         self.assertEqual(info['min_sdk'], 26)
         self.assertEqual(info['abis'], ['arm64-v8a', 'x86_64'])
         self.assertEqual(info['icon_png'], b'hi')  # largest-density PNG, skipping the XML icon

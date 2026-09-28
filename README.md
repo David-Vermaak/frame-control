@@ -12,11 +12,11 @@ See what the headset sees, install games and Android apps, move files and text a
 [![Checks](https://img.shields.io/github/actions/workflow/status/saphid/steam-frame/checks.yml?branch=main&label=checks)](https://github.com/saphid/steam-frame/actions/workflows/checks.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-66c0f4)](LICENSE)
 
-[**Download**](#install) · [Trailer](#trailer) · [Features](#features) · [Set up the headset](#set-up-the-headset) · [Feedback](#feedback) · [Docs](#going-further)
+[**Website**](https://frame-control.pages.dev) · [**Download**](#install) · [Trailer](#trailer) · [Features](#features) · [Set up the headset](#set-up-the-headset) · [Feedback](#feedback) · [Docs](#going-further)
 
 <br>
 
-<img src="docs/img/frame-control.png" alt="Frame Control showing the headset view, battery and status, and the Steam library" width="900">
+<img src="docs/img/frame-control.png" alt="Frame Control's Games tab: installed games, sideloaded titles, and your Steam library with Frame ratings" width="900">
 
 <a id="trailer"></a>
 <a href="https://github.com/saphid/steam-frame/releases/download/trailer/frame-control-trailer.mp4"><img src="docs/img/trailer.jpg" alt="Watch the Frame Control trailer" width="900"></a>
@@ -103,6 +103,9 @@ already ships (sideloading a game copies Valve's own devkit scripts to
 | **Linux** (x64) | [AppImage](https://github.com/saphid/steam-frame/releases/latest/download/Frame-Control-linux-x86_64.AppImage) · [.deb](https://github.com/saphid/steam-frame/releases/latest/download/Frame-Control-linux-amd64.deb) | `ssh` (most desktops have it) |
 | **Linux** (arm64) | [AppImage](https://github.com/saphid/steam-frame/releases/latest/download/Frame-Control-linux-arm64.AppImage) · [.deb](https://github.com/saphid/steam-frame/releases/latest/download/Frame-Control-linux-arm64.deb) | `ssh`, and `adb` for Android apps (`sudo apt install adb`) |
 
+**iPhone and iPad:** the same features from your phone, with nothing to install on
+a computer. Build it from [`ios/`](ios) in Xcode; see [docs/iphone.md](docs/iphone.md).
+
 The app brings its own Python and `adb`; SSH is built into macOS and Windows.
 Google doesn't publish `adb` for arm64 Linux, so that build uses your
 distribution's. If you already have `adb`, the app uses yours.
@@ -172,12 +175,16 @@ entry to `~/.ssh/config` and keys at `~/.ssh/id_ed25519_frame` and
 ## Feedback
 
 This is a first public test, so reports are really useful, especially from
-Windows and Linux. Please [open an issue](https://github.com/saphid/steam-frame/issues/new)
-with:
+Windows and Linux. The quickest way is the
+[feedback form](https://frame-control.pages.dev/feedback/): no GitHub account
+needed, and it opens an issue here. Please include:
 
 - what you tried and what happened
 - your computer's OS and your SteamOS build (Steam Settings → System)
 - the server log: **Frame → Show Server Log** in the app
+
+Issues and PRs opened directly on GitHub by new contributors are auto-closed
+until a maintainer approves them; see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Going further
 
@@ -195,6 +202,9 @@ Frame's software fits together, all checked against a real headset and labelled
 | [Install links for websites](docs/web-install.md) | `frame-control://install` links and manifests, the rules, a button to paste |
 | [Steam games](docs/steam-games.md) · [VR video](docs/vr-video.md) · [WebXR in Chromium](docs/webxr-chromium.md) | Installing and buying, watching VR180/360, the Chromium build |
 | [SSH](docs/ssh.md) · [Streaming](docs/streaming.md) · [Files](docs/file-transfer.md) · [Panels](docs/panels.md) · [Tailscale](docs/tailscale.md) | Topic notes |
+| [Frame Control for iPhone](docs/iphone.md) | The iPhone and iPad app, how it runs the server on the Frame, pairing |
+| [Recovery and OS images](docs/recovery-and-images.md) | Where to download the Frame's OS, what's inside, testing without the headset |
+| [Testing](docs/testing.md) | Unit tests, end-to-end tests against a fake Frame in Docker, and the headset smoke test |
 | [Open questions](docs/open-questions.md) | What's still unchecked |
 
 <details>
@@ -221,6 +231,7 @@ Frame's software fits together, all checked against a real headset and labelled
 
 ```sh
 python3 -m unittest discover -s tests   # server tests; no headset needed
+scripts/e2e.sh                          # end-to-end against a fake Frame (Linux with Docker)
 cd app && npm install && npm start      # run the app from the checkout
 ```
 

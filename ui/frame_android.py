@@ -7,8 +7,8 @@ in the Steam library and gets its own SteamVR panel. Nothing goes through
 Lepton Development, which wipes its apps on exit. See docs/apks.md.
 
 Python stdlib only. CLI: python3 ui/frame_android.py
-  install APK [--vr|--flat] [--no-xr-compat] | info APK | patch SRC DST [--add NAME=PATH ...]
-  list | launch PKG | stop PKG | remove PKG | probe PKG
+  install APK [--vr|--flat] [--no-xr-compat] | info APK | versions APK-or-PKG
+  patch SRC DST [--add NAME=PATH ...] | list | launch PKG | stop PKG | remove PKG | probe PKG
 """
 import json, os, re, shlex, shutil, struct, subprocess, sys, threading, time, zlib
 
@@ -336,12 +336,22 @@ def patch(src, dst, add=None):
 def main():
     cmd, *args = sys.argv[1:] or ['help']
     try:
-        if cmd == 'install':
+        if cmd in ('info', 'versions'):
+            import frame_apk_versions
+            if cmd == 'info':
+                info = apk_info(args[0])
+                print(frame_apk_versions.describe(info))
+                if info.get('vr'):
+                    print('VR app' + ('' if info.get('launchable') else '; Frame Control adds the LAUNCHER entry Lepton needs'))
+                for note in info.get('vr_issues', []):
+                    print(note)
+                return
+            info = apk_info(args[0]) if os.path.isfile(args[0]) or args[0].lower().endswith('.apk') else None
+            r = frame_apk_versions.alternatives(
+                info['package'] if info else args[0], info.get('version_code') if info else None)
+        elif cmd == 'install':
             r = install(args[0], flatscreen=False if '--vr' in args else True if '--flat' in args else None,
                         xr_compat=False if '--no-xr-compat' in args else None)
-        elif cmd in ('info', 'describe'):
-            r = apk_info(args[0])
-            r.pop('icon_png', None)
         elif cmd == 'patch':
             import argparse
             parser = argparse.ArgumentParser(description='Patch and v2-sign an APK locally')

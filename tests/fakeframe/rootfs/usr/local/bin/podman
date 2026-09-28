@@ -1,0 +1,47 @@
+#!/usr/bin/env python3
+"""Stub for podman, for the fake Lepton instances (lepton.py): ps, stop, exec.
+`podman ps --format "{{.Names}} {{.Labels.adb_port}}"` lists what's running,
+as frame_android.running_instances reads it (docs/apks.md)."""
+import os
+import sys
+import time
+
+sys.path.insert(0, '/usr/local/lib/fakeframe')
+import fakeframe_state as fs  # noqa: E402
+
+
+def alive(c):
+    try:
+        os.kill(c['pid'], 0)
+        return True
+    except OSError:
+        return False
+
+
+args = sys.argv[1:]
+fs.log('podman', args=args)
+cmd = args[0] if args else ''
+containers = {n: c for n, c in fs.read()['lepton'].items() if alive(c)}
+if cmd == 'ps':
+    for name, c in sorted(containers.items()):
+        print(f"{name} {c['port']}")
+elif cmd == 'stop':
+    name = args[-1]
+    c = containers.get(name)
+    if not c:
+        sys.exit(f'Error: no container with name or ID "{name}" found: no such container')
+    os.kill(c['pid'], 15)
+    for _ in range(50):
+        if not alive(c):
+            break
+        time.sleep(0.1)
+    print(name)
+elif cmd == 'exec':
+    name, rest = args[1], ' '.join(args[2:])
+    if name not in containers:
+        sys.exit(f'Error: no container with name or ID "{name}" found: no such container')
+    if 'pidof' in rest:
+        print(4242)                   # the app is "up"; there's no Android to ask
+    # logcat and anything else: nothing to report
+else:
+    sys.exit(f'podman stub: unsupported {args}')

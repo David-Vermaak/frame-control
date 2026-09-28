@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Frame Control 0.3.1: features by OS</title>
+<style>
+  :root {
+    --bg: #1b2838; --panel: #16202d; --line: #2a3f5a; --text: #c7d5e0; --dim: #8f98a0;
+    --tested: #5ba32b; --partial: #d9a33a; --auto: #4b8bbe; --built: #3d4f63; --no: #6b2b2b;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: linear-gradient(#171a21, var(--bg) 320px); color: var(--text);
+         font: 15px/1.5 "Motiva Sans", -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 1180px; margin: 0 auto; padding: 40px 24px 80px; }
+  h1 { color: #fff; font-size: 30px; margin: 0 0 4px; font-weight: 600; }
+  h2 { color: #fff; font-size: 18px; margin: 40px 0 12px; font-weight: 600;
+       text-transform: uppercase; letter-spacing: .06em; }
+  .sub { color: var(--dim); margin: 0 0 28px; }
+  a { color: #66c0f4; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 16px 18px; }
+  .card h3 { margin: 0 0 8px; color: #fff; font-size: 16px; }
+  .card dl { margin: 0; display: grid; grid-template-columns: 76px 1fr; gap: 3px 10px; font-size: 13.5px; }
+  .card dt { color: var(--dim); }
+  .card dd { margin: 0; }
+  .legend { display: flex; flex-wrap: wrap; gap: 10px 20px; margin: 0 0 14px; font-size: 13.5px; }
+  .legend span { display: inline-flex; align-items: center; gap: 7px; }
+  table { width: 100%; border-collapse: collapse; background: var(--panel);
+          border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+  th, td { padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; text-align: left; }
+  thead th { background: #0e141b; color: #fff; font-weight: 600; position: sticky; top: 0; z-index: 1; }
+  thead th.os { width: 150px; text-align: center; }
+  tr.group td { background: #203044; color: #fff; font-weight: 600; font-size: 13px;
+                text-transform: uppercase; letter-spacing: .05em; }
+  td.os { text-align: center; }
+  td .feat { color: #fff; }
+  td .note { color: var(--dim); font-size: 13px; }
+  .pill { display: inline-block; min-width: 92px; padding: 2px 9px; border-radius: 999px;
+          font-size: 12.5px; font-weight: 600; color: #fff; white-space: nowrap; }
+  .t { background: var(--tested); }
+  .p { background: var(--partial); color: #1b1b1b; }
+  .a { background: var(--auto); }
+  .b { background: var(--built); color: #c7d5e0; }
+  .n { background: var(--no); }
+  .dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
+  ul { margin: 6px 0 0; padding-left: 20px; }
+  li { margin: 3px 0; }
+  footer { color: var(--dim); font-size: 13px; margin-top: 36px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Frame Control 0.3.1: features by OS</h1>
+  <p class="sub">Which features are built for each OS, and which were tested against a real Steam Frame
+    (SteamOS 0.3.0, build 20260922.6101926). Status as of 26 September 2026, for
+    <a href="https://github.com/saphid/steam-frame/pull/2">PR #2</a> (0.3.1). Every build now bundles its own
+    Python 3.12, <code>adb</code> and CA certificates, so nothing else needs installing (only <code>ssh</code> on Linux,
+    plus the system <code>adb</code> on arm64 Linux).</p>
+
+  <h2>Builds and test machines</h2>
+  <div class="cards">
+    <div class="card"><h3>macOS</h3><dl>
+      <dt>Built</dt><dd>Apple Silicon (arm64): <code>.dmg</code>, <code>.zip</code>. No Intel build.</dd>
+      <dt>Signing</dt><dd>Ad-hoc signed, not notarised</dd>
+      <dt>Tested on</dt><dd>Apple Silicon Mac, macOS 26, using a local 0.3.1 build with the bundled Python and <code>adb</code>. All 15 calls it made to the Frame at startup returned OK.</dd>
+    </dl></div>
+    <div class="card"><h3>Windows</h3><dl>
+      <dt>Built</dt><dd>x64: NSIS installer <code>.exe</code> and <code>.zip</code></dd>
+      <dt>Signing</dt><dd>Unsigned. SmartScreen shows a warning.</dd>
+      <dt>Tested on</dt><dd>Windows 11 x64 VM. Real-Frame results below are from 0.3.0. The 0.3.1 installer from CI installs cleanly (31 s) and reinstalls over itself (38 s). The server starts on the bundled Python, and HTTPS to Steam and F-Droid works. The Frame went offline before its 0.3.1 run on the headset.</dd>
+    </dl></div>
+    <div class="card"><h3>Linux</h3><dl>
+      <dt>Built</dt><dd>x86_64 and arm64: <code>AppImage</code> and <code>.deb</code></dd>
+      <dt>Signing</dt><dd>n/a</dd>
+      <dt>Tested on</dt><dd>x86_64 Ubuntu 26.04 with no <code>adb</code> and no clipboard tools, using the 0.3.1 AppImage under Xvfb with the bundled Python and <code>adb</code>. The arm64 builds and the <code>.deb</code> packages weren't run; the arm64 package was only checked to contain an ARM Python.</dd>
+    </dl></div>
+  </div>
+
+  <h2>Features</h2>
+  <div class="legend">
+    <span><i class="dot" style="background:var(--tested)"></i><b>Tested</b>: worked against the real Frame on that OS</span>
+    <span><i class="dot" style="background:var(--partial)"></i><b>Partial</b>: only part of the feature was tested (see note)</span>
+    <span><i class="dot" style="background:var(--auto)"></i><b>Automated</b>: covered by CI tests on that OS, not tried on a real Frame</span>
+    <span><i class="dot" style="background:var(--built)"></i><b>Built</b>: in the build, not tested</span>
+    <span><i class="dot" style="background:var(--no)"></i><b>Not built</b></span>
+  </div>
+
+  <table>
+    <thead><tr><th>Feature</th><th class="os">macOS</th><th class="os">Windows</th><th class="os">Linux</th></tr></thead>
+    <tbody>
+      <tr class="group"><td colspan="4">Connection</td></tr>
+      <tr><td><div class="feat">Set Up Connection</div><div class="note">Finds the Frame, writes the <code>frame</code> SSH alias, copies your key using the Frame's password. macOS runs <code>connect.sh</code> in Terminal; Windows and Linux run <code>frame_connect.py</code>.</div></td>
+        <td class="os"><span class="pill p">Partial</span><div class="note">Existing alias used, script not re-run</div></td>
+        <td class="os"><span class="pill t">Tested</span></td>
+        <td class="os"><span class="pill t">Tested</span></td></tr>
+      <tr><td><div class="feat">Shared SSH connection</div><div class="note">A single SSH connection is reused, so each request takes about 0.3 s. Windows OpenSSH can't do this, so there each request opens its own connection (about 0.5 to 1 s).</div></td>
+        <td class="os"><span class="pill t">Tested</span></td>
+        <td class="os"><span class="pill n">Not built</span><div class="note">OpenSSH limitation</div></td>
+        <td class="os"><span class="pill t">Tested</span></td></tr>
+
+      <tr class="group"><td colspan="4">Headset view</td></tr>
+      <tr><td><div class="feat">Capture headset view</div><div class="note">The left eye or both eyes as the lenses show them, saved as PNG</div></td>
+        <td class="os"><span class="pill t">Tested</span></td><td class="os"><span class="pill t">Tested</span></td><td class="os"><span class="pill t">Tested</span></td></tr>
+      <tr><td><div class="feat">Capture desktop panel</div><div class="note">gamescope's flat layer</div></td>
+        <td class="os"><span class="pill t">Tested</span></td><td class="os"><span class="pill t">Tested</span></td><td class="os"><span class="pill t">Tested</span></td></tr>
+      <tr><td><div class="feat">Live view</div><div class="note">720p H.264 at about 30 fps, decoded with WebCodecs</div></td>
+        <td class="os"><span class="pill t">Tested</span></td><td class="os"><span class="pill t">Tested</span></td><td class="os"><span class="pill t">Tested</span></td></tr>
+      <tr><td><div class="feat">Headset screenshots</div><div class="note">Browse the screenshots you took with Steam's shortcut, and save them to <code>~/Pictures/SteamFrame</code></div></td>
+        <td class="os"><span class="pill t">Tested</span></td>
+        <td class="os"><span class="pill p">Partial</span><div class="note">Listed (5 found); saving not tried</div></td>
+        <td class="os"><span class="pill p">Partial</span><div class="note">Listed with thumbnails; saving not tried</div></td></tr>
+
+      <tr class="group"><td colspan="4">Status</td></tr>
+      <tr><td><div class="feat">Battery and charging</div><div class="note">Percentage, watts, time to full or empty, charger type, temperature</div></td>
+        <td class="os"><span class="pill t">Tested</span></td><td class="os"><span class="pill t">Tested</span></td><td class="os"><span class="pill t">Tested</span></td></tr>
+      <tr><td><div class="feat">System status</div><div class="note">Storage, memory, temperature, Wi-Fi, uptime, running services</div></td>
+        <td class="os"><span class="pill t">Tested</span></td><td class="os"><span class="pill t">Tested</span></td><td class="os"><span class="pill t">Tested</span></td></tr>
+      <tr><td><div class="feat">Volume and mute</div></td>
+        <td class="os"><span class="pill t">Tested</span></td>
+        <td class="os"><span class="pill p">Partial</span><div class="note">Read only</div></td>
+        <td class="os"><span class="pill p">Partial</span><div class="note">Read only</div></td></tr>
+
+      <tr class="group"><td colspan="4">Games</td></tr>
+      <tr><td><div class="feat">Owned games with Frame ratings</div><div class="note">Verified, Playable, Unsupported or Unknown</div></td>
+        <td class="os"><span class="pill t">Tested</span></td><td class="os"><span class="pill t">Tested</span></td><td class="os"><span class="pill t">Tested</span></td></tr>
+      <tr><td><div class="feat">Install a game on the Frame</div><div class="note">Uses the headset's Steam client, with live progress</div></td>
+        <td class="os"><span class="pill t">Tested</span></td><td class="os"><span class="pill b">Built</span></td><td class="os"><span class="pill b">Built</span></td></tr>
+      <tr><td><div class="feat">Store search, Buy, Store on Frame</div></td>
+        <td class="os"><span class="pill t">Tested</span></td><td class="os"><span class="pill b">Built</span></td><td class="os"><span class="pill b">Built</span></td></tr>
+      <tr><td><div class="feat">Library shelf and Play button</div></td>
+        <td class="os"><span class="pill b">Built</span></td><td class="os"><span class="pill b">Built</span></td><td class="os"><span class="pill b">Built</span></td></tr>
+
+      <tr class="group"><td colspan="4">Android apps</td></tr>
+      <tr><td><div class="feat">Installed Android apps list</div></td>
+        <td class="os"><span class="pill t">Tested</span></td><td class="os"><span class="pill t">Tested</span></td><td class="os"><span class="pill t">Tested</span></td></tr>
+      <tr><td><div class="feat">F-Droid catalogue search</div><div class="note">About 4,500 apps with Frame ratings, bundled with the app</div></td>
+        <td class="os"><span class="pill t">Tested</span></td><td class="os"><span class="pill t">Tested</span></td><td class="os"><span class="pill t">Tested</span></td></tr>
+      <tr><td><div class="feat">Install, launch, stop, test, remove an app</div><div class="note">Each app runs as its own Lepton instance, using the bundled <code>adb</code>. APK files are read by a built-in parser (no <code>aapt2</code>) that matched <code>aapt2</code> on 9 F-Droid APKs.</div></td>
+        <td class="os"><span class="pill t">Tested</span><div class="note">Diary: read, install, launch, test, remove</div></td>
+        <td class="os"><span class="pill b">Built</span></td>
+        <td class="os"><span class="pill p">Partial</span><div class="note">Launch and stop</div></td></tr>
+      <tr><td><div class="feat">Report an APK</div><div class="note">Reports are saved on your computer; the shared database is maintainer-only</div></td>
+        <td class="os"><span class="pill a">Automated</span></td><td class="os"><span class="pill a">Automated</span></td><td class="os"><span class="pill a">Automated</span></td></tr>
+      <tr><td><div class="feat">Android display settings</div><div class="note">Resolution, UI scale, text size</div></td>
+        <td class="os"><span class="pill t">Tested</span><div class="note">Density and text size set, then reset</div></td>
+        <td class="os"><span class="pill b">Built</span></td>
+        <td class="os"><span class="pill p">Partial</span><div class="note">Read over the bundled adb</div></td></tr>
+
+      <tr class="group"><td colspan="4">Transfer</td></tr>
+      <tr><td><div class="feat">Send files to ~/Downloads</div><div class="note">Test files had non-English characters in their names (é, ✓). macOS and Linux copy with rsync; Windows uses scp.</div></td>
+        <td class="os"><span class="pill t">Tested</span></td><td class="os"><span class="pill t">Tested</span></td><td class="os"><span class="pill t">Tested</span></td></tr>
+      <tr><td><div class="feat">Drop an APK to install it</div></td>
+        <td class="os"><span class="pill t">Tested</span></td><td class="os"><span class="pill b">Built</span></td><td class="os"><span class="pill b">Built</span></td></tr>
+      <tr><td><div class="feat">Send text or clipboard to the Frame</div><div class="note">Needs the headset desktop open. The app reads your clipboard through Electron, so no extra tools are needed.</div></td>
+        <td class="os"><span class="pill t">Tested</span><div class="note">Reading the clipboard retested in 0.3.1</div></td>
+        <td class="os"><span class="pill p">Partial</span><div class="note">Reached the Frame; desktop was closed</div></td>
+        <td class="os"><span class="pill p">Partial</span><div class="note">Clipboard read with no xclip; Frame desktop was closed</div></td></tr>
+      <tr><td><div class="feat">Flatpak install and remove</div></td>
+        <td class="os"><span class="pill b">Built</span></td><td class="os"><span class="pill b">Built</span></td><td class="os"><span class="pill b">Built</span></td></tr>
+
+      <tr class="group"><td colspan="4">One-click tools</td></tr>
+      <tr><td><div class="feat">SSH or SFTP in a terminal</div><div class="note">macOS: Terminal. Windows: cmd. Linux: GNOME Terminal, Konsole, xterm and others.</div></td>
+        <td class="os"><span class="pill b">Built</span></td><td class="os"><span class="pill b">Built</span></td><td class="os"><span class="pill b">Built</span></td></tr>
+      <tr><td><div class="feat">Steam Link</div></td>
+        <td class="os"><span class="pill b">Built</span></td><td class="os"><span class="pill b">Built</span></td><td class="os"><span class="pill b">Built</span></td></tr>
+      <tr><td><div class="feat">Remote desktop</div><div class="note">macOS: Windows App. Windows: Remote Desktop. Linux: Remmina or FreeRDP.</div></td>
+        <td class="os"><span class="pill b">Built</span></td><td class="os"><span class="pill b">Built</span></td><td class="os"><span class="pill b">Built</span></td></tr>
+      <tr><td><div class="feat">Sleep, restart, shut down</div><div class="note">Opens a terminal because SteamOS asks for the sudo password</div></td>
+        <td class="os"><span class="pill b">Built</span></td><td class="os"><span class="pill b">Built</span></td><td class="os"><span class="pill b">Built</span></td></tr>
+
+      <tr class="group"><td colspan="4">App</td></tr>
+      <tr><td><div class="feat">Local server test suite</div><div class="note">Runs in GitHub Actions on every push (Python 3.12 on macOS and Windows, Python 3.13 on Ubuntu), including the APK reader tests</div></td>
+        <td class="os"><span class="pill a">Automated</span></td><td class="os"><span class="pill a">Automated</span></td><td class="os"><span class="pill a">Automated</span></td></tr>
+      <tr><td><div class="feat">Mac or PC wording</div><div class="note">The UI says Finder or File Explorer, and Mac or PC, to match your system</div></td>
+        <td class="os"><span class="pill t">Tested</span></td><td class="os"><span class="pill t">Tested</span></td><td class="os"><span class="pill t">Tested</span></td></tr>
+    </tbody>
+  </table>
+
+  <h2>Notes</h2>
+  <ul>
+    <li><b>Tested</b> means the app, running on that OS, got a successful response from the real Frame: for example, a PNG from a capture, 868 owned games, or the Android apps listed.</li>
+    <li>The Windows VM tests ran in its desktop session. <code>ssh.exe</code> hangs when it's started from a remote SSH session, but a normal desktop user won't hit that.</li>
+    <li>The macOS test from 25 September also covered the capture shown when the headset is in standby, input validation, and using the clipboard with the headset desktop open.</li>
+    <li>Everything marked <b>Built</b> runs a command that works on its own. It just hasn't been tried end to end from the app on that OS yet.</li>
+  </ul>
+  <footer>Frame Control is an unofficial tool, not made by Valve. MIT licence.</footer>
+</main>
+</body>
+</html>

@@ -232,6 +232,7 @@ def apk_info(path):
         min_sdk = sdk.get('minSdkVersion')
         info = {
             'package': package,
+            'version_code': manifest.get('versionCode', (None, None))[1],
             'version': _text(manifest.get('versionName'), res) or '',
             'label': _text(app.get('label'), res) or package,
             'abis': sorted({n.split('/')[1] for n in names if n.startswith('lib/') and n.count('/') >= 2}),

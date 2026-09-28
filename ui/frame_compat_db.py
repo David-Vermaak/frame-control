@@ -24,6 +24,7 @@ FIELDS = ('package', 'version', 'result', 'rating', 'notes', 'via', 'date', 'ste
           'label', 'source')
 TTL = 60  # seconds a fetched copy is reused
 _lock = threading.Lock()
+_load_lock = threading.Lock()  # refreshing the cached reports (load); separate from _lock, which flush takes
 _mem = {'at': 0, 'reports': None, 'source': None}
 
 
@@ -179,25 +180,36 @@ def _read_mirror():
         return []
 
 
+def _save_mirror(reports):
+    """Keep a copy for offline use. Failing to write it mustn't fail the read."""
+    try:
+        os.makedirs(STATE, exist_ok=True)
+        with open(MIRROR + '.tmp', 'w') as f:
+            json.dump({'fetched': time.strftime('%Y-%m-%dT%H:%M:%S'), 'reports': reports}, f)
+        os.replace(MIRROR + '.tmp', MIRROR)
+    except OSError:
+        pass
+
+
 def load():
     """All reports: the database (cached for TTL s), else the offline mirror; plus unsent ones."""
-    now = time.time()
-    if _mem['reports'] is None or now - _mem['at'] > TTL:
-        try:
-            if not shared():
-                raise DBError('no key')
+    # The page asks for the catalogue and the reports at once: one refresh at a
+    # time, so they share a fetch and never write the mirror's .tmp together.
+    with _load_lock:
+        now = time.time()
+        if _mem['reports'] is None or now - _mem['at'] > TTL:
             try:
-                flush()
-            except Exception:
-                pass  # sending can fail for any reason; reading must still work
-            reports, source = fetch_all(), 'lakebed'
-            os.makedirs(STATE, exist_ok=True)
-            with open(MIRROR + '.tmp', 'w') as f:
-                json.dump({'fetched': time.strftime('%Y-%m-%dT%H:%M:%S'), 'reports': reports}, f)
-            os.replace(MIRROR + '.tmp', MIRROR)
-        except DBError:
-            reports, source = _read_mirror(), 'mirror'
-        _mem.update(at=now, reports=reports, source=source)
+                if not shared():
+                    raise DBError('no key')
+                try:
+                    flush()
+                except Exception:
+                    pass  # sending can fail for any reason; reading must still work
+                reports, source = fetch_all(), 'lakebed'
+                _save_mirror(reports)
+            except DBError:
+                reports, source = _read_mirror(), 'mirror'
+            _mem.update(at=now, reports=reports, source=source)
     sent = {r.get('id') for r in _mem['reports']}
     return _mem['reports'] + [r for r in _outbox() if r['id'] not in sent]
 

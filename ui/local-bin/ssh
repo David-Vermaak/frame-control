@@ -1,0 +1,29 @@
+#!/bin/bash
+# Stand-in for ssh when Frame Control's server runs on the Frame itself
+# (FRAME_LOCAL=1, started by the iPhone app). The server and its helpers call
+# `ssh [options] frame COMMAND`, and rsync calls it as its transport; here that
+# means: run COMMAND in the home directory, as ssh would, with the same stdin.
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -[bcDEeFIiJLlmOoPpQRSWwB]) shift 2 ;;  # options that take a value
+    -?*) shift ;;
+    *) break ;;
+  esac
+done
+[ $# -gt 0 ] && shift  # the host alias
+cd "$HOME" || exit 255
+[ $# -eq 0 ] && exit 0  # -N: nothing to run
+# Stopping ssh ends everything the command started (sshd hangs up the session).
+# To do the same, run COMMAND as its own process group and pass on a TERM, HUP
+# or INT to all of it, so e.g. a live-video ffmpeg can't outlive its stream.
+set -m  # job control (bash allows it without a terminal): own process group, and stdin kept
+"${SHELL:-/bin/sh}" -c "$*" &
+child=$!
+trap 'kill -TERM -- "-$child" 2>/dev/null' TERM HUP INT
+wait "$child"
+status=$?
+while kill -0 "$child" 2>/dev/null; do  # a trapped signal ends `wait` early
+  wait "$child"
+  status=$?
+done
+exit "$status"
