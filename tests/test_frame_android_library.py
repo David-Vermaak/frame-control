@@ -24,7 +24,7 @@ spec.loader.exec_module(shortcuts)
 
 @unittest.skipIf(os.name == 'nt', 'POSIX launcher')
 class LauncherTests(unittest.TestCase):
-    def exercise(self, terminate, sig=signal.SIGTERM, blocked=None):
+    def exercise(self, terminate, sig=signal.SIGTERM, blocked=None, orphan=False):
         with tempfile.TemporaryDirectory() as tmp:
             d = Path(tmp)
             app = d / 'Applications/Android/org.test.app'
@@ -44,6 +44,7 @@ class LauncherTests(unittest.TestCase):
                    'assert os.environ["SteamAppId"] == "2800000001"\n'
                    'assert os.environ["LEPTON_ENV_SteamAppId"] == "3346865537"\n'
                    'Path(os.environ["HOME"],"started").write_text(str(os.getpid()))\n'
+                   'try:\n os.fstat(9); Path(os.environ["HOME"],"inherited-lock").touch()\nexcept OSError: pass\n'
                    + ('time.sleep(30)\n' if terminate else 'raise SystemExit(23)\n'))
             script(bin_dir / 'setsid', 'import os,sys\nos.setsid()\nos.execv(sys.argv[2],sys.argv[2:])\n')
             script(bin_dir / 'flock', 'import os\nraise SystemExit(1 if os.environ.get("TEST_LOCKED") else 0)\n')  # lock semantics belong to Linux; no flock on macOS
@@ -54,6 +55,8 @@ class LauncherTests(unittest.TestCase):
             env = {**os.environ, 'HOME': str(d), 'PATH': str(bin_dir) + os.pathsep + os.environ['PATH']}
             if blocked:
                 env['TEST_' + blocked] = '1'
+            if orphan:
+                env['TEST_RUNNING'] = '1'
             saved = d / '.local/share/Steam/steamapps/compatdata/2800000001/internal/save'
             saved.parent.mkdir(parents=True)
             saved.write_text('saved game')
@@ -70,12 +73,14 @@ class LauncherTests(unittest.TestCase):
                 while not (d / 'started').exists() and proc.poll() is None and time.monotonic() < deadline:
                     time.sleep(.02)
                 self.assertTrue((d / 'started').exists(), 'launcher did not start Lepton')
+                self.assertFalse((d / 'inherited-lock').exists(), 'Lepton inherited the launch lock')
                 if terminate:
                     self.assertIsNone(proc.poll(), 'Steam-tracked wrapper exited during the session')
                     proc.send_signal(sig)
                 _, err = proc.communicate(timeout=5)
                 calls = (d / 'podman-calls').read_text() if (d / 'podman-calls').exists() else ''
                 self.assertIn('stop -t 5 lepton-steamlaunch-2800000001', calls, err.decode())
+                self.assertEqual(calls.count('stop -t 5'), 2 if orphan else 1)
                 self.assertEqual(proc.returncode, 128 + sig if terminate else 23)
                 self.assertEqual(saved.read_text(), 'saved game')
                 self.assertTrue((app / 'app.apk').exists())
@@ -98,9 +103,11 @@ class LauncherTests(unittest.TestCase):
                 self.exercise(True, sig)
 
     def test_duplicate_launch_leaves_existing_session_alone(self):
-        for blocked in ('LOCKED', 'RUNNING'):
-            with self.subTest(blocked=blocked):
-                self.exercise(False, blocked=blocked)
+        self.exercise(False, blocked='LOCKED')
+
+    def test_orphaned_container_is_stopped_and_play_proceeds(self):
+        # Container running but the lock free: its launcher was SIGKILLed.
+        self.exercise(False, orphan=True)
 
     def test_normal_exit_cleans_container_and_keeps_exit_code(self):
         self.exercise(False)
