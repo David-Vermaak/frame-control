@@ -926,12 +926,18 @@ class Link:
         put()
         net = self.state["network"] or {}
 
+        proxied = ssh_g(device["alias"])[3]
+
         def one(i, a):
-            res = probe(a["host"], device["port"], update=lambda **f: (rows[i].update(f), put()))
+            if proxied:  # through a jump host: a direct probe says nothing, ssh itself is the test
+                res = {"state": "answered", "detail": "Through a jump host", "ip": None, "rtt_ms": None}
+            else:
+                res = probe(a["host"], device["port"], update=lambda **f: (rows[i].update(f), put()))
             rows[i].update({k: res.get(k) for k in ("state", "detail", "ip", "rtt_ms")})
             put()
             if res["state"] != "answered":
                 return
+            lead = f"Answered in {res['rtt_ms']:g} ms" if res.get("rtt_ms") is not None else "Through the jump host"
             rows[i]["ssh"] = "checking"
             put()
             argv = [*self.mux_base[:3], "-o", "ControlPath=none", "-o", "ConnectTimeout=8",
@@ -942,10 +948,10 @@ class Link:
                                    errors="replace", timeout=20)
                 err = r.stderr.strip()
                 if r.returncode == 0:
-                    rows[i].update(ssh="ok", detail=f"Answered in {res['rtt_ms']:g} ms · SSH works")
+                    rows[i].update(ssh="ok", detail=f"{lead} · SSH works")
                     self.reg.record_success(device_id, a["host"], net.get("id"), res["rtt_ms"])
                 elif UNKNOWN.search(err):
-                    rows[i].update(ssh="unpinned", detail=f"Answered in {res['rtt_ms']:g} ms · identity not saved yet")
+                    rows[i].update(ssh="unpinned", detail=f"{lead} · identity not saved yet")
                 elif CHANGED.search(err):
                     rows[i].update(ssh="wrong", detail="Answered as a different headset")
                 elif DENIED.search(err):

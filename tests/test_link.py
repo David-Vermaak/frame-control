@@ -382,7 +382,7 @@ class Connecting(unittest.TestCase):
         self.assertEqual(rows["::1"]["ssh"], "wrong")
         self.assertEqual(rows["nothing.invalid"]["state"], "unresolved")
         self.assertEqual(self.routes, [])
-        self.assertTrue(all("ControlPath=none" in c for c in self.calls()))
+        self.assertTrue(all("ControlPath=none" in c for c in self.calls() if "-G" not in c))
 
     def test_switching_to_a_headset_that_never_answers_stops_using_the_last_one(self):
         self.device("localhost")
@@ -482,6 +482,16 @@ class Connecting(unittest.TestCase):
         self.assertFalse(t.is_alive())
         self.assertIsNotNone(proc.poll())
         self.assertIsNone(self.link.master)
+
+    def test_test_now_goes_through_a_jump_host(self):
+        d = self.device("10.99.99.99")
+        self.pin(d["id"])
+        self.hosts({"10.99.99.99": "ok"})
+        with mock.patch.object(fl, "ssh_g", return_value=("frame-t", 22, "steamos", True)):
+            self.link.test(d["id"])
+        row = self.link.snapshot()["tests"][d["id"]]["rows"][0]
+        self.assertEqual(row["ssh"], "ok", row)
+        self.assertIn("jump host", row["detail"])
 
     def test_devices_api_checks_everything(self):
         d = self.device("localhost")

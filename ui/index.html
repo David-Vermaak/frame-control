@@ -2676,7 +2676,6 @@ $("devSel").onchange = e => useDevice(e.target.value);
 async function useDevice(id) {
   const d = dv.list.find(x => x.id === id);
   if (!d || d.active) return;
-  devGen++;  // from here on, answers about the last headset are dropped
   const res = await act(`Switch to ${d.name}`, () => api("/api/devices", { action: "use", id }));
   if (!res) {  // refused (an install is running): show the headset still in use
     const current = dv.list.find(x => x.active);
