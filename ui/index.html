@@ -87,6 +87,7 @@
   .wait::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--dim); flex: none; }
 
   /* ---- drop anywhere ---- */
+  #media select { min-width: 0; max-width: 100%; flex: 1; }
   .dropzone { position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; pointer-events: none;
               background: rgba(14,20,27,.82); backdrop-filter: blur(3px); }
   .dropzone > div { padding: 42px 60px; border: 2px dashed var(--blue); border-radius: 8px; text-align: center;
@@ -609,6 +610,31 @@
         <button class="small" id="clipMac">Send this computer's clipboard</button>
       </div>
       <div class="hint">Clipboard needs the desktop panel open in the headset.</div>
+    </section>
+
+    <section class="panel" id="media">
+      <div class="shelf-head"><h2>Media in the headset</h2><span class="count">Preview</span></div>
+      <p class="sub">Play your movies and stereo photos with Frame Control's own player.</p>
+      <div class="row"><button class="small" id="mediaChoose">Send media…</button>
+        <button class="small" id="mediaRefresh">Refresh</button></div>
+      <input type="file" id="mediaInput" accept=".mp4,.mkv,.mov,.m4v,.webm,.png,.jpg,.jpeg,.splat" hidden>
+      <div class="row" style="margin-top:12px"><label for="mediaFile">On the Frame</label>
+        <select id="mediaFile"><option value="">Refresh to load your media</option></select></div>
+      <div class="row" style="margin-top:8px"><label for="mediaLayout">Layout</label>
+        <select id="mediaLayout">
+          <option value="auto">Detect from name or metadata</option><option value="mono">2D</option>
+          <option value="sbs">Half SBS · left / right</option><option value="ou">Half OU · top / bottom</option>
+          <option value="full-sbs">Full SBS · left / right</option><option value="full-ou">Full OU · top / bottom</option>
+        </select></div>
+      <div class="row" style="margin-top:8px"><label><input type="checkbox" id="mediaTheatre" checked>
+        Theatre · bigger screen, dark surround</label></div>
+      <div class="row" style="margin-top:12px"><button class="action small" id="mediaPlay">Play</button>
+        <button class="small" id="mediaStop">Stop</button></div>
+      <p class="sub" id="mediaState" role="status" aria-live="polite">Choose a file to begin.</p>
+      <div class="hint">H.264/H.265 video; SBS/OU PNG or JPEG photos. Screens follow your head.
+        Small .splat files show a stationary stereo preview (up to 20,000 Gaussians).
+        Native HEIC/MPO photos, large splat scenes, seeking and subtitles aren't supported yet.
+        Stop works from here; playback also ends after four hours.</div>
     </section>
 
     <section class="panel" id="apps">
@@ -1427,6 +1453,42 @@ function upload(file, mode) {
     xhr.send(file);
   });
 }
+async function refreshMedia(selectId) {
+  const data = await api("/api/media", { action: "list" });
+  const selected = selectId || $("mediaFile").value;
+  $("mediaFile").replaceChildren();
+  if (!data.files.length) $("mediaFile").add(new Option("Send media to begin", ""));
+  for (const file of data.files) $("mediaFile").add(new Option(file.name, file.id));
+  if (data.files.some(f => f.id === selected)) $("mediaFile").value = selected;
+  const p = data.player;
+  $("mediaState").textContent = p.error || `${p.state}${p.file ? ": " + p.file : ""}`;
+  return data;
+}
+$("mediaChoose").onclick = () => $("mediaInput").click();
+$("mediaInput").onchange = () => act("Send media", async () => {
+  const file = $("mediaInput").files[0];
+  if (!file) return;
+  const result = await upload(file, "media");
+  await refreshMedia(result.id);
+  $("mediaInput").value = "";
+  return result;
+}, $("mediaChoose"));
+$("mediaRefresh").onclick = () => act("Refresh media", () => refreshMedia(), $("mediaRefresh"));
+$("mediaPlay").onclick = () => act("Play media", async () => {
+  const id = $("mediaFile").value;
+  if (!id) throw new Error("Send or select a media file first");
+  const result = await api("/api/media", { action: "play", id,
+    layout: $("mediaLayout").value, theatre: $("mediaTheatre").checked });
+  $("mediaState").textContent = "Starting…";
+  setTimeout(() => refreshMedia().catch(e => { $("mediaState").textContent = e.message; }), 1500);
+  return result;
+}, $("mediaPlay"));
+$("mediaStop").onclick = () => act("Stop media", async () => {
+  const result = await api("/api/media", { action: "stop" });
+  await refreshMedia();
+  return result;
+}, $("mediaStop"));
+
 let apkLookup = 0;
 async function checkApkAlternatives(apk) {
   const lookup = ++apkLookup;

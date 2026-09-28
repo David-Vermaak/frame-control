@@ -40,8 +40,10 @@ flat 2D desktop streaming into a window on the Frame's Linux desktop.
 | Immersed / Virtual Desktop | Vendor apps | Immersed has a Mac agent but no known Frame client. Virtual Desktop's developer said he'd "try" to port it ([NewsBreak](https://www.newsbreak.com/news/4892834783961-virtual-desktop-dev-says-he-ll-try-to-bring-the-app-to-steam-frame)). | Not available as of 2026-09-25. Check again later. |
 | WiVRn / ALVR | VR streaming from a Linux or Windows PC | Irrelevant for a Mac host (no SteamVR/OpenXR runtime on macOS) | N/A |
 
-For **VR video files** (180°/360° stereo), don't stream the Mac's screen. Play
-them on the Frame in DeoVR instead: see [vr-video.md](vr-video.md).
+For **local movies and stereo photos**, Frame Control's own OpenVR player
+runs on the Frame; see [vr-video.md](vr-video.md). It currently renders a flat
+stereo screen. VR180/360 projection is not implemented; the same page records
+DeoVR only as an optional, independently installed alternative.
 
 ### Pre-seeding the Remmina profile (no typing in the headset)
 

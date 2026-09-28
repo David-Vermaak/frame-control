@@ -102,10 +102,11 @@ Still open: 4, 6, 7, 12–15, 16 (off-LAN and after a reboot), 17–21.
 20. **F-Droid 2.0** (Compose 1.12): does it run? If so, the catalogue can
     install it instead of 1.17.2.
 
-21. **DeoVR local files:** does DeoVR's file browser show `Videos → VR`
-    (the symlink from `push-vr-video.sh`) or `Z:\home\steamos\Videos\VR`, and do
-    the colour-coded test clips play in 3D (red left eye, cyan right) for both
-    H.264 and H.265? Does the DLNA browser find a server on the Mac?
+21. **Owned media player:** worn-headset comfort, audio quality/lip sync, long
+    movies and 4K/8K decoding remain to check. Native spatial-photo container
+    extraction, large/immersive splats and existing-panel theatre docking need
+    further implementation. Remote eye isolation, short hardware decode and
+    owned-overlay cleanup are verified; see [vr-video.md](vr-video.md).
 
 ## Verified 2026-09-27
 

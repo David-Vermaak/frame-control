@@ -40,6 +40,7 @@ import frame_android  # noqa: E402
 import frame_apk_versions  # noqa: E402
 import frame_catalog  # noqa: E402
 import frame_host  # noqa: E402
+import frame_media  # noqa: E402
 import frame_store  # noqa: E402
 import frame_titles  # noqa: E402
 import frame_webinstall  # noqa: E402
@@ -1227,7 +1228,70 @@ def _sweep_one(prefix, d):
         pass
 
 
-POST = {"/api/android/display": android_display, "/api/android": android, "/api/titles": titles, "/api/launch": launch, "/api/steam": steam, "/api/volume": set_volume, "/api/clipboard": clipboard,
+# ---- Our Frame-side media player -----------------------------------------
+
+_MEDIA_LOCK = threading.Lock()
+
+
+def media(body):
+    action = body.get("action")
+    if action not in ("list", "status", "play", "stop"):
+        raise Failure("Media action must be list, status, play or stop", 400)
+    if action == "play":
+        identity = body.get("id")
+        if not isinstance(identity, str) or not re.fullmatch(r"[0-9a-f]{32}/[^/\\\x00]+", identity):
+            raise Failure("Invalid media id", 400)
+        if body.get("layout", "auto") not in frame_media.LAYOUTS:
+            raise Failure("Invalid media layout", 400)
+        if type(body.get("theatre", False)) is not bool:
+            raise Failure("theatre must be true or false", 400)
+    with _MEDIA_LOCK:
+        # Ship only our small stdlib modules, atomically, to the user account.
+        sources = {name: (HERE / name).read_text() for name in (
+            "frame_media.py", "frame_media_player.py", "frame_media_remote.py", "frame_splat.py")}
+        installer = """import json, os, pathlib, sys, tempfile
+root = pathlib.Path.home()/'.local/share/frame-control/media'
+root.mkdir(parents=True, exist_ok=True)
+for name, source in json.load(sys.stdin).items():
+    path = root/name
+    fd, temp = tempfile.mkstemp(dir=root, prefix=name+'.')
+    with os.fdopen(fd, 'w') as f:
+        f.write(source)
+    os.replace(temp, path)
+"""
+        ssh("python3 -c " + shlex.quote(installer), stdin=json.dumps(sources))
+        try:
+            out = ssh("python3 ~/.local/share/frame-control/media/frame_media_remote.py",
+                      stdin=json.dumps(body), timeout=45)
+        except Failure as e:
+            for line in reversed(getattr(e, "stdout", "").splitlines()):
+                try:
+                    detail = json.loads(line).get("error")
+                except (ValueError, AttributeError):
+                    continue
+                if detail:
+                    raise Failure(detail) from None
+            raise
+        return json.loads(out)
+
+
+def push_media(path):
+    # Validate the format, but leave layout selection until playback (ffprobe
+    # can then read metadata on the Frame, where it is installed).
+    frame_media.plan(Path(path).name, "mono")
+    token = secrets.token_hex(16)
+    dest = "Videos/FrameControl/" + token + "/"
+    ssh("mkdir -p ~/" + dest)
+    try:
+        push_file(path, dest)
+    except Exception:
+        ssh("rm -rf ~/" + dest)
+        raise
+    return {"message": "Media sent. Choose its layout and press Play.",
+            "id": token + "/" + Path(path).name}
+
+
+POST = {"/api/media": media, "/api/android/display": android_display, "/api/android": android, "/api/titles": titles, "/api/launch": launch, "/api/steam": steam, "/api/volume": set_volume, "/api/clipboard": clipboard,
         "/api/flatpak": flatpak, "/api/open": open_thing, "/api/shots/save": save_shots,
         "/api/webinstall/check": webinstall_check, "/api/webinstall/start": webinstall_start,
         "/api/webinstall/cancel": webinstall_cancel}
@@ -1490,6 +1554,8 @@ class Handler(BaseHTTPRequestHandler):
                         raise Failure("upload interrupted", 400)
                     f.write(chunk)
                     remaining -= len(chunk)
+            if mode == "media":
+                return push_media(dest)
             if mode == "apkinfo":
                 # Read an APK for a report without installing it.
                 try:
