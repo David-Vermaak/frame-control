@@ -1515,6 +1515,7 @@ $("viewer").tabIndex = 0;
 $("viewer").addEventListener("focus", () => { if (ctrl.on && window.frameApp?.captureKeys) window.frameApp.captureKeys(true); });
 $("viewer").addEventListener("blur", () => { ctrlRelease(); if (window.frameApp?.captureKeys) window.frameApp.captureKeys(false); });
 document.addEventListener("visibilitychange", () => { if (document.hidden) ctrlRelease(); });
+window.addEventListener("blur", () => ctrlRelease());  // another app took the keyboard
 
 const isMoveEvent = e => ("fx" in e || "dx" in e) && !("button" in e) && !("key" in e);
 const isRelease = e => ("button" in e || "key" in e) && e.down === false;
@@ -1533,17 +1534,27 @@ function ctrlKeepable(events) {
   return out;
 }
 function ctrlSend(events) {
-  ctrl.queue.push(...events.map(e => isMoveEvent(e) ? e : ctrlAim(e)));
+  ctrl.queue.push(...events.map(e => isMoveEvent(e) ? e : ctrlAim(e)).filter(Boolean));
   // Keep order; if the Frame is slow to answer, drop pointer moves first, then the oldest
   // presses and scrolls, never a release.
   if (ctrl.queue.length > 300) {
-    const q = ctrlKeepable(ctrl.queue);
-    ctrl.queue = q.filter((e, i) => isRelease(e) || i >= q.length - 200);
+    const q = ctrlKeepable(ctrl.queue), keep = new Set();
+    q.forEach((e, i) => { if (isRelease(e) || i >= q.length - 200) keep.add(i); });
+    // A kept press keeps the position before it, so it lands where it was made.
+    for (const i of [...keep]) if (i > 0 && "button" in q[i] && q[i].down !== false && "fx" in q[i - 1]) keep.add(i - 1);
+    ctrl.queue = q.filter((e, i) => keep.has(i));
   }
   ctrlFlush();
 }
 async function ctrlFlush() {
   if (ctrl.sending || !ctrl.queue.length) return;
+  // Backing off after a failure: new input waits for the same retry.
+  const wait = (ctrl.retryAt || 0) - Date.now();
+  if (wait > 0) {
+    clearTimeout(ctrl.retry);
+    ctrl.retry = setTimeout(ctrlFlush, wait);
+    return;
+  }
   ctrl.sending = true;
   const batch = ctrl.queue.splice(0, 200);
   let again = 0;
@@ -1566,6 +1577,7 @@ async function ctrlFlush() {
     ctrl.sending = false;
     ctrlShow();
     clearTimeout(ctrl.retry);
+    ctrl.retryAt = again ? Date.now() + again : 0;
     if (again) { if (ctrl.queue.length) ctrl.retry = setTimeout(ctrlFlush, again); }
     else if (ctrl.queue.length) ctrlFlush();
   }
@@ -1588,9 +1600,11 @@ function ctrlFlushMoves() {
 }
 // On the Desktop view, presses name the panel they're for, so the Frame drops them if
 // focus has moved on (releases always go).
+// A press with no panel to aim at (the Desktop view lost its target) isn't sent at all.
 function ctrlAim(e) {
-  const p = ctrlMode() === "abs" && e.down !== false ? ctrlTarget().panel : null;
-  return p ? { ...e, window: p.window, display: p.display } : e;
+  if (ctrlMode() !== "abs" || e.down === false) return e;
+  const p = ctrlTarget().panel;
+  return p ? { ...e, window: p.window, display: p.display } : null;
 }
 function ctrlButton(name, down) {
   ctrlFlushMoves();  // the click lands where the pointer was sent
@@ -1633,9 +1647,9 @@ const TAP_MOVE = 8, HOLD_MS = 550, TOUCH_SPEED = 1.6, SCROLL_SPEED = 2;
 function ctrlTouchDown(e) {
   ctrl.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
   if (ctrl.pointers.size === 1) {
-    const g = ctrl.g = { kind: "maybe", x: e.clientX, y: e.clientY, e };
+    const g = ctrl.g = { kind: "maybe", x: e.clientX, y: e.clientY, e, target: ctrlAimedAt() };
     g.timer = setTimeout(() => {
-      if (ctrl.g !== g || g.kind !== "maybe") return;
+      if (ctrl.g !== g || g.kind !== "maybe" || !ctrlSameTarget(g)) return;
       g.kind = "held";
       if (ctrlMode() === "abs") {
         const f = ctrlFraction(g.e);
@@ -1651,6 +1665,10 @@ function ctrlTouchDown(e) {
     ctrl.g = { kind: "scroll", ...centroid() };
   }
 }
+// The panel a gesture started on; if that stops being the one in use, the gesture
+// does nothing more (except let go of what it holds).
+function ctrlAimedAt() { return ctrlMode() === "abs" ? panelKey(ctrlTarget().panel) : "headset"; }
+function ctrlSameTarget(g) { return g.target && g.target === ctrlAimedAt(); }
 function centroid() {
   const ps = [...ctrl.pointers.values()];
   return { x: ps.reduce((a, p) => a + p.x, 0) / ps.length, y: ps.reduce((a, p) => a + p.y, 0) / ps.length };
@@ -1669,6 +1687,7 @@ function ctrlTouchMove(e) {
   }
   if (g.kind === "maybe" && Math.hypot(e.clientX - g.x, e.clientY - g.y) > TAP_MOVE) {
     clearTimeout(g.timer);
+    if (!ctrlSameTarget(g)) { g.kind = "done"; return; }
     if (ctrlMode() === "abs") {
       const f = ctrlFraction(g.e);
       if (f) { ctrlMoveTo(...f); ctrlButton("left", true); }
@@ -1683,6 +1702,7 @@ function ctrlTouchUp(e) {
   ctrl.pointers.delete(e.pointerId);
   if (!g) return;
   if (g.kind === "scroll") g.kind = "done";  // the finger left behind doesn't jump the scroll or drag
+  if (g.kind === "maybe" && !ctrlSameTarget(g)) g.kind = "done";
   if (g.kind === "maybe" && ctrl.pointers.size === 0) {
     clearTimeout(g.timer);
     if (ctrlMode() === "abs") { const f = ctrlFraction(g.e); if (!f) { ctrl.g = null; return; } ctrlMoveTo(...f); }
@@ -2654,6 +2674,7 @@ async function openShot(s) {
     await new Promise((ok, bad) => { img.onload = ok; img.onerror = () => bad(new Error("not an image")); img.src = url; });
     if (gen !== viewGen) return;
     lastImg = img; lastSource = "shot"; lastShot = { blob, file: s.file };
+    desk.shown = null;  // a screenshot, not a panel: Control has nothing to act on here
     draw();
     $("srcBadge").textContent = `Screenshot · ${shotApp(s.appid)}`;
     $("stamp").hidden = false; $("stamp").textContent = new Date(s.time * 1000).toLocaleString();

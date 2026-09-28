@@ -9,7 +9,7 @@ const grab = name => {
   if (!m) throw new Error("not found: " + name);
   return m[0];
 };
-const NAMES = ["isMoveEvent", "isRelease", "ctrlKeepable", "TAP_MOVE", "ctrlAim", "ctrlKeyEvent", "ctrlTouchCancel", "ctrlSend", "ctrlFlush", "ctrlMoveTo", "ctrlMoveBy", "ctrlSchedule",
+const NAMES = ["panelKey", "ctrlAimedAt", "ctrlSameTarget", "isMoveEvent", "isRelease", "ctrlKeepable", "TAP_MOVE", "ctrlAim", "ctrlKeyEvent", "ctrlTouchCancel", "ctrlSend", "ctrlFlush", "ctrlMoveTo", "ctrlMoveBy", "ctrlSchedule",
   "ctrlFlushMoves", "ctrlButton", "ctrlClick", "ctrlRelease", "ctrlFraction", "ctrlTouchDown", "centroid",
   "ctrlTouchMove", "ctrlTouchUp", "ctrlTap", "ctrlText"];
 const code = NAMES.map(grab).join("");
@@ -17,13 +17,14 @@ const fail = msg => { console.log("FAIL " + msg); process.exit(1); };
 const tick = (ms = 0) => new Promise(r => setTimeout(r, ms));
 
 function page({ mode = "abs", rect = { left: 0, top: 0, width: 640, height: 360 }, api } = {}) {
+  const target = { panel: { window: 42, display: ":1" } };
   const ctrl = { on: true, queue: [], sending: false, state: "ready", message: "", move: null, rel: [0, 0], raf: 0,
                  held: new Set(), keys: new Set(), pointers: new Map(), g: null, retry: null };
   const sent = [];
   const canvas = { width: 1280, height: 720, getBoundingClientRect: () => rect };
   const env = {
     ctrl, $: () => canvas, ctrlMode: () => mode, ctrlShow: () => {}, toast: () => {},
-    ctrlTarget: () => (mode === "abs" ? { ok: true, panel: { window: 42, display: ":1" } } : { ok: true }),
+    ctrlTarget: () => (mode !== "abs" ? { ok: true } : target.panel ? { ok: true, panel: target.panel } : { why: "gone" }),
     api: api || (async (path, body) => { sent.push(...body.events); return { state: "ready", sent: true }; }),
     requestAnimationFrame: cb => { setTimeout(cb, 0); return 1; },
     navigator: {},
@@ -31,7 +32,7 @@ function page({ mode = "abs", rect = { left: 0, top: 0, width: 640, height: 360 
   const fns = new Function(...Object.keys(env), `let ctrlWarned = false;\n${code}
     return { ctrlTouchDown, ctrlTouchMove, ctrlTouchUp, ctrlTouchCancel, ctrlSend, ctrlText, ctrlButton, ctrlKeyEvent, ctrlRelease, ctrlFlushMoves };`)(...Object.values(env));
   const at = (id, x, y) => ({ pointerId: id, clientX: x, clientY: y });
-  return { ctrl, sent, ...fns, at };
+  return { ctrl, sent, target, ...fns, at };
 }
 
 // A tap lands where it was tapped: pointer there first, then the click.
@@ -115,7 +116,7 @@ function page({ mode = "abs", rect = { left: 0, top: 0, width: 640, height: 360 
   const q = p.ctrl.queue;
   if (!(q.length === 3 && "fx" in q[0] && q[1].button === "left" && q[2].key === 30)) fail("kept while starting " + JSON.stringify(q));
   clearTimeout(p.ctrl.retry);
-  p.ctrl.queue = [];
+  p.ctrl.queue = []; p.ctrl.retryAt = 0;
   p.ctrlSend([{ button: "left", down: false }, { key: 31, down: true }, { dx: 3, dy: 1 }]);
   await tick(5);
   if (!(p.ctrl.queue.length === 1 && p.ctrl.queue[0].button === "left" && p.ctrl.queue[0].down === false))
@@ -197,5 +198,37 @@ function page({ mode = "abs", rect = { left: 0, top: 0, width: 640, height: 360 
   if (!/Capture or Live/.test(check({ ...base, shown: null }, false).why)) fail("target: stale picture message");
   if (check({ ...base, pick: ":0/5", shown: ":0/5" }).ok) fail("target: a watched panel that isn't in use");
   if (check({ ...base, focus: null }).ok) fail("target: nothing in use");
+}
+// Focus moves to another panel mid-gesture: the tap or hold does nothing.
+{
+  const p = page();
+  p.ctrlTouchDown(p.at(1, 100, 100));
+  p.target.panel = { window: 43, display: ":1" };
+  p.ctrlTouchUp(p.at(1, 100, 100)); await tick(10);
+  p.target.panel = { window: 42, display: ":1" };
+  p.ctrlTouchDown(p.at(1, 100, 100));
+  p.target.panel = null;
+  await tick(620); p.ctrlTouchUp(p.at(1, 100, 100)); await tick(10);
+  if (p.sent.some(e => "button" in e)) fail("gesture outlived its panel " + JSON.stringify(p.sent));
+}
+// Trimming keeps a click together with its position.
+{
+  const p = page({ api: () => new Promise(() => {}) });
+  p.ctrlSend([{ dx: 1, dy: 0 }]);  // in flight forever
+  for (let i = 0; i < 100; i++) p.ctrlSend([{ scroll: [0, 1] }]);
+  p.ctrlSend([{ fx: 0.5, fy: 0.5, window: 42, display: ":1" }, { button: "left", down: true }, { button: "left", down: false }]);
+  for (let i = 0; i < 198; i++) p.ctrlSend([{ scroll: [0, 1] }]);
+  const q = p.ctrl.queue, i = q.findIndex(e => e.button === "left" && e.down);
+  if (i < 1 || !("fx" in q[i - 1])) fail("trim split a click from its position");
+}
+// Backing off holds for new input too.
+{
+  let calls = 0;
+  const p = page({ api: async () => { calls++; return { state: "error", sent: false }; } });
+  p.ctrlSend([{ button: "left", down: false }]);
+  await tick(5);
+  for (let i = 0; i < 10; i++) { p.ctrlSend([{ key: 30, down: false }]); await tick(2); }
+  if (calls !== 1) fail("new input bypassed the backoff: " + calls + " requests");
+  clearTimeout(p.ctrl.retry);
 }
 console.log("control gestures ok");

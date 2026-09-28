@@ -126,14 +126,35 @@ def focusable():
     return [tuple(t[i:i + 3]) for i in range(0, len(t) - 2, 3)]
 
 
+def focus_display():
+    """The display of the focused window, from GAMESCOPE_FOCUS_DISPLAY on :0's root.
+
+    gamescope writes the name (":1") as 32-bit items, so its first four bytes land,
+    little-endian, in the first value: 12602 is 0x313A, ":1" (steamcompmgr.cpp;
+    seen 2026-09-29).
+    """
+    values = xprop_root(":0", "GAMESCOPE_FOCUS_DISPLAY")
+    if not values:
+        return None
+    name = (values[0] & 0xFFFFFFFF).to_bytes(4, "little").split(b"\0", 1)[0].decode("ascii", "replace")
+    return name if name[:1] == ":" and name[1:].isdigit() else None
+
+
 def focus():
     """The panel that has focus in the headset: window, display, name and sizes (gamescope
-    publishes the window on :0's root as GAMESCOPE_FOCUSED_WINDOW)."""
+    publishes the window and its display on :0's root)."""
     window = (xprop_root(":0", "GAMESCOPE_FOCUSED_WINDOW") or [0])[0]
     if not window:
         return {"window": None}
     app, pid = next(((a, p) for w, a, p in focusable() if w == window), (None, None))
-    panel = locate(window, pid)
+    display = focus_display()
+    info = window_info(display, window) if display else None
+    if info:
+        root = window_info(display, "root") or {}
+        panel = {"window": window, "display": display, **info,
+                 "root": [root.get("width", info["width"]), root.get("height", info["height"])]}
+    else:
+        panel = locate(window, pid)  # no display published: tell them apart by pid
     return {**panel, "app": app} if panel else {"window": None}
 
 
@@ -317,7 +338,10 @@ def apply(gs, event, panel):
     another panel since, they go nowhere, so a tap can't land on the wrong one;
     releases always go, so nothing stays held.
     """
-    if "window" in event and (not panel or time.time() - panel.get("_at", 0) > 1 or aimed_elsewhere(event, panel)):
+    # Moves may use a focus reading up to a second old; anything that acts (a press, key,
+    # text or scroll) reads it afresh, so it can't land on a panel that took focus since.
+    acts = any(k in event for k in ("button", "key", "text", "scroll")) and event.get("down") is not False
+    if "window" in event and (acts or not panel or time.time() - panel.get("_at", 0) > 1 or aimed_elsewhere(event, panel)):
         panel = {**focus(), "_at": time.time()}
     stale = aimed_elsewhere(event, panel) if "window" in event else False
     if stale and not (event.get("down") is False and ("button" in event or "key" in event)):

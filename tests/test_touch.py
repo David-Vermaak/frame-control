@@ -50,6 +50,14 @@ class Mapping(unittest.TestCase):
         self.assertEqual(t.locate(5, 111)["display"], ":0")
         self.assertEqual(t.locate(5, None)["display"], ":0")
 
+    def test_focus_display_is_decoded(self):
+        t = self.t
+        saved = t.xprop_root
+        self.addCleanup(lambda: setattr(t, "xprop_root", saved))
+        for values, want in (([12602, 0, 58], ":1"), ([12346], ":0"), ([], None), ([0x41], None)):
+            t.xprop_root = lambda d, n, v=values: v
+            self.assertEqual(t.focus_display(), want)
+
     def test_ascii_table_covers_printable_characters(self):
         for code in range(0x20, 0x7F):
             self.assertIn(chr(code), self.t.ASCII, chr(code))
@@ -103,6 +111,19 @@ class Apply(unittest.TestCase):
             panel = self.t.apply(gs, e, panel)
         self.assertEqual(gs.calls, [("button", "left", False)])
         self.assertEqual(self.said[0], ("ready", {"focus": 7, "display": ":1", "stale": True}))
+
+    def test_presses_read_focus_afresh(self):
+        # A move may use a recent reading; a press checks again, so a panel that just
+        # took focus doesn't get a click meant for another.
+        gs, calls = FakeGamescope(), []
+        self.t.focus = lambda: calls.append(1) or dict(self.focused)
+        panel = self.t.apply(gs, {"fx": 0.5, "fy": 0.5, "window": 7, "display": ":1"}, None)
+        panel = self.t.apply(gs, {"fx": 0.6, "fy": 0.5, "window": 7, "display": ":1"}, panel)
+        self.assertEqual(len(calls), 1)
+        self.focused["window"] = 8
+        self.t.apply(gs, {"button": "left", "down": True, "window": 7, "display": ":1"}, panel)
+        self.assertEqual(len(calls), 2)
+        self.assertEqual([c[0] for c in gs.calls], ["move_to", "move_to"])
 
     def test_same_window_id_on_the_other_display_is_another_panel(self):
         gs = FakeGamescope()
