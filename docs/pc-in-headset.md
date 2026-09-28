@@ -1,0 +1,131 @@
+# PC in the headset
+
+Windows and Linux hosts use **Tools → PC in the headset**. The host shares a
+window or screen, and the existing Frame viewer makes it a SteamVR panel.
+Move it with the dashboard's Float in World, Move and Size controls.
+
+**Inferred / not yet verified on a desktop host:** the Windows and Linux
+capture and input paths below. This work was developed on a Mac with no
+Windows or Linux desktop VM. A native build or test-pattern test in CI does
+not establish that desktop capture, a permission dialog, hardware encoding
+or laser input works. Keep this feature in the draft/testing stage until
+those paths have been tried on real hosts.
+
+## Own implementation, platform APIs and bundled libraries
+
+Frame Control owns the host agent, input routing, authentication, streaming
+protocol, panel launcher and adaptation. It does not launch or require
+Sunshine, OBS or another desktop-streaming app. GStreamer and its codec
+plugins are ordinary libraries bundled with the Windows and Linux app;
+users do not install a GStreamer application. The shared library build keeps
+license texts and package provenance alongside the libraries.
+
+First-party alternatives considered (**documented**): Valve Remote Play
+streams a game/desktop, rather than providing this per-window panel protocol;
+Windows Remote Desktop opens a remote session; Linux's desktop portal is the
+consent mechanism for sharing the current desktop. The chosen paths are:
+
+| Host | Capture | Encoding | Input |
+|---|---|---|---|
+| Windows | Windows.Graphics.Capture, through `d3d11screencapturesrc capture-api=wgc`; HWND or HMONITOR | Hardware Media Foundation (`mfh264enc`), low latency, no B-frames | `SendInput`, with source bounds and per-monitor DPI awareness |
+| Linux | RemoteDesktop + ScreenCast portal, then the returned PipeWire fd/node | VA-API (`vah264enc`) where registered; x264 otherwise | RemoteDesktop portal notifications, using only granted pointer/keyboard devices |
+
+API choices are **documented**, not device verification:
+[Windows capture](https://learn.microsoft.com/en-us/windows/uwp/audio-video-camera/screen-capture),
+[GStreamer WGC](https://gstreamer.freedesktop.org/documentation/d3d11/d3d11screencapturesrc.html),
+[Media Foundation encoder](https://gstreamer.freedesktop.org/documentation/mediafoundation/mfh264enc.html),
+[ScreenCast portal](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.ScreenCast.html),
+[RemoteDesktop portal](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.RemoteDesktop.html).
+
+Windows needs a WGC-capable Windows 10/11 desktop and an available hardware
+Media Foundation H.264 encoder. Elevated windows and the secure desktop
+cannot be driven by an ordinary Frame Control process. Minimized/closed
+windows may stop producing frames. Protected content is not supported.
+
+On Linux, press **Choose a window or screen…** and approve the desktop's
+sharing dialog. Choose another source to add another panel. Stop releases
+that source's portal session; sharing it again asks for consent again.
+A desktop must implement both ScreenCast and RemoteDesktop for this path;
+a ScreenCast-only compositor cannot provide laser input through this API.
+Cancelling or denying a dialog is reported on the card. No portal permission
+is bypassed, and Frame Control does not open `/dev/uinput` or the unrestricted
+PipeWire daemon on the host.
+
+The host's own keyboard still works. Input from the viewer uses normalized
+picture coordinates, maps through the selected source's bounds, and releases
+held buttons/keys on blur, disconnect and Stop. Linux requires the pointer
+and keyboard grants. **Untested:** desktop-specific consent, mixed-DPI
+Windows input alignment, multi-monitor layouts, hardware encoder behavior,
+window resize/minimize, and non-US keyboard layouts.
+
+## Shared pieces
+
+- `ui/frame_macview.py` owns the SSH tunnel, reconnect supervision, quality
+  presets and panel launch for all hosts. `ui/frame_pcview.py` selects the PC
+  helper; `/api/macview` remains the compatible endpoint.
+- `ui/mac-view.html` is the one viewer. The 17-byte big-endian frame header,
+  Annex-B H.264/JPEG payloads, `hello`/`ack` reconnect handshake, clock sync,
+  `rx`/`fd` timing reports and input messages are unchanged.
+- `desktop/controller.c` is the rate controller shared by the Mac Swift
+  binding and the PC Python binding. Capture is gated **before** encoding;
+  encoded reference frames are never discarded. It keeps the Mac's bitrate
+  demand protection and tier hysteresis.
+- PC records use the existing `Stats.swift` JSON schema, with bounded
+  4096-frame/512-input storage in `ui/frame_stream_stats.py`. The benchmark's
+  analysis, targets and network shaping are shared, not reimplemented.
+  Capture timestamps describe the native pipeline's source time; they do
+  not prove the time at which the host compositor displayed the pixels.
+- Mac virtual-display separation remains Mac-only. Windows WGC and the
+  Linux portal share the selected window directly.
+
+Current adaptation limitation: PC gating follows the shared frame-rate tier.
+Live bitrate updates are applied to x264. Hardware encoders retain their
+initial bitrate, and PC resolution does not yet follow the controller's
+scale tier. This is an explicit remaining gap, not a measured performance
+claim.
+
+## Build and measure
+
+Packaged Windows/Linux builds include `desktop/bundle/pc-host` and its shared
+libraries. Source checkouts build them with `python3 desktop/build.py` after
+installing GStreamer development packages (see the `PC host libraries` CI
+workflow). The feature reports a missing bundle; it does not download or
+install a streaming app on first use.
+
+The existing benchmark now accepts a PC host:
+
+```sh
+python3 scripts/macview-bench.py run --pc --scenario test --label pc-test
+# Linux: select a real source in the desktop's sharing dialog
+python3 scripts/macview-bench.py run --pc --scenario capture --source choose --label linux-window
+# Windows: use the HWND/monitor source ID shown by the host's /windows or /displays
+python3 scripts/macview-bench.py run --pc --scenario capture --source window:12345 --label windows-window
+```
+
+The synthetic PC pattern uses bundled x264 so headless CI can verify the
+wire protocol without claiming that a GPU was exercised. The `capture`
+scenario measures the selected real source without injecting input or
+assuming that it animates at 60 fps. Mac-only Chrome/virtual-display typing
+and scrolling automation is not run on PC hosts. Results retain the same
+latency stages and record `host_platform`, `pc_host` and `source`. CPU sampling
+on PC hosts is explicitly unavailable. `--net` and `--delay` still use the
+same bounded shaping relay, without administrator privileges.
+
+## Evidence
+
+- **Verified, Mac, 2026-09-28:** 172 existing unit/integration tests passed
+  after extracting the common controller, including the real Mac helper's
+  H.264, ticket, timing and input-echo tests. Eight PC adapter tests passed;
+  native PC tests were skipped locally because their libraries were absent.
+- **Verified, real Frame, 2026-09-28, BUILD_ID 20260925.6191901:** the base
+  helper's synthetic source created panel `valve.steam.desktopgame.2001639889`,
+  and the shared Chromium viewer decoded H.264. It recorded 286 frames over
+  the short probe, with a two-second summary of 19.5 fps shown and total
+  latency p50/p95 83/156.5 ms. This establishes the existing viewer/transport
+  route, not Windows/Linux capture, input or a latency target. The probe's
+  helper, tunnel and viewer were stopped afterward.
+- **CI, pending:** Ubuntu x64/ARM64 and Windows native library builds and
+  x264 test-pattern protocol tests. No Windows or Linux desktop VM was used.
+- **Untested:** real Windows WGC → Media Foundation → Frame; real Linux
+  portal → PipeWire → VA-API/x264 → Frame; physical laser input on either.
+  No benchmark numbers for those desktop paths are claimed.

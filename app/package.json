@@ -11,8 +11,9 @@
     "icon": "env -u ELECTRON_RUN_AS_NODE electron build/make-icon.js",
     "dist": "sh ../mac/frame-mac-view/build.sh && node build/fetch-deps.js mac arm64 && electron-builder --mac --arm64 --publish never",
     "dist:dir": "sh ../mac/frame-mac-view/build.sh && node build/fetch-deps.js mac arm64 && electron-builder --mac --arm64 --dir",
-    "dist:linux": "node build/fetch-deps.js linux x64 arm64 && electron-builder --linux --x64 --arm64 --publish never",
-    "dist:win": "node build/fetch-deps.js win x64 && electron-builder --win --x64 --publish never"
+    "dist:linux": "node build/fetch-deps.js linux x64 && electron-builder --linux --x64 --publish never",
+    "dist:win": "node build/fetch-deps.js win x64 && electron-builder --win --x64 --publish never",
+    "dist:linux:arm64": "node build/fetch-deps.js linux arm64 && electron-builder --linux --arm64 --publish never"
   },
   "devDependencies": {
     "electron": "^44.4.5",
@@ -143,7 +144,16 @@
         "entry": {
           "StartupWMClass": "frame-control"
         }
-      }
+      },
+      "extraResources": [
+        {
+          "from": "build/desktop/${os}-${arch}",
+          "to": "desktop/bundle",
+          "filter": [
+            "**/*"
+          ]
+        }
+      ]
     },
     "deb": {
       "depends": [
@@ -156,7 +166,16 @@
         "zip"
       ],
       "icon": "build/icon.png",
-      "artifactName": "Frame-Control-win-${arch}.${ext}"
+      "artifactName": "Frame-Control-win-${arch}.${ext}",
+      "extraResources": [
+        {
+          "from": "build/desktop/${os}-${arch}",
+          "to": "desktop/bundle",
+          "filter": [
+            "**/*"
+          ]
+        }
+      ]
     },
     "nsis": {
       "oneClick": false,

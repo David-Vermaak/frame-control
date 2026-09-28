@@ -55,6 +55,7 @@ from urllib.parse import quote, urlencode  # %20, not +: the agent's URLComponen
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "ui"))
 import frame_macview  # noqa: E402
+import frame_pcview  # noqa: E402
 
 RESULTS = ROOT / "bench" / "results"
 PAGES = ROOT / "bench" / "pages"
@@ -381,7 +382,10 @@ def run_scenario(args, scenario, agent_port, token, frame_ssh):
     if args.browser_flag is not None:
         mv.browser_flags = [f for f in args.browser_flag if f]
     chrome = None
-    src = "test"
+    src = args.source or "test"
+    cpu = None
+    if args.pc:
+        mv.host = "windows" if sys.platform == "win32" else "linux"
     try:
         if scenario in ("scroll", "type"):
             chrome = chrome_window(f"{scenario}.html")
@@ -405,9 +409,10 @@ def run_scenario(args, scenario, agent_port, token, frame_ssh):
         since = max([f["s"] for f in first["frames"]] or [0])
         captured_before = first["captured"]
         start_mac_us = mv.call("/stats", id=stream["id"])["now"]
-        agent_pid = int(subprocess.run(["pgrep", "-f", "Frame Mac View Lab.app/Contents/MacOS/frame-mac-view"],
-                                       capture_output=True, text=True).stdout.split()[0])
-        cpu = CpuSampler(frame_ssh, agent_pid)
+        if not args.pc:
+            agent_pid = int(subprocess.run(["pgrep", "-f", "Frame Mac View Lab.app/Contents/MacOS/frame-mac-view"],
+                                           capture_output=True, text=True).stdout.split()[0])
+            cpu = CpuSampler(frame_ssh, agent_pid)
         if relay:
             relay.begin()
         expected = 0  # input events the harness asked the viewer for
@@ -443,7 +448,8 @@ def run_scenario(args, scenario, agent_port, token, frame_ssh):
         if not streams:
             raise SystemExit(f"{scenario}: the stream ended during the run (did the Frame go to sleep?)")
         data = streams[0]
-        cpu.stop()
+        if cpu:
+            cpu.stop()
         if args.raw:
             Path(f"{args.raw}-{scenario}.json").write_text(json.dumps(data))
         result = summarize(scenario, data, start_mac_us, end_mac_us, args, relay, schedule, expected)
@@ -452,7 +458,7 @@ def run_scenario(args, scenario, agent_port, token, frame_ssh):
                             for e in data.get("events", []) if e["t"] >= start_mac_us]
         result["captured"] = (captured_end if captured_end is not None else data["captured"]) - captured_before
         result["source_fps"] = round(result["captured"] / max(result["duration_s"], 1), 1)
-        result["cpu"] = cpu.summary()
+        result["cpu"] = cpu.summary() if cpu else {"host": "not sampled"}
         result["viewer"] = data["summary"].get("decoder", "")
         result["show_s"] = show_s
         result["panel"] = shown.get("panel")
@@ -460,6 +466,8 @@ def run_scenario(args, scenario, agent_port, token, frame_ssh):
         result["route"] = mv.route
         return result
     finally:
+        if cpu:
+            cpu.stop()
         try:
             mv.stop(src)
         except Exception:  # noqa: BLE001 - best effort
@@ -670,6 +678,8 @@ def fmt(v):
 
 def add_run_args(r):
     r.add_argument("--scenario", default="test,scroll,type")
+    r.add_argument("--pc", action="store_true", help="run the bundled PC host; use --scenario test or capture")
+    r.add_argument("--source", default="", help="PC source: window:ID, display:ID, or choose (Linux portal)")
     r.add_argument("--duration", type=float, default=20)
     r.add_argument("--warmup", type=float, default=3)
     r.add_argument("--quality", default="balanced", choices=list(frame_macview.QUALITY))
@@ -717,7 +727,7 @@ def frame_ssh_for(args):
 
 
 def run_suite(args, frame_ssh, quiet=False):
-    agent_port, token = lab_agent()
+    agent_port, token = (args.pc_view.port, args.pc_view.token) if args.pc else lab_agent()
     results = []
     for sc in args.scenario.split(","):
         if not quiet:
@@ -748,7 +758,8 @@ def document(args, frame_ssh, results, **extra):
                    "buffer_ms": args.buffer, "host": args.host or args.frame, "usb": args.usb, "ssh_opts": args.ssh_opt,
                    "encoder": os.environ.get("FRAME_MAC_VIEW_ENCODER", ""), "duration_s": args.duration,
                    "browser_flags": args.browser_flag if args.browser_flag is not None else frame_macview.BROWSER_FLAGS},
-        "frame_build": build.strip().partition("=")[2], "mac": platform.mac_ver()[0], "headset": standby[-40:],
+        "frame_build": build.strip().partition("=")[2], "mac": platform.mac_ver()[0],
+        "host_platform": platform.platform(), "source": args.source, "pc_host": args.pc, "headset": standby[-40:],
         "scenarios": results, **extra,
     }
 
@@ -819,19 +830,46 @@ def main():
             print("\nworse:\n  " + "\n  ".join(regs))
         sys.exit(1 if regs else 0)
 
-    lab_agent()
+    if args.pc and (args.cmd == "ab" or args.scenario not in ("test", "capture")):
+        p.error("PC runs use --scenario test or --scenario capture; Mac automation is not portable")
+    if args.pc and args.scenario == "capture" and not args.source:
+        p.error("capture needs --source window:ID, display:ID, or choose")
+    if not args.pc:
+        lab_agent()
     frame_ssh = frame_ssh_for(args)
     # Keep the Mac's screen awake: virtual displays aren't removed while it sleeps.
     runs = 1 if args.cmd == "run" else args.repeat * len(args.arm)
-    awake = subprocess.Popen(["caffeinate", "-d", "-u", "-t", str(int(runs * (args.duration * 4 + 60) + 120))])
+    awake = subprocess.Popen(["caffeinate", "-d", "-u", "-t", str(int(runs * (args.duration * 4 + 60) + 120))]) if sys.platform == "darwin" else None
+    args.pc_view = None
     try:
+        if args.pc:
+            args.pc_view = frame_pcview.PCView(frame_ssh[:-1], ssh_runner(frame_ssh), frame_ssh[-1])
+            args.pc_view.ensure_agent()
+            if args.source == "choose":
+                args.pc_view.call("/permissions", method="POST")
+                print("Choose a window or screen in your desktop's sharing dialog.", flush=True)
+                deadline = time.monotonic()+125
+                while time.monotonic() < deadline:
+                    state = args.pc_view.call("/status")
+                    if not state.get("selecting"):
+                        sources = args.pc_view.call("/windows")["windows"]
+                        if not sources:
+                            raise SystemExit(state.get("selectionError") or "Nothing was shared")
+                        args.source = sources[-1]["src"]
+                        break
+                    time.sleep(.5)
+                else:
+                    raise SystemExit("Sharing dialog timed out")
         if args.cmd == "ab":
             arm_runs, table = ab(args, frame_ssh)
             write(document(args, frame_ssh, [], arms=args.arm, runs=arm_runs, table=table), args)
             return
         results = run_suite(args, frame_ssh)
     finally:
-        awake.terminate()
+        if args.pc_view:
+            args.pc_view.shutdown()
+        if awake:
+            awake.terminate()
     doc = document(args, frame_ssh, results)
     write(doc, args)
     bad = [f"{r['scenario']} {k}" for r in results for k, v in r["grades"].items() if v in ("bad", "missing")]

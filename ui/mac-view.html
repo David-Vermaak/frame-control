@@ -22,7 +22,7 @@
 </head>
 <body>
 <canvas id="c" width="16" height="9"></canvas>
-<div id="note">Connecting to the Mac…</div>
+<div id="note">Connecting to your computer…</div>
 <div id="hud" hidden></div>
 <script>
 "use strict";
@@ -243,14 +243,14 @@ async function connect() {
     // Refused before ever getting a key: the ticket expired or was revoked,
     // and retrying can't help.
     if (!reconnectKey && ++failedStarts >= 3) {
-      show("This view has expired. Press Show in Frame Control on the Mac to open it again.");
+      show("This view has expired. Press Show in Frame Control on your computer to open it again.");
       return;
     }
     hideNoteOnFrame = true;
     // The Mac may be asleep or the tunnel restarting: keep trying.
     retry = Math.min(retry + 1, 6);
     // Keep the Mac's reason (a missing permission, a closed window) on screen.
-    show(lastError ? `${lastError} Retrying…` : "Lost the Mac. Reconnecting…");
+    show(lastError ? `${lastError} Retrying…` : "Lost the computer. Reconnecting…");
     setTimeout(connect, 500 * 2 ** retry);
   };
 }
@@ -269,7 +269,7 @@ function control(m) {
     document.title = tag ? `${name} [${tag}]` : name;
     if (!m.input) {
       hideNoteOnFrame = false;  // a warning, not a connection notice: let it stay its 8 s
-      show("Clicks and keys need Accessibility permission on the Mac (Frame Control asks for it).", 8000);
+      show(m.inputMessage || "Clicks and keys need Accessibility permission on the Mac (Frame Control asks for it).", 8000);
     }
   } else if (m.t === "error") {
     stats.errors.push(m.message);
@@ -391,7 +391,7 @@ addEventListener("keydown", e => onKey(e, true));
 addEventListener("keyup", e => onKey(e, false));
 addEventListener("blur", () => send({ t: "release" }));
 
-show("Connecting to the Mac…");
+show("Connecting to your computer…");
 connect();
 </script>
 </body>

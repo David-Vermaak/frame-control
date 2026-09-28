@@ -7,7 +7,7 @@ on:
   push:
     tags: ["v*"]
   pull_request:
-    paths: ["app/**", "ui/**", "scripts/**", "frame/**", "apk-catalog/**", ".github/workflows/release.yml"]
+    paths: ["app/**", "ui/**", "desktop/**", "mac/**", "scripts/**", "frame/**", "apk-catalog/**", ".github/workflows/release.yml"]
   workflow_dispatch:
 
 permissions:
@@ -28,12 +28,41 @@ jobs:
           - os: ubuntu-latest
             script: dist:linux
             files: app/dist/*.AppImage app/dist/*.deb
+          - os: ubuntu-24.04-arm
+            script: dist:linux:arm64
+            files: app/dist/*.AppImage app/dist/*.deb
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
+      - name: Linux streaming libraries
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libglib2.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly gstreamer1.0-pipewire
+          arch=x64; if [ "$(uname -m)" = aarch64 ]; then arch=arm64; fi
+          python3 desktop/build.py --out "app/build/desktop/linux-$arch"
+      - uses: msys2/setup-msys2@v2
+        if: runner.os == 'Windows'
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-pkgconf
+            mingw-w64-ucrt-x86_64-python
+            mingw-w64-ucrt-x86_64-gstreamer
+            mingw-w64-ucrt-x86_64-gst-plugins-base
+            mingw-w64-ucrt-x86_64-gst-plugins-good
+            mingw-w64-ucrt-x86_64-gst-plugins-bad
+            mingw-w64-ucrt-x86_64-gst-plugins-ugly
+      - name: Windows streaming libraries
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: python desktop/build.py --out app/build/desktop/win-x64
       - name: Build
         working-directory: app
         shell: bash

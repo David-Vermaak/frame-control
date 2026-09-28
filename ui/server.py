@@ -41,6 +41,7 @@ import frame_apk_versions  # noqa: E402
 import frame_catalog  # noqa: E402
 import frame_host  # noqa: E402
 import frame_macview  # noqa: E402
+import frame_pcview  # noqa: E402
 import frame_store  # noqa: E402
 import frame_titles  # noqa: E402
 import frame_webinstall  # noqa: E402
@@ -1232,7 +1233,7 @@ def _sweep_one(prefix, d):
 
 # The tunnel gets its own connection: the shared master's options would win
 # over anything added after them.
-macview = frame_macview.MacView(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8"],
+macview = frame_pcview.host_view(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8"],
                                 lambda remote, stdin=None, timeout=30: ssh(remote, stdin=stdin, timeout=timeout),
                                 FRAME, track=_live_tunnels.add)
 

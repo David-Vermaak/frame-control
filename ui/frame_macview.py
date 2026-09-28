@@ -105,9 +105,9 @@ class MacViewError(Exception):
     pass
 
 
-def panel_id(src):
+def panel_id(src, host="mac"):
     """A stable panel id per source, in the range panel-on-frame.sh uses."""
-    return 2_001_000_000 + zlib.crc32(f"mac:{src}".encode()) % 1_000_000
+    return 2_001_000_000 + zlib.crc32(f"{host}:{src}".encode()) % 1_000_000
 
 
 def fit(w, h, box=PANEL_BOX):
@@ -116,6 +116,8 @@ def fit(w, h, box=PANEL_BOX):
 
 
 class MacView:
+    host = "mac"
+
     def __init__(self, tunnel_ssh, run, frame, track=None):
         self.tunnel_ssh = list(tunnel_ssh)
         self.run = run
@@ -166,9 +168,16 @@ class MacView:
     def _stale(self):
         try:
             built = AGENT.stat().st_mtime
-            return any(p.stat().st_mtime > built for p in (SOURCES / "Sources").glob("*.swift"))
+            return any(p.stat().st_mtime > built for p in [*(SOURCES / "Sources").glob("*.swift"),
+                       ROOT / "desktop" / "controller.c", ROOT / "desktop" / "controller.h"])
         except OSError:
             return False
+
+    def agent_command(self):
+        return [str(AGENT)]
+
+    def agent_environment(self):
+        return {**os.environ, "FRAME_MAC_VIEW_TOKEN": self.token}
 
     def ensure_agent(self):
         with self.lock:
@@ -178,11 +187,11 @@ class MacView:
             if reason:
                 raise MacViewError(reason)
             self.build()
-            env = {**os.environ, "FRAME_MAC_VIEW_TOKEN": self.token}
+            env = self.agent_environment()
             # The same port as before when restarting, so a running tunnel still
             # fits; otherwise (or if it's gone) whatever the system gives.
             for port in dict.fromkeys([self.port or 0, 0]):
-                self.agent = subprocess.Popen([str(AGENT), "serve", "--port", str(port), "--page", str(PAGE),
+                self.agent = subprocess.Popen([*self.agent_command(), "serve", "--port", str(port), "--page", str(PAGE),
                                                "--exit-on-eof"], env=env, stdin=subprocess.PIPE,
                                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
                 line = self.agent.stdout.readline()
@@ -362,7 +371,7 @@ class MacView:
         # the agent no longer counts them, so only move when none are out there.
         others = self.shown - {src}
         self.ensure_tunnel(allow_new_port=not others)
-        appid = panel_id(src)
+        appid = panel_id(src, self.host)
         # Unique per launch, so a new window is never confused with an old one.
         tag = "fc" + secrets.token_hex(4)
         # A single-use ticket for this source, not Frame Control's key: the URL
@@ -415,7 +424,8 @@ class MacView:
         status = self.call("/status")
         windows = self.call("/windows").get("windows", []) if status.get("screen") else []
         displays = self.call("/displays").get("displays", [])
-        return {"available": True, "screen": status.get("screen", False),
+        return {"available": True, "host": self.host, "selecting": status.get("selecting", False),
+                "selectionError": status.get("selectionError", ""), "screen": status.get("screen", False),
                 "accessibility": status.get("accessibility", False), "streams": status.get("streams", []),
                 "windows": windows, "displays": displays, "tunnel": self.tunnel_up(),
                 "route": self.route}

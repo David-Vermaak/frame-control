@@ -1,0 +1,53 @@
+name: PC host libraries
+on:
+  pull_request:
+    paths: ["desktop/**", "ui/**", "tests/**", "mac/frame-mac-view/**", "scripts/macview-bench.py", ".github/workflows/pc-host.yml"]
+  workflow_dispatch:
+jobs:
+  linux:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Native libraries
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libglib2.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly gstreamer1.0-pipewire
+          python3 desktop/build.py
+      - name: Tests (real x264, fake capture consent/input)
+        env:
+          FRAME_PC_REQUIRE_NATIVE: "1"
+        run: python3 -m unittest discover -s tests -p 'test_pc*.py' -v
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pc-host-${{ matrix.os }}
+          path: desktop/bundle
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-pkgconf
+            mingw-w64-ucrt-x86_64-python
+            mingw-w64-ucrt-x86_64-gstreamer
+            mingw-w64-ucrt-x86_64-gst-plugins-base
+            mingw-w64-ucrt-x86_64-gst-plugins-good
+            mingw-w64-ucrt-x86_64-gst-plugins-bad
+            mingw-w64-ucrt-x86_64-gst-plugins-ugly
+      - name: Native build and tests (x264; WGC and MF need a desktop/GPU)
+        shell: msys2 {0}
+        run: |
+          python desktop/build.py
+          FRAME_PC_REQUIRE_NATIVE=1 python -m unittest discover -s tests -p 'test_pc*.py' -v
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pc-host-windows
+          path: desktop/bundle

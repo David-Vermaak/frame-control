@@ -148,3 +148,14 @@ For example, on 2026-09-27 the smoke test found that Steam's `create-shortcut`
 refuses ids with a hyphen (`missing/invalid arguments`), which the fake had
 accepted. The fake now refuses them the same way, and Frame Control makes ids
 Steam accepts.
+
+## PC panel host tests
+
+`tests/test_pcview.py` checks source-bound tickets, reconnect/Stop revocation,
+input release, source-coordinate mapping and use of the existing panel
+launcher. The `PC host libraries` workflow builds the bundled native adapter
+on Windows, Ubuntu x64 and Ubuntu ARM64, then runs a real x264 synthetic
+stream through the HTTP/WebSocket agent. `FRAME_PC_REQUIRE_NATIVE=1` makes a
+missing native bundle fail CI instead of skipping. These tests do not grant a
+portal dialog, capture a desktop, exercise a hardware encoder or validate
+laser alignment. See [PC host evidence](pc-in-headset.md#evidence).

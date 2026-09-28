@@ -651,7 +651,7 @@
     </section>
 
     <section class="panel" id="macview" hidden>
-      <div class="shelf-head"><h2>Mac in the headset</h2><span class="count" id="mvCount"></span><span class="spacer"></span>
+      <div class="shelf-head"><h2 id="mvTitle">Mac in the headset</h2><span class="count" id="mvCount"></span><span class="spacer"></span>
         <select id="mvQuality" title="Picture quality and bandwidth">
           <option value="sharp">Sharp</option><option value="balanced" selected>Balanced</option>
           <option value="light">Light</option><option value="compatible">Compatible (JPEG)</option>
@@ -668,7 +668,7 @@
         <button class="small danger" data-mv="stopall">Stop all</button>
       </div>
       <div class="hint">Each window or screen becomes its own panel in the headset. Place it with the SteamVR dashboard
-        (Float in World, Move, Size). Point and click with the laser, scroll with the thumbstick, and type on the Mac's keyboard.</div>
+        (Float in World, Move, Size). Point and click with the laser, scroll with the thumbstick, and type on your computer’s keyboard.</div>
     </section>
   </div>
   </div>
@@ -2218,8 +2218,16 @@ async function loadMacView(restart) {
   if (seq !== mvSeq) return;
   const box = $("macview");
   if (err) { box.hidden = false; return failed($("mvWindows"), err); }
-  if (!s.available) { box.hidden = true; return; }
+  if (!s.available) {
+    box.hidden = !s.host;
+    if (s.host) { $("mvTitle").textContent = "PC in the headset"; $("mvWindows").textContent = s.reason; }
+    return;
+  }
   box.hidden = false;
+  const pc = s.host && s.host !== "mac";
+  $("mvTitle").textContent = pc ? "PC in the headset" : "Mac in the headset";
+  $("mvSeparate").closest("label").hidden = pc;
+  $("mvSeparate").disabled = pc;
   const live = new Set((s.streams || []).map(x => x.src));
   const byStream = src => (s.streams || []).find(x => x.src === src);
   $("mvCount").textContent = live.size ? `${live.size} showing${s.route === "usb" ? " · over USB-C" : ""}` : "";
@@ -2229,6 +2237,12 @@ async function loadMacView(restart) {
   $("mvPerm").hidden = !perm.length;
   $("mvPerm").innerHTML = perm.join(" ") + `<div class="row"><button class="small action" data-mv="perm">Allow…</button>
     <span class="sub">Then press Refresh. macOS may ask you to reopen Frame Control.</span></div>`;
+  if (pc) {
+    $("mvPerm").hidden = s.host !== "linux";
+    $("mvPerm").innerHTML = `<button class="small action" data-mv="perm" ${s.selecting ? "disabled" : ""}>${s.selecting ? "Choose on your computer…" : "Choose a window or screen…"}</button>
+      <span class="sub">Your desktop asks what to share and whether to allow pointer and keyboard control.</span>` +
+      (s.selectionError ? `<div class="sub">${esc(s.selectionError)}</div>` : "");
+  }
   const liveAs = src => live.has(src) ? src : src.startsWith("window:") && live.has("separate:" + src.slice(7)) ? "separate:" + src.slice(7) : "";
   $("mvDisplays").innerHTML = (s.displays || []).map(d =>
     mvRow(d.src, `Whole screen: ${d.name}`, `${d.w}×${d.h}${d.main ? " · main display" : ""}`, d.w, d.h, liveAs(d.src), byStream(liveAs(d.src)))).join("");
@@ -2236,11 +2250,11 @@ async function loadMacView(restart) {
   $("mvWinCount").textContent = wins.length ? `${wins.length}` : "";
   $("mvWindows").innerHTML = !s.screen ? `<div class="sub">Windows appear here once Screen Recording is allowed.</div>`
     : wins.length ? wins.map(w => mvRow(w.src, w.title || w.app, `${w.title ? w.app + " · " : ""}${w.w}×${w.h}`, w.w, w.h, liveAs(w.src), byStream(liveAs(w.src)))).join("")
-    : `<div class="sub">No windows open on this Mac's current desktop.</div>`;
+    : `<div class="sub">No shared windows yet.</div>`;
   // Keep the numbers fresh while something is in the headset and the card is on screen.
   clearTimeout(mvTimer);
   const tick = () => { mvTimer = document.hidden || !box.offsetParent ? setTimeout(tick, 3000) : (loadMacView(), 0); };
-  if (live.size) mvTimer = setTimeout(tick, 3000);
+  if (live.size || s.selecting) mvTimer = setTimeout(tick, 3000);
 }
 $("mvRefresh").onclick = () => loadMacView(true);
 $("mvSeparate").checked = localStorage.getItem("mvSeparate") !== "0";
@@ -2249,7 +2263,7 @@ $("macview").onclick = async e => {
   const b = e.target.closest("[data-mv]"); if (!b) return;
   const src = b.dataset.src;
   if (b.dataset.mv === "show") {
-    const as = $("mvSeparate").checked && src.startsWith("window:") ? "separate:" + src.slice(7) : src;
+    const as = !$("mvSeparate").disabled && $("mvSeparate").checked && src.startsWith("window:") ? "separate:" + src.slice(7) : src;
     await act(`Show ${b.dataset.title} in the headset`, async () => {
       const r = await api("/api/macview", { action: "show", src: as, quality: $("mvQuality").value,
                                             w: +b.dataset.w || undefined, h: +b.dataset.h || undefined });
@@ -2260,7 +2274,7 @@ $("macview").onclick = async e => {
   } else if (b.dataset.mv === "stopall") {
     await act("Stop everything in the headset", () => api("/api/macview", { action: "stop" }), b);
   } else if (b.dataset.mv === "perm") {
-    await act("Ask macOS for permission", () => api("/api/macview", { action: "permissions" }), b);
+    await act("Choose what to share", () => api("/api/macview", { action: "permissions" }), b);
   }
   setTimeout(loadMacView, 800);
 };
