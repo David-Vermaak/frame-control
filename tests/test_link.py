@@ -328,6 +328,12 @@ class Connecting(unittest.TestCase):
         self.assertEqual(self.link.failed("login", ["steamos@frame: Permission denied (publickey)."], False, "frame"),
                          "stop")
 
+    def test_a_reconnect_being_started_isnt_a_live_connection(self):
+        self.link.state["phase"] = "connected"
+        self.assertTrue(self.link.alive())
+        self.link.busy = True  # the loop took a Retry off the queue and is about to reconnect
+        self.assertFalse(self.link.alive())  # so ensure() waits instead of starting work on it
+
     def test_probes_from_an_earlier_attempt_leave_the_new_rows_alone(self):
         self.link.state.update(attempt=2, probes=[{"host": "b", "state": "waiting"}])
         self.link.probe_update(0, 1, state="answered", ip="10.0.0.2")

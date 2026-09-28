@@ -157,7 +157,8 @@ def parse_blocks(text):
     for line in text.splitlines():
         m = BLOCK_RE.fullmatch(line.strip())
         if m:
-            cur = {"alias": m.group(1), "hostname": None, "user": None, "port": 22, "identity_files": []}
+            cur = {"alias": m.group(1), "hostname": None, "user": None, "port": 22, "port_set": False,
+                   "identity_files": []}
             continue
         if cur is None:
             continue
@@ -174,7 +175,7 @@ def parse_blocks(text):
         elif key == "user" and cur["user"] is None:
             cur["user"] = value
         elif key == "port" and value.isdigit():
-            cur["port"] = int(value)
+            cur["port"], cur["port_set"] = int(value), True
         elif key == "identityfile":
             cur["identity_files"].append(value)
     return blocks
@@ -278,7 +279,9 @@ def rewrite_block(alias, path=None, hostname=None, user=None, port=None, expect=
     def change(lines):
         if expect:
             block = next((b for b in parse_blocks("\n".join(lines)) if b["alias"] == alias), None)
-            if not block or any(v is not None and block[k] != v for k, v in expect.items()):
+            # A port the block doesn't set is inherited from elsewhere in the file: not compared.
+            if not block or any(v is not None and block[k] != v and (k != "port" or block["port_set"])
+                                for k, v in expect.items()):
                 return None
         return _rewritten(lines, alias, hostname, user, port)
     return _edit_config(Path(path or ssh_config()), change)
@@ -319,6 +322,18 @@ def remove_block(alias, path=None):
             return None
         return lines[:lines.index(begin)] + lines[lines.index(end) + 1:]
     return _edit_config(Path(path or ssh_config()), change)
+
+
+def effective_port(alias, config):
+    """The port ssh uses for ALIAS with this config file (`ssh -F FILE -G ALIAS`), else 22."""
+    try:
+        out = subprocess.run(["ssh", "-F", str(config), "-G", alias], capture_output=True, text=True,
+                             stdin=subprocess.DEVNULL, timeout=10).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return 22
+    m = re.search(r"^port (\d+)$", out, re.M)
+    port = int(m.group(1)) if m else 22
+    return port if 1 <= port <= 65535 else 22
 
 
 # ---- pinned host keys -------------------------------------------------------------
@@ -670,6 +685,10 @@ class Registry:
         """Import managed blocks we don't know yet, and pick up a HostName that Set Up
         Connection changed since we last looked. -> True if anything changed."""
         blocks = parse_blocks(read_config(self.config))
+        for b in blocks:
+            if not b["port_set"]:
+                # No Port in the block: another Host entry may give one (ssh uses the first).
+                b["port"] = effective_port(b["alias"], self.config or ssh_config())
         changed = False
         with self.lock:
             first = not self.data["devices"] and not self.data.get("active")

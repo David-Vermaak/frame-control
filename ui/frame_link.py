@@ -259,8 +259,8 @@ class Link:
         self.close_master()
 
     def alive(self):
-        if self.state["phase"] != "connected" or self.kicks:
-            return False
+        if self.state["phase"] != "connected" or self.kicks or self.busy:
+            return False  # a reconnect is queued or starting: don't begin anything on this connection
         if not self.control:
             return True
         return self.master is None or self.master.poll() is None

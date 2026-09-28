@@ -124,6 +124,13 @@ class Migration(Base):
         self.assertEqual([d["alias"] for d in self.reg.devices()], ["frame-2", "frame"])
         self.assertEqual(self.reg.active(), self.reg.by_alias("frame")["id"])
 
+    @unittest.skipUnless(shutil.which("ssh"), "needs ssh")
+    def test_a_port_inherited_from_another_host_entry_is_kept(self):
+        (self.ssh / "config").write_text(CONFIG.replace("Host *\n  ServerAliveInterval 60", "Host *\n  Port 2222"))
+        self.reg.sync_from_config(seed=False)
+        self.assertEqual(self.reg.by_alias("frame")["port"], 2222)  # what ssh itself would use
+        self.assertEqual(self.reg.by_alias("frame-2")["port"], 2222)  # its own Port line
+
     def test_setup_finding_a_new_address_adds_it(self):
         self.reg.sync_from_config(seed=False)
         (self.ssh / "config").write_text(CONFIG.replace("HostName frame.tail1234.ts.net", "HostName 192.168.1.237"))
