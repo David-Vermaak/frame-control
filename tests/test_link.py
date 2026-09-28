@@ -241,6 +241,17 @@ class Connecting(unittest.TestCase):
         self.assertIn("No headset", s["error"]["message"])
         self.assertEqual(self.routes[-1], ("frame-control-no-headset", ["-o", "HostName=no-headset.invalid"]))
 
+    def test_a_headset_without_addresses_reaches_nothing(self):
+        d = self.device("localhost")
+        self.hosts({"localhost": "ok"})
+        self.link.connect(["start"])
+        fl.devices_action(self.link, {"action": "address-remove", "id": d["id"], "host": "localhost"}, None)
+        self.assertIn("HostName=no-address.invalid", self.routes[-1][1])  # at once, not after a retry
+        self.link.connect(["switch"])
+        s = self.link.snapshot()
+        self.assertEqual((s["phase"], s["retry_at"]), ("failed", None))
+        self.assertIn("no addresses", s["error"]["message"])
+
     def test_a_bare_alias_lets_ssh_config_decide(self):
         self.link.override = "frame-bare"
         self.hosts({"frame-bare": "ok"})  # the stand-in ssh has no config: the alias is the host

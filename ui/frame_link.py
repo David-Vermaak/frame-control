@@ -338,8 +338,10 @@ class Link:
         """What every ssh command adds to reach DEVICE at HOST."""
         if device.get("none"):
             return ["-o", "HostName=no-headset.invalid"]  # fails at once, with ssh's own "can't resolve"
-        if device.get("transient") or not host:
+        if device.get("transient"):
             return []
+        if not host:  # a headset with no addresses: reach nothing, not whatever ~/.ssh/config says
+            return ["-o", "HostName=no-address.invalid"]
         return ["-o", f"HostName={frame_devices.ssh_host(host)}",
                 "-o", f"HostKeyAlias={frame_devices.host_key_alias(device['id'])}",
                 "-o", f"UserKnownHostsFile={frame_devices.known_hosts_opt(device['id'])}", "-o", "HashKnownHosts=no",
@@ -454,7 +456,7 @@ class Link:
                     self.state.update(phase="connected", retry_at=None, error=None)
                 else:
                     self.fails += 1
-                    self.state.update(phase="failed", retry_at=None if device.get("none") else
+                    self.state.update(phase="failed", retry_at=None if device.get("none") or not (device.get("transient") or device["addresses"]) else
                                       now() + RETRY[min(self.fails, len(RETRY)) - 1])
                     if not self.state["error"]:
                         self.state["error"] = {"stage": "find", "message": "Couldn't connect", "raw": ""}
@@ -485,6 +487,9 @@ class Link:
         if device.get("none"):
             self.fail("find", "No headset is set up. Add one on the Devices tab.")
             return False
+        if not device.get("transient") and not device["addresses"]:
+            self.fail("find", f"{device['name']} has no addresses. Add one on the Devices tab.")
+            return False
         # 1. this computer's network
         self.stage("network", "active")
         net = frame_network.current_network(self.last_fp)
@@ -506,8 +511,7 @@ class Link:
         # 2. find the headset
         self.stage("find", "active")
         port = device.get("port") or 22
-        bare = device.get("transient") or not device["addresses"]
-        if bare:
+        if device.get("transient"):
             host, port, user, proxied = ssh_g(device["alias"])
             if user and not device.get("user"):
                 device["user"] = user
@@ -951,9 +955,13 @@ def devices_action(link, body, open_setup, busy=lambda: 0):
     elif action == "address-update":
         a = reg.update_address(did, body.get("host"), new_host=body.get("newHost"), kind=body.get("kind"),
                                label=body.get("label"))
+        if is_active and a["host"] != body.get("host"):
+            link.invalidate()  # the address in use may have moved
         msg = f"Saved {a['host']}"
     elif action == "address-remove":
         reg.remove_address(did, body.get("host"))
+        if is_active:
+            link.invalidate()  # it may be the address in use: stop using it now
         msg = f"Removed {body.get('host')}"
     elif action == "address-move":
         delta = body.get("delta")

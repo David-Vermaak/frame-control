@@ -1537,12 +1537,12 @@ window.addEventListener("drop", e => {
   const dirs = new Set(items.map((it, i) => it.webkitGetAsEntry && it.webkitGetAsEntry()?.isDirectory ? i : -1).filter(i => i >= 0));
   sendFiles([...e.dataTransfer.files], dirs);
 });
-function upload(file, mode) {
+function upload(file, mode, dev = window.connDevice) {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open("POST", "/api/upload");
     xhr.setRequestHeader("X-Frame-UI", UI_KEY);
-    if (window.connDevice) xhr.setRequestHeader("X-Frame-Device", window.connDevice);
+    if (dev) xhr.setRequestHeader("X-Frame-Device", dev);
     xhr.setRequestHeader("X-Filename", encodeURIComponent(file.name));
     xhr.setRequestHeader("X-Mode", mode);
     const bar = $("prog").firstElementChild;
@@ -1603,7 +1603,12 @@ $("apkAltClose").onclick = () => $("apkAltDlg").close();
 
 const TITLE_EXT = /\.(zip|exe)$/i;
 async function sendFiles(files, dirs = new Set()) {
+  const dev = window.connDevice;  // the whole batch is for the headset it was dropped on
   for (const [i, f] of files.entries()) {
+    if (window.connDevice !== dev) {
+      toast(`Switched headsets: didn't send ${files.length - i} remaining file${files.length - i === 1 ? "" : "s"}`, true);
+      break;
+    }
     const path = window.frameApp?.pathForFile ? window.frameApp.pathForFile(f) : "";
     if (dirs.has(i)) {
       if (path) await sideload(f, path, true);
@@ -1613,7 +1618,7 @@ async function sendFiles(files, dirs = new Set()) {
     if (!f.size) { toast(`${f.name}: empty files aren't supported`, true); continue; }
     if (TITLE_EXT.test(f.name)) { await sideload(f, path); continue; }
     const apk = f.name.toLowerCase().endsWith(".apk");
-    await act(apk ? `Install ${f.name}` : `Copy ${f.name} to ~/Downloads`, () => upload(f, apk ? "apk" : "push"));
+    await act(apk ? `Install ${f.name}` : `Copy ${f.name} to ~/Downloads`, () => upload(f, apk ? "apk" : "push", dev));
   }
   $("fileInput").value = "";
   refresh();
@@ -2639,9 +2644,14 @@ $("connSetup").onclick = setUpActive;
 
 // ---- Devices tab ----
 PAGES.push("devices");
+let devicesSeq = 0;  // an older answer arriving late mustn't bring back the old selection
 async function loadDevices() {
   if (!link.live) return;
-  try { dv.data = await api("/api/devices"); } catch (e) { return failed($("devList"), e); }
+  const seq = ++devicesSeq;
+  let data;
+  try { data = await api("/api/devices"); } catch (e) { if (seq === devicesSeq) failed($("devList"), e); return; }
+  if (seq !== devicesSeq) return;
+  dv.data = data;
   dv.list = dv.data.devices;
   if (!dv.list.some(d => d.id === dv.sel)) dv.sel = dv.data.active;
   const sel = $("devSel");
