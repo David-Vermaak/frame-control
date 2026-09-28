@@ -242,6 +242,7 @@ class UploadVersionsTest(unittest.TestCase):
             handler.rfile = io.BytesIO(b'x')
             with patch.object(frame_android, 'apk_info', return_value=dict(info)), \
                     patch.object(versions, 'alternatives', side_effect=AssertionError('lookup during upload')) as lookup, \
+                    patch.object(frame_android, 'install_hooks', []), \
                     patch.object(server, 'ensure_master') as ssh:
                 if mode == 'apkinfo':
                     reply = handler.upload()
