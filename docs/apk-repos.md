@@ -69,6 +69,13 @@ Authenticated reduced indexes and APKs live under
 `frame_host.cache_dir('apk-sources')`; indexes refresh after 24 hours.
 The existing catalogue's unverified index cache is never treated as authenticated.
 
+Rollback protection: each repository's newest accepted signed index timestamp
+is kept in `apk-repo-state.json` next to the settings, and an older index is
+refused. Once a repository has served a v2 `entry.jar`, a missing `entry.jar`
+is an error rather than a reason to fall back to `index-v1.jar`. `entry.jar`
+must be signed with SHA-2 (SHA-1 is still accepted for legacy `index-v1.jar`).
+Removing a repository clears its state.
+
 ## Publish your own repository
 
 Only publish free APKs you own or have the developer's permission to distribute.

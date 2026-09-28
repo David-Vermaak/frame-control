@@ -102,7 +102,7 @@ def _children(item):
     return _der_parts(item[1])
 
 
-def _cms(data, content):
+def _cms(data, content, strong=False):
     outer = _der_parts(data)
     if len(outer) != 1:
         raise ValueError('invalid CMS wrapper')
@@ -126,6 +126,8 @@ def _cms(data, content):
         raise ValueError('missing or ambiguous signer certificate')
     cert = matching[0]
     digest, prefix = _DIGESTS[_children(signer[2])[0][1].hex()]
+    if strong and digest == 'sha1':
+        raise ValueError('SHA-1 signatures are not accepted for v2 indexes')
     at, signed = 3, content
     if signer[at][0] == 0xa0:
         attrs = {}
@@ -174,16 +176,17 @@ def _sections(data):
     return sections
 
 
-def _digest_check(attrs, suffix, content):
+def _digest_check(attrs, suffix, content, strong=False):
     for label, digest in (('sha-512', 'sha512'), ('sha-384', 'sha384'), ('sha-256', 'sha256'), ('sha1', 'sha1'), ('sha-1', 'sha1')):
-        if label + suffix in attrs:
+        if label + suffix in attrs and not (strong and digest == 'sha1'):
             if base64.b64decode(attrs[label + suffix], validate=True) != hashlib.new(digest, content).digest():
                 raise ValueError('JAR digest mismatch')
             return
     raise ValueError('missing supported JAR digest')
 
 
-def _jar(path, member, pin):
+def _jar(path, member, pin, strong=False):
+    """strong: SHA-2 only (v2 entry.jar); index-v1.jar may still be SHA-1 signed."""
     try:
         with zipfile.ZipFile(path) as z:
             names = z.namelist()
@@ -195,16 +198,16 @@ def _jar(path, member, pin):
             if len(blocks) != 1:
                 raise ValueError('exactly one RSA JAR signer required')
             sf = z.read(blocks[0][:-4] + '.SF')
-            fingerprint = _cms(z.read(blocks[0]), sf)
+            fingerprint = _cms(z.read(blocks[0]), sf, strong)
             if pin and fingerprint != pin:
                 raise ValueError('repository fingerprint mismatch')
             manifest = z.read('META-INF/MANIFEST.MF')
-            _digest_check(_sections(sf)[0], '-digest-manifest', manifest)
+            _digest_check(_sections(sf)[0], '-digest-manifest', manifest, strong)
             entries = [s for s in _sections(manifest)[1:] if s.get('name') == member]
             if len(entries) != 1:
                 raise ValueError('index is not uniquely signed')
             content = z.read(member)
-            _digest_check(entries[0], '-digest', content)
+            _digest_check(entries[0], '-digest', content, strong)
             return content, fingerprint
     except (ValueError, KeyError, IndexError, StopIteration, RuntimeError, NotImplementedError, zipfile.BadZipFile) as e:
         raise SourceError('invalid signed repository: ' + str(e)) from e
@@ -236,6 +239,44 @@ def _write(path, value):
     finally:
         if os.path.exists(tmp):
             os.unlink(tmp)
+
+
+def _state_path():
+    return frame_host.data_dir('apk-repo-state.json')
+
+
+def _states():
+    try:
+        states = json.loads(_state_path().read_text())
+        if not isinstance(states, dict):
+            raise ValueError('invalid state structure')
+        return states
+    except FileNotFoundError:
+        return {}
+    except (OSError, ValueError) as e:
+        raise SourceError('cannot read repository state: ' + str(e)) from e
+
+
+def _state(source):
+    """Newest accepted index timestamp and whether a v2 index was ever accepted (rollback protection)."""
+    with _LOCK:
+        state = _states().get(source['id'])
+    return state if isinstance(state, dict) and state.get('url') == source['url'] else {}
+
+
+def _check_timestamp(source, timestamp):
+    last = _state(source).get('timestamp')
+    if last is not None and (type(timestamp) is not int or timestamp < last):
+        raise SourceError('repository index is older than the one already accepted (possible rollback); refused')
+
+
+def _accept(source, timestamp, v2):
+    with _LOCK:
+        states = _states()
+        state = _state(source)
+        states[source['id']] = {'url': source['url'], 'v2': bool(v2 or state.get('v2')),
+                                'timestamp': timestamp if type(timestamp) is int else state.get('timestamp')}
+        _write(_state_path(), states)
 
 
 def user_repos():
@@ -381,6 +422,7 @@ def _v1(content, path):
                          'size': v.get('size')}, 'added': v.get('added')}
         packages[pkg] = {'metadata': meta, 'versions': versions}
     path.write_text(json.dumps({'packages': packages}))
+    return (index.get('repo') or {}).get('timestamp')
 
 
 def _source_lock(source_id):
@@ -406,22 +448,31 @@ def _load(source, force=False):
         try:
             with tempfile.TemporaryDirectory(dir=str(cache.parent)) as tmp:
                 jar, raw = Path(tmp) / 'index.jar', Path(tmp) / 'index.json'
+                v2 = True
                 try:
                     _fetch(source['url'] + 'entry.jar', jar, 8 * 1024 * 1024)
                 except urllib.error.HTTPError as e:
                     if e.code not in (404, 410):
                         raise
+                    if _state(source).get('v2'):
+                        raise SourceError('repository no longer serves its signed v2 index; '
+                                          'refusing to fall back to the older v1 index') from e
+                    v2 = False
                     _fetch(source['url'] + 'index-v1.jar', jar, 256 * 1024 * 1024)
                     content, pin = _jar(jar, 'index-v1.json', source.get('fingerprint'))
-                    _v1(content, raw)
+                    timestamp = _v1(content, raw)
+                    _check_timestamp(source, timestamp)
                 else:
-                    content, pin = _jar(jar, 'entry.json', source.get('fingerprint'))
-                    entry = json.loads(content)['index']
+                    content, pin = _jar(jar, 'entry.json', source.get('fingerprint'), strong=True)
+                    signed = json.loads(content)
+                    timestamp, entry = signed.get('timestamp'), signed['index']
+                    _check_timestamp(source, timestamp)
                     _fetch(_child(source['url'], entry['name']), raw, 512 * 1024 * 1024)
                     if _sha256(raw) != entry['sha256'] or (entry.get('size') is not None and raw.stat().st_size != entry['size']):
                         raise SourceError('index SHA-256 or size mismatch')
                 apps = _reduce(raw, source)
                 _write(cache, {'version': CACHE_VERSION, 'url': source['url'], 'fingerprint': pin, 'apps': apps})
+                _accept(source, timestamp, v2)
                 return apps, pin
         except SourceError:
             raise
@@ -459,6 +510,9 @@ def remove_repo(source_id):
             raise SourceError('unknown user repository')
         settings['repos'] = [s for s in settings['repos'] if s['id'] != source_id]
         _write(_storage(), settings)
+        states = _states()
+        if states.pop(source_id, None) is not None:  # re-adding is a deliberate new trust decision
+            _write(_state_path(), states)
 
 
 def set_enabled(source_id, enabled):

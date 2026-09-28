@@ -15,6 +15,45 @@ from apk_sources import SourceError, fdroid
 FIXTURES = Path(__file__).parent / 'fixtures' / 'fdroid'
 PIN = (FIXTURES / 'fingerprint.txt').read_text().strip()
 URL = 'https://example.org/repo/'
+_KEY = []
+
+
+def signed_jar(member, content, digest='sha256'):
+    """A JAR signed like fdroidserver's (no CMS signed attributes) with a throwaway test key."""
+    import base64, hashlib
+    from frame_apk_sign import certificate, der, integer, sequence, signing_key
+    if not _KEY:
+        with tempfile.TemporaryDirectory() as tmp:
+            _KEY.append(signing_key(Path(tmp) / 'key.json'))
+    key = _KEY[0]
+    label = 'SHA1' if digest == 'sha1' else 'SHA-256'
+    b64 = lambda data: base64.b64encode(hashlib.new(digest, data).digest()).decode()
+    manifest = ('Manifest-Version: 1.0\r\n\r\nName: %s\r\n%s-Digest: %s\r\n\r\n' % (member, label, b64(content))).encode()
+    sf = ('Signature-Version: 1.0\r\n%s-Digest-Manifest: %s\r\n\r\n' % (label, b64(manifest))).encode()
+    oid, prefix = next((bytes.fromhex(o), bytes.fromhex(p)) for o, (d, p) in fdroid._DIGESTS.items() if d == digest)
+    alg = sequence(der(6, oid), der(5, b''))
+    size = (key['n'].bit_length() + 7) // 8
+    value = prefix + hashlib.new(digest, sf).digest()
+    padded = b'\0\1' + b'\xff' * (size - len(value) - 3) + b'\0' + value
+    signature = pow(int.from_bytes(padded, 'big'), key['d'], key['n']).to_bytes(size, 'big')
+    cert = certificate(key)
+    issuer = fdroid._der_parts(fdroid._der_parts(fdroid._der_parts(cert)[0][1])[0][1])[3][2]
+    signer = sequence(integer(1), sequence(issuer, integer(1)), alg,
+                      sequence(der(6, bytes.fromhex('2a864886f70d010101')), der(5, b'')), der(4, signature))
+    signed = sequence(integer(1), der(0x31, alg), sequence(der(6, bytes.fromhex('2a864886f70d010701'))),
+                      der(0xa0, cert), der(0x31, signer))
+    block = sequence(der(6, bytes.fromhex('2a864886f70d010702')), der(0xa0, signed))
+    stream = io.BytesIO()
+    with zipfile.ZipFile(stream, 'w') as z:
+        for name, data in (('META-INF/MANIFEST.MF', manifest), ('META-INF/TEST.SF', sf),
+                           ('META-INF/TEST.RSA', block), (member, content)):
+            z.writestr(name, data)
+    return stream.getvalue(), fdroid.hashlib.sha256(cert).hexdigest()
+
+
+def entry_jar(timestamp, digest='sha256'):
+    entry = json.loads(zipfile.ZipFile(FIXTURES / 'entry.jar').read('entry.json'))
+    return signed_jar('entry.json', json.dumps(dict(entry, timestamp=timestamp)).encode(), digest)
 
 
 class Repositories(unittest.TestCase):
@@ -35,12 +74,13 @@ class Repositories(unittest.TestCase):
         self.addCleanup(mock.stop)
         self.v1 = False
         self.corrupt = None
+        self.files = {}
 
     def fetch(self, url, path, maximum):
         name = url.rsplit('/', 1)[-1]
         if self.v1 and name == 'entry.jar':
             raise urllib.error.HTTPError(url, 404, 'missing', None, None)
-        payload = (FIXTURES / ('example.apk' if name.endswith('.apk') else name)).read_bytes()
+        payload = self.files.get(name) or (FIXTURES / ('example.apk' if name.endswith('.apk') else name)).read_bytes()
         if name == self.corrupt:
             payload += b'tampered'
         Path(path).write_bytes(payload)
@@ -134,7 +174,7 @@ class Repositories(unittest.TestCase):
                 fdroid._child(URL, name)
 
     def test_recorded_real_signature(self):
-        content, fingerprint = fdroid._jar(FIXTURES / 'izzy-entry.jar', 'entry.json', fdroid.IZZY_PIN)
+        content, fingerprint = fdroid._jar(FIXTURES / 'izzy-entry.jar', 'entry.json', fdroid.IZZY_PIN, strong=True)
         self.assertEqual(fingerprint, fdroid.IZZY_PIN)
         self.assertIn('index', json.loads(content))
 
@@ -254,6 +294,43 @@ class Repositories(unittest.TestCase):
         finally:
             release.set()
             slow.join()
+
+    def test_rollback_to_older_index_is_refused(self):
+        self.files['entry.jar'], pin = entry_jar(2000)
+        source = fdroid.add_repo(URL)
+        self.assertEqual(source['fingerprint'], pin)
+        self.files['entry.jar'], _ = entry_jar(1000)
+        with self.assertRaisesRegex(SourceError, 'older'):
+            fdroid._load(source, force=True)
+        for timestamp in (2000, 3000):  # unchanged and newer indexes are fine
+            self.files['entry.jar'], _ = entry_jar(timestamp)
+            self.assertEqual(len(fdroid._load(source, force=True)[0]), 1)
+        self.files['entry.jar'], _ = entry_jar(2000)
+        with self.assertRaisesRegex(SourceError, 'older'):
+            fdroid._load(source, force=True)
+        fdroid.remove_repo(source['id'])  # a deliberate re-add starts over
+        self.assertEqual(fdroid.add_repo(URL)['fingerprint'], pin)
+
+    def test_no_v1_fallback_once_v2_accepted(self):
+        source = self.add()
+        self.v1 = True
+        with self.assertRaisesRegex(SourceError, 'v2'):
+            fdroid._load(source, force=True)
+        self.assertFalse(any(c.args[0].endswith('index-v1.jar') for c in self.fetch_mock.call_args_list))
+
+    def test_v1_then_v2_upgrade_is_allowed(self):
+        self.v1 = True
+        source = self.add()
+        self.v1 = False
+        self.assertEqual(fdroid._load(source, force=True)[0]['org.example.app']['version_code'], 2)
+
+    def test_sha1_only_entry_jar_rejected(self):
+        self.files['entry.jar'], _ = entry_jar(1, 'sha1')
+        with self.assertRaisesRegex(SourceError, 'SHA-1'):
+            fdroid.add_repo(URL)
+        self.assertEqual(fdroid.user_repos(), [])
+        stream = io.BytesIO(self.files['entry.jar'])
+        self.assertIn(b'index', fdroid._jar(stream, 'entry.json', None)[0])  # index-v1.jar may still use SHA-1
 
     def test_cached_index_does_not_cross_pins(self):
         source = self.add()
