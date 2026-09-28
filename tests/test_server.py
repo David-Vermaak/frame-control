@@ -248,7 +248,8 @@ class OneServer(unittest.TestCase):
 
     def test_a_second_server_is_refused_until_the_first_exits(self):
         data = tempfile.mkdtemp(prefix="frame-one-server-")
-        env = {**os.environ, "FRAME_CONTROL_DATA_DIR": data, "FRAME_ALIAS": "frame-control-test.invalid"}
+        env = {**os.environ, "FRAME_CONTROL_DATA_DIR": data, "FRAME_ALIAS": "frame-control-test.invalid",
+               "FRAME_CONTROL_SERVER_WAIT": "1"}
         first = self.start(env)
         self.assertIn("Frame Control on", first.stdout.readline())
         second = subprocess.run([sys.executable, str(ROOT / "ui" / "server.py"), "--port", "0"], env=env,

@@ -154,10 +154,16 @@ async function startServer() {
 
 // Closing stdin lets server.py close its SSH connections and exit (the only clean
 // way on Windows); SIGTERM does the same elsewhere.
+// Resolves once it has exited (or after 20 s), so a replacement can take the server
+// lock: server.py allows one per user.
 function endServer(child) {
+  const gone = child.exitCode !== null || child.signalCode !== null ? Promise.resolve()
+    : new Promise((resolve) => child.once("exit", resolve));
   try { child.stdin.end(); } catch {}
   if (!IS_WIN) child.kill("SIGTERM");
-  setTimeout(() => { if (child.exitCode === null && child.signalCode === null) child.kill(); }, 5000).unref();
+  // server.py ignores a second SIGTERM while it shuts down, so the fallback is a hard kill.
+  setTimeout(() => { if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL"); }, 12000).unref();
+  return Promise.race([gone, new Promise((resolve) => setTimeout(resolve, 20000).unref())]);
 }
 
 function stopServer() {
@@ -182,7 +188,7 @@ async function restartServer() {
   const old = server;
   server = null;
   url = null;
-  if (old) endServer(old);
+  if (old) await endServer(old);
   await load();
 }
 

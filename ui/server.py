@@ -1662,7 +1662,7 @@ def one_server():
     edit the headsets on their own, and could move each other's installs to another
     headset. Held until this process exits. (FRAME_CONTROL_DATA_DIR gives a second,
     separate one, as the tests do.)"""
-    lock = frame_devices.file_lock(frame_host.data_dir("server.lock"), timeout=8)  # the app restarting its server
+    lock = frame_devices.file_lock(frame_host.data_dir("server.lock"), timeout=float(os.environ.get("FRAME_CONTROL_SERVER_WAIT") or 20))  # while the app restarts it
     try:
         lock.__enter__()
     except OSError:

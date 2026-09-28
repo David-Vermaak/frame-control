@@ -1503,9 +1503,10 @@ $("clipSend").onclick = () => {
 // In the app, Electron reads the clipboard; in a browser, the server does.
 async function sendComputerClipboard() {
   if (!window.frameApp) return api("/api/clipboard", { fromComputer: true });
+  const device = window.connDevice;  // the headset it was sent to, not one switched to while reading
   const text = await window.frameApp.readClipboard();
   if (!text) throw new Error("The clipboard is empty (or holds something other than text)");
-  return api("/api/clipboard", { text });
+  return api("/api/clipboard", { text }, device);
 }
 $("clipMac").onclick = () => act($("clipMac").textContent, sendComputerClipboard, $("clipMac"));
 
