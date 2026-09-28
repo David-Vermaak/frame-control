@@ -77,7 +77,7 @@ TAILSCALE = json.dumps({
     "CurrentTailnet": {"Name": "example.github"},
     "Self": {"HostName": "laptop", "DNSName": "laptop.tail1234.ts.net.", "TailscaleIPs": ["fd7a:115c:a1e0::1", "100.101.102.103"]},
     "Peer": {"nodekey:1": {"HostName": "frame", "DNSName": "frame.tail1234.ts.net.", "OS": "linux", "Online": True,
-                           "TailscaleIPs": ["100.113.174.84", "fd7a:115c:a1e0::5928:ae55"]},
+                           "TailscaleIPs": ["100.101.102.103", "fd7a:115c:a1e0::1234:5678"]},
              "nodekey:2": {"HostName": "phone", "DNSName": "phone.tail1234.ts.net.", "OS": "iOS", "Online": False,
                            "TailscaleIPs": ["100.77.1.2"]}},
 })
@@ -136,7 +136,7 @@ class Parsers(unittest.TestCase):
 
     def test_address_kinds(self):
         cases = {"frame.local": "mdns", "frame.local.": "mdns", "frame.tail1234.ts.net": "tailscale",
-                 "100.113.174.84": "tailscale", "fd7a:115c:a1e0::5928:ae55": "tailscale",
+                 "100.101.102.103": "tailscale", "fd7a:115c:a1e0::1234:5678": "tailscale",
                  "192.168.1.40": "lan", "10.0.0.5": "lan", "fe80::1%en0": "lan",
                  "frame.example.com": "manual", "8.8.8.8": "manual"}
         for host, kind in cases.items():
