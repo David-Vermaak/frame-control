@@ -582,7 +582,7 @@ def open_thing(body):
         raise Failure("open that from the app", 400)
     # The headset and address in use, as every other command gets them (one snapshot).
     with _route_lock:
-        alias, opts = FRAME, list(HOST_OPTS)
+        alias, opts = LINK.named_route() if LINK else (FRAME, list(HOST_OPTS))
     host = next((o.split("=", 1)[1].replace("%%", "%") for o in opts if o.startswith("HostName=")), None)
     if what in ("terminal", "reboot", "poweroff", "suspend", "rdp", "sftp") and host and host.endswith(".invalid"):
         raise Failure("No headset address to use: add one on the Devices tab", 400)

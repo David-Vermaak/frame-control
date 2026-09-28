@@ -304,6 +304,15 @@ class Link:
             self.cond.notify_all()
         self.devices_changed()
 
+    def named_route(self):
+        """(alias, options) for a terminal window: like every command's, but with the
+        address by name, not the IP it answered from. A zone's % can't be passed through
+        Windows' console, and ssh resolves the name itself."""
+        device = self.active_device()
+        via = self.state.get("via") if self.state.get("phase") == "connected" else None
+        host = via["host"] if via else (device["addresses"][0]["host"] if device.get("addresses") else None)
+        return device["alias"], self.host_opts(device, host)
+
     def first_route(self, device):
         """Where commands go before any address has answered: the first one, with the
         headset's own pinned identity, so nothing reaches another device meanwhile."""
@@ -946,8 +955,9 @@ def devices_action(link, body, open_setup, busy=lambda: 0):
     did = body.get("id")
     active = link.active_device()
     is_active = did == active["id"]
-    moves = action == "use" or (is_active and (
-        action in ("remove", "address-remove")
+    moves = action == "use" or (action == "retry" and link.alive()) or (is_active and (
+        # (a retry while connected would cut the install's connection)
+        action in ("remove", "address-remove", "forget-identity")
         or (action == "update" and (body.get("user") is not None or body.get("port") is not None))
         or (action == "address-update" and body.get("newHost") not in (None, body.get("host")))))
     if moves and busy():
@@ -965,6 +975,8 @@ def devices_action(link, body, open_setup, busy=lambda: 0):
         if is_active and login_changed:
             link.invalidate()  # before anything else can fail: the old login mustn't stay in use
         msg = f"Saved {d['name']}"
+        if is_active and not login_changed:
+            link.publish(device=link.public_device(link.active_device()))  # a new name shows at once
         if login_changed:
             # Only what changed, and only if the block still says what it did: Set Up
             # Connection may have written a new login meanwhile, which then stands.

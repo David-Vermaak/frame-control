@@ -392,13 +392,38 @@ class Connecting(unittest.TestCase):
         for body in ({"action": "use", "id": other["id"]}, {"action": "remove", "id": d["id"]},
                      {"action": "update", "id": d["id"], "port": 2222},
                      {"action": "address-remove", "id": d["id"], "host": "localhost"},
-                     {"action": "address-update", "id": d["id"], "host": "localhost", "newHost": "127.0.0.1"}):
+                     {"action": "address-update", "id": d["id"], "host": "localhost", "newHost": "127.0.0.1"},
+                     {"action": "forget-identity", "id": d["id"]}):
             with self.assertRaises(fd.DeviceError, msg=body):
                 fl.devices_action(self.link, body, open_setup=None, busy=lambda: 1)
         # Renaming, or changing another headset, is fine.
         fl.devices_action(self.link, {"action": "update", "id": d["id"], "name": "Desk"}, None, busy=lambda: 1)
         fl.devices_action(self.link, {"action": "update", "id": other["id"], "port": 2222}, None, busy=lambda: 1)
         self.assertEqual(self.reg.get(d["id"])["name"], "Desk")
+
+    def test_no_reconnecting_under_a_running_install(self):
+        self.device("localhost")
+        self.hosts({"localhost": "ok"})
+        self.link.connect(["start"])
+        with self.assertRaises(fd.DeviceError):
+            fl.devices_action(self.link, {"action": "retry"}, None, busy=lambda: 1)
+        fl.devices_action(self.link, {"action": "retry"}, None)  # fine when nothing runs
+
+    def test_terminals_get_the_address_by_name(self):
+        d = self.device("localhost")
+        self.hosts({"localhost": "ok"})
+        self.link.connect(["start"])
+        alias, opts = self.link.named_route()
+        self.assertEqual(alias, "frame-t")
+        self.assertIn("HostName=localhost", opts)
+        self.assertIn(f"HostKeyAlias=frame-control-{d['id']}", opts)
+
+    def test_a_rename_shows_at_once(self):
+        d = self.device("localhost")
+        self.hosts({"localhost": "ok"})
+        self.link.connect(["start"])
+        fl.devices_action(self.link, {"action": "update", "id": d["id"], "name": "Desk"}, None)
+        self.assertEqual(self.link.snapshot()["device"]["name"], "Desk")
 
     def test_stopping_mid_handshake_leaves_no_ssh_behind(self):
         self.device("localhost")
