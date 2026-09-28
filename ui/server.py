@@ -23,6 +23,7 @@ import shlex
 import shutil
 import signal
 import socket
+import socketserver
 import subprocess
 import sys
 import tempfile
@@ -1552,6 +1553,15 @@ class Handler(BaseHTTPRequestHandler):
                 shutil.rmtree(tmp, ignore_errors=True)
 
 
+class LoopbackServer(ThreadingHTTPServer):
+    def server_bind(self):
+        # HTTPServer.server_bind resolves socket.getfqdn(host), a reverse-DNS
+        # lookup that can stall for seconds (verified on GitHub's macOS runners).
+        # Loopback needs no hostname.
+        socketserver.TCPServer.server_bind(self)
+        self.server_name, self.server_port = "127.0.0.1", self.server_address[1]
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--port", type=int, default=int(os.environ.get("PORT", 47810)))
@@ -1559,7 +1569,7 @@ def main():
                     help="stop cleanly when stdin closes (the app closes it on quit; "
                          "Windows has no SIGTERM to catch)")
     args = ap.parse_args()
-    httpd = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
+    httpd = LoopbackServer(("127.0.0.1", args.port), Handler)
     sweep_tmp()
     if not frame_host.WINDOWS:
         signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(KeyboardInterrupt))
