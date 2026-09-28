@@ -2539,6 +2539,13 @@ function onConnection(s) {
     $("canvas").hidden = true; $("viewerEmpty").hidden = false; $("zoombar").hidden = true;
     ["stamp", "srcBadge", "asleep"].forEach(id => $(id).hidden = true);
     $("saveBtn").disabled = true;
+    // Lists and their buttons (Remove, Launch…) were the other headset's: clear them
+    // before anyone clicks one, until the new headset's arrive.
+    ["games", "titleList", "andApps", "flatpaks", "shotGrid", "gmGrid"].forEach(id => {
+      if ($(id)) $(id).innerHTML = `<div class="wait">Waiting for ${esc(s.device.name)}</div>`;
+    });
+    disp.list = []; disp.port = null;
+    $("dispSel").innerHTML = "<option>Loading…</option>"; $("dispSel").disabled = true; $("dispCtl").hidden = true;
     link.reload = true;     // everything on the page was the other headset's
     $("battChip").hidden = true;
   }

@@ -647,7 +647,11 @@ class Link:
     def handshake(self, device, a, found, user):
         """SSH to one address, following ssh -v through stages 3-5.
         -> "ok", "next" (try another address) or "stop"."""
-        opts = self.host_opts(device, a["host"])
+        # An IPv4 address that answered is used as is, so ssh doesn't look the name up
+        # again and try an address that didn't answer (a dead IPv6 route, say). IPv6
+        # answers keep the name: a link-local one needs its zone, which ssh adds itself.
+        ip = found.get("ip") or ""
+        opts = self.host_opts(device, ip if re.fullmatch(r"\d{1,3}(\.\d{1,3}){3}", ip) else a["host"])
         alias = device["alias"]
         with self.route_lock:
             if self.attempt_gen != self.gen:

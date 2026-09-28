@@ -87,6 +87,8 @@ def route(alias, host_opts):
     them follows; frame_titles reads frame_android.SSH_OPTS at call time."""
     global FRAME, HOST_OPTS
     with _route_lock:
+        if alias != FRAME:
+            frame_catalog._env.clear()  # the SteamOS and Lepton builds reports record are per headset
         FRAME = frame_android.FRAME = alias
         HOST_OPTS = list(host_opts)
         MUX[:] = [*MUX_BASE, *HOST_OPTS]

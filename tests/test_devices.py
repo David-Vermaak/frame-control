@@ -284,6 +284,9 @@ class Registry(Base):
         self.assertEqual(self.reg.update_device(b["id"], name="Desk", user="deck", port="2222")["port"], 2222)
         with self.assertRaises(fd.DeviceError):
             self.reg.update_device(b["id"], user="bad user")
+        with self.assertRaises(fd.DeviceError):
+            self.reg.update_device(b["id"], user="steam", port="bad")
+        self.assertEqual(self.reg.get(b["id"])["user"], "deck")  # a rejected edit changes nothing
         self.reg.remove_device(b["id"])
         self.assertEqual(self.reg.active(), a["id"])
         with self.assertRaises(fd.DeviceError):

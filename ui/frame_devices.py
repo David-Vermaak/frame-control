@@ -519,12 +519,11 @@ class Registry:
         """-> the device after the change. The caller mirrors user and port into ~/.ssh/config."""
         with self.lock:
             d = self._find(device_id)
-            if name is not None:
-                d["name"] = check_text(name, "name") or d["alias"]
-            if user is not None:
-                d["user"] = check_user(user)
-            if port is not None:
-                d["port"] = check_port(port)
+            # Check everything first: a rejected edit changes nothing.
+            name = None if name is None else (check_text(name, "name") or d["alias"])
+            user = None if user is None else check_user(user)
+            port = None if port is None else check_port(port)
+            d.update({k: v for k, v in (("name", name), ("user", user), ("port", port)) if v is not None})
             self.save()
             return copy.deepcopy(d)
 
