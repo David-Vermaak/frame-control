@@ -25,7 +25,8 @@ from frame_catalog import _IndexReader, _reduce_index, _sha256
 
 KIND = 'fdroid'
 CACHE_VERSION = 2
-_LOCK = threading.RLock()
+_LOCK = threading.RLock()  # settings only; never held while downloading
+_load_locks = {}
 # Published by the repository operators; a user repository without a pin uses TOFU.
 FDROID_PIN = '43238d512c1e5eb2d6569f4a3afbf5523418b82e0a3ed1552770abb9a9c9ccab'
 IZZY_PIN = '3bf0d6abfeae2f401707b6d966be743bf0eee49c2561b9ba39073711f628937a'
@@ -382,12 +383,17 @@ def _v1(content, path):
     path.write_text(json.dumps({'packages': packages}))
 
 
+def _source_lock(source_id):
+    with _LOCK:
+        return _load_locks.setdefault(source_id, threading.Lock())
+
+
 def _load(source, force=False):
     if not re.fullmatch(r'[a-z0-9-]+', source['id']):
         raise SourceError('invalid source id')
     _url(source['url'], source.get('fingerprint'))
     cache = frame_host.cache_dir('apk-sources', source['id'] + '.json')
-    with _LOCK:
+    with _source_lock(source['id']):
         if not force and cache.exists() and time.time() - cache.stat().st_mtime < 86400:
             try:
                 saved = json.loads(cache.read_text())
@@ -426,20 +432,24 @@ def _load(source, force=False):
 def add_repo(url, fingerprint=None, name=None):
     url, pin = _url(url, fingerprint)
     with _LOCK:
+        existing = next((s for s in _read()['repos'] if s['url'] == url), None)
+    if existing:
+        if pin and pin != existing['fingerprint']:
+            raise SourceError('repository already has a different pinned fingerprint; remove it first')
+        pin = existing['fingerprint']
+    source = dict(id='fdroid-user-' + hashlib.sha256(url.encode()).hexdigest()[:20], kind=KIND,
+                  name=name or (existing or {}).get('name') or urllib.parse.urlsplit(url).hostname,
+                  url=url, builtin=False, enabled=True, trust='user', fingerprint=pin)
+    _, source['fingerprint'] = _load(source, force=True)  # network work outside the settings lock
+    source['trust_on_first_use'] = existing.get('trust_on_first_use', False) if existing else pin is None
+    with _LOCK:
         settings = _read()
-        existing = next((s for s in settings['repos'] if s['url'] == url), None)
-        if existing:
-            if pin and pin != existing['fingerprint']:
-                raise SourceError('repository already has a different pinned fingerprint; remove it first')
-            pin = existing['fingerprint']
-        source = dict(id='fdroid-user-' + hashlib.sha256(url.encode()).hexdigest()[:20], kind=KIND,
-                      name=name or (existing or {}).get('name') or urllib.parse.urlsplit(url).hostname,
-                      url=url, builtin=False, enabled=True, trust='user', fingerprint=pin)
-        _, source['fingerprint'] = _load(source, force=True)
-        source['trust_on_first_use'] = existing.get('trust_on_first_use', False) if existing else pin is None
+        current = next((s for s in settings['repos'] if s['id'] == source['id']), None)
+        if current and current['fingerprint'] != source['fingerprint']:
+            raise SourceError('repository already has a different pinned fingerprint; remove it first')
         settings['repos'] = [s for s in settings['repos'] if s['id'] != source['id']] + [source]
         _write(_storage(), settings)
-        return source
+    return source
 
 
 def remove_repo(source_id):

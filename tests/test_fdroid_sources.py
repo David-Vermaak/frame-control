@@ -229,6 +229,32 @@ class Repositories(unittest.TestCase):
         self.assertIn('images', fdroid.search(source, 'example')[0])
         self.assertEqual(self.fetch_mock.call_count, 4)
 
+    def test_slow_download_blocks_neither_settings_nor_other_repos(self):
+        import threading
+        source = self.add()
+        other = dict(source, id='other-repo')
+        started, release = threading.Event(), threading.Event()
+        def fetch(url, path, maximum):
+            if threading.current_thread().name == 'slow':
+                started.set()
+                release.wait(5)
+            self.fetch(url, path, maximum)
+        self.fetch_mock.side_effect = fetch
+        slow = threading.Thread(target=fdroid._load, args=(other, True), name='slow')
+        slow.start()
+        try:
+            self.assertTrue(started.wait(2))
+            results = []
+            # The settings lock is free and another repo still loads while this one downloads.
+            check = threading.Thread(target=lambda: results.append(
+                (fdroid.set_enabled('fdroid', False), len(fdroid._load(source, force=True)[0]))))
+            check.start()
+            check.join(2)
+            self.assertEqual(results, [(None, 1)])
+        finally:
+            release.set()
+            slow.join()
+
     def test_cached_index_does_not_cross_pins(self):
         source = self.add()
         source['fingerprint'] = '0' * 64
