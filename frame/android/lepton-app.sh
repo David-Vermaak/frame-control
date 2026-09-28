@@ -20,6 +20,13 @@ done
 # A number that isn't a real Steam app; it names this app's Lepton context.
 export SteamAppId="$(cat "$DIR/instance.id")"
 [[ "$SteamAppId" =~ ^[0-9]+$ ]] || { echo "invalid instance.id" >&2; exit 1; }
+# Keep the stable Lepton context, but identify the Android VR client as its
+# actual Steam shortcut. Lepton applies LEPTON_ENV_* after its own passthrough.
+if [[ -f "$DIR/shortcut.id" ]]; then
+  shortcut="$(cat "$DIR/shortcut.id")"
+  [[ "$shortcut" =~ ^[0-9]+$ ]] || { echo "invalid shortcut.id" >&2; exit 1; }
+  export LEPTON_ENV_SteamAppId="$shortcut"
+fi
 exec 9>"$DIR/launch.lock"
 flock -n 9 || { echo "Android app is already running" >&2; exit 1; }
 CONTAINER="lepton-steamlaunch-$SteamAppId"

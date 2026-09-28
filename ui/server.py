@@ -39,6 +39,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import frame_android  # noqa: E402
 import frame_apk_versions  # noqa: E402
 import frame_catalog  # noqa: E402
+import frame_steamgriddb
 import frame_host  # noqa: E402
 import frame_store  # noqa: E402
 import frame_titles  # noqa: E402
@@ -588,6 +589,11 @@ def android(body):
                 return {"message": f"Installed {m['label']}. It's in the Steam library; launching it opens its own panel.",
                         "app": m}
             return start_job(f"Install {pkg}", work)
+        if action == "refresh-art":
+            if not pkg and not body.get("all"):
+                raise Failure('choose a package or all apps', 400)
+            return start_job('Refresh Steam artwork', lambda: {
+                'apps': frame_android.refresh_art(None if body.get('all') else pkg)})
         if action in ("launch", "stop"):
             m = getattr(frame_android, action)(pkg)
             return {"message": f"{'Launching' if action == 'launch' else 'Stopped'} {m['label']}"}
@@ -1227,7 +1233,9 @@ def _sweep_one(prefix, d):
         pass
 
 
-POST = {"/api/android/display": android_display, "/api/android": android, "/api/titles": titles, "/api/launch": launch, "/api/steam": steam, "/api/volume": set_volume, "/api/clipboard": clipboard,
+POST = {
+    "/api/settings/artwork": frame_steamgriddb.save_settings,
+    "/api/android/display": android_display, "/api/android": android, "/api/titles": titles, "/api/launch": launch, "/api/steam": steam, "/api/volume": set_volume, "/api/clipboard": clipboard,
         "/api/flatpak": flatpak, "/api/open": open_thing, "/api/shots/save": save_shots,
         "/api/webinstall/check": webinstall_check, "/api/webinstall/start": webinstall_start,
         "/api/webinstall/cancel": webinstall_cancel}
@@ -1331,6 +1339,10 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if path in ("/", "/index.html"):
                 self.send_bytes((HERE / "index.html").read_bytes(), "text/html; charset=utf-8")
+            elif path == "/api/settings/artwork":
+                self.send_json(frame_steamgriddb.settings())
+            elif path == "/artwork-settings.js":
+                self.send_bytes((HERE / 'artwork-settings.js').read_bytes(), 'text/javascript; charset=utf-8')
             elif path == "/api/host":
                 self.send_json({"os": "SteamOS", "fileManager": None, "computer": DEVICE, "mobile": True} if LOCAL else
                                {"os": frame_host.NAME, "fileManager": frame_host.FILE_MANAGER,

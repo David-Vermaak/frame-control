@@ -1,105 +1,126 @@
 # vr-library implementation notes
 
-- Scope: `/tmp/vrapk/p1.md`; work only in steam-frame-vrlib, no delegation,
-  no push/PR/issues. Parent handles independent review.
-- Read source interface, APK/VR docs, catalogue docs and installer/catalogue,
-  Frame skill and device architecture docs.
-- Registry validation passed; no Steam Frame capability in rendered entries.
-  Prior-work skill absent at both skill roots. Existing worktree explicitly
-  authorized by task; no portfolio registration or out-of-worktree writes.
-- Device preflight: SSH alias timed out; frame.local does not resolve. No
-  sessions started or stopped; no settings changed. Device evidence pending.
-- Current launcher execs setsid --wait, replacing the wrapper and providing
-  no TERM/INT/HUP cleanup for its podman container. Need testable supervisor.
-- Artwork: installer currently copies only APK icon; shortcut updates do not
-  refresh existing name/icon. Plan stdlib PNG fallbacks and Steam grid files.
+Scope: `/tmp/vrapk/p1.md` plus parent updates mandating all-entrypoint artwork,
+SteamGridDB, designed fallback art, settings/backfill and two visual iterations.
+Worktree `/Users/saphid/projects/steam-frame-vrlib`, branch `vr-library`.
+No delegation, push, PR or issue edits. Parent owns independent review and integration.
 
-## Implementation and evidence
+## Implementation
 
-- Added `ui/frame_artwork.py`: bounded non-interlaced PNG decode/composition,
-  five fallback slots, transparent logo, supplied PNG/JPEG bytes or HTTP(S)
-  URLs. Standard library only; ASCII lettering, original label in native UI.
-- Small additive `ui/frame_apk.py` fallback finds `assets/icon.png` in Open
-  Saber Plus (its manifest/adaptive icon yielded no PNG before). SuperTux's
-  normal APK icon works. Generated all slots from both supplied APKs and
-  visually inspected the individual grids plus contact sheet.
-- `install(..., artwork=None)` forwards artwork through patching, stages it,
-  refreshes existing shortcuts instead of duplicating them, marks immersive
-  shortcuts VR, and stores presentation warnings in meta.json. Source images
-  retain their dimensions; generated slots use the requested Steam sizes.
-- Frame helper uses native SetCustomArtworkForApp/ClearCustomArtworkForApp.
-  Collections use collectionStore: create static Android/Android VR, preserve
-  other members and dynamic/read-only names, remove obsolete membership.
-- Remove clears artwork/managed memberships before app-folder deletion. A
-  Steam cleanup failure leaves local metadata for a retry. Failed new install
-  attempts to remove a newly created shortcut.
-- Root-cause feedback loop: original launcher failed both cleanup tests
-  (no `podman stop` on TERM or normal exit). It exec'd setsid without a signal
-  handler. New supervising shell stays in Steam's tracked tree, handles
-  TERM/INT/HUP, stops its container, terminates its child process group, and
-  keeps the Lepton exit code. Lock + pre-existing container check prevent a
-  second launch from stopping someone else's session. Data paths unchanged.
-- Stop helper calls TerminateApp with the exact 64-bit game-ID string (not
-  the 32-bit app ID, and not a lossy JavaScript number). Frame Control also
-  directly stops the container if Steam is unavailable.
-- API signatures/collection semantics read from public source, not guessed:
-  [Steam client types](https://github.com/SteamDeckHomebrew/decky-frontend-lib/blob/main/src/globals/steam-client/App.ts)
-  and [Steam UI](https://github.com/SteamDatabase/SteamTracking/blob/master/ClientExtracted/steamui/chunk~2dcc5aaf7.js).
-  The fakeframe CEF/podman fixtures were extended accordingly; their new
-  library methods are explicitly source-derived, not recorded device calls.
+- Initial commit `c06b328`: shared artwork, collection handling, launcher
+  supervision, APK icon fallback and tests. Follow-up replaces its bitmap
+  artwork implementation with Steam Chromium canvas + Motiva Sans.
+- `ui/frame_steamgriddb.py`: optional API provider, exact title (or trailing VR)
+  match, highest-scored returned static/non-NSFW artwork, separate portrait
+  and wide requests. No key means no requests/warnings. Saved settings are
+  atomic 0600 on POSIX; API never returns the key; auth redirects disabled.
+- Precedence: provider, source slots/banner/feature graphic/screenshots, APK
+  icon/generated art. All five outputs have fixed Steam sizes. Host Python
+  stays stdlib-only and Python 3.9 compatible; Frame renders consistently
+  regardless of host OS. Package filters include both new JS resources.
+- `frame/android/library_artwork.js`: dominant-colour gradient, blurred icon
+  backdrop, large icon/shadow, real font, no title in hero, transparent logo.
+  Removes only opaque near-black matte connected to icon corners. Native
+  icons remain original; opaque foreground app tiles have rounded corners.
+- `apply_library` is mandatory for APK and native-title installs. CLI, upload,
+  catalogue, versions, web install and source install seam share it. Native
+  devkit executable/runtime is preserved. Failed initial art application
+  removes a newly created shortcut; no success with incomplete art.
+- Refresh CLI/API/settings button repairs installed Android entries without
+  reinstalling/stopping, uses cached source art, queries SGDB again if enabled,
+  repairs missing shortcuts, and reports batch errors independently.
+- Details: name/icon/VR flag, sort-as, Android/Android VR collections or native
+  Sideloaded, Installation details note preserving other notes. No supported
+  arbitrary description/store-page/developer/achievement metadata found.
+  Notes are keyed by sanitized name (Steam limitation: equal-name collisions).
+- Device discovery: custom-art type 4 is broken on this Steam client: it logs
+  Unknown asset type and overwrites wide art with the icon. Use types 0–3 and
+  SetShortcutIcon separately. Confirmed actual cache after correction.
+- Launcher retains its supervising shell under Steam, traps TERM/INT/HUP,
+  stops only its own container, kills its child group, preserves exit status.
+  Lock/pre-existing container guards prevent duplicate session cleanup.
+- VR attribution discovery: Lepton uses SteamAppId for both stable context and
+  Android SteamVR identity. New shortcut.id + LEPTON_ENV_SteamAppId separates
+  them using Lepton's existing passthrough; container/data paths unchanged.
+  On-device source mounting.sh applies LEPTON_ENV_* after its regular setenv.
 
-## Verification (2026-09-28)
+## Visual critique and iterations
 
-- `python3 -m unittest discover -s tests -p test_frame_android_library.py`:
-  initial two launcher cases FAILED on the old implementation; the focused
-  suite passed after the changes (20 cases at that run, then one JPEG case
-  added and covered by the final whole-suite run).
-- `python3 -m unittest discover -s tests`: **187 tests, OK**, exit 0,
-  9.948 seconds. Actual local runtime is **Python 3.9.6** (`python3 --version`),
-  not just a syntax-compatibility check. Log: `/tmp/vrlib-evidence/tests.log`.
-- `bash -n frame/android/lepton-app.sh`, `node --check
-  tests/fakeframe/rootfs/usr/local/lib/fakeframe/cef_shim.js`, Python AST parse
-  with `feature_version=(3,9)`, and `git diff --check`: exit 0.
-- Generated self-contained Linux harness using the actual launcher and the
-  fixture Lepton/podman, retaining the Frame's real setsid/flock:
-  `ssh -o BatchMode=yes -o ConnectTimeout=8 frame 'python3 - 2>&1' <
-  /tmp/vrlib-evidence/linux-launcher-check.py` — **3 tests, OK**, exit 0;
-  normal exit + TERM + INT/HUP subcases, preserved saved-data sentinel.
-  It uses a TemporaryDirectory; no installed game or global setting touched.
-  Log: `/tmp/vrlib-evidence/linux-launcher-tests.log`.
-- `ssh -o BatchMode=yes -o ConnectTimeout=8 frame python3 - <
-  ui/frame_vrshot.py`: exit 0; returned `/tmp/frame-vrcap/shot-28947-vr.png`.
-  Copied to `/tmp/vrlib-evidence/headset-preflight.png`, then removed only the
-  temporary remote screenshot. The capture shows Steam's startup error.
-- Source APKs were read from `/tmp/vrapk/opensaberplus.apk` and
-  `/tmp/vrapk/supertux.apk`. Ten generated assets plus
-  `/tmp/vrlib-evidence/artwork-preview.png` are local artwork previews,
-  **not Steam UI screenshots**.
+Evidence `/tmp/vrlib-evidence/design-v1`, `design-v2`, `design-v3` (15 PNGs each).
+Open Saber Plus/SuperTux icons came from authorized APKs. AntennaPod is a
+preview only using the official F-Droid icon; it was not installed/launched.
 
-## Device blocker and open questions
+1. v1: real typography/gradient already improves over old bitmap output, but
+   Open Saber has a black square matte, and SuperTux palette looks muddy.
+2. v2: removed connected black matte; rounded the opaque AntennaPod foreground.
+   Inspected all three posters. SuperTux still muted; title line balance weak.
+3. v3: lifted sampled saturation and balanced two-line labels. Inspected all
+   three posters plus final all-slot sheet. Large recognisable artwork, readable
+   typography, richer colours, textless hero and transparent title logo. Icon
+   source resolution still limits detail; source/SGDB art remains preferable.
 
-- SSH initially timed out; later reachable on BUILD_ID 20260925.6191901,
-  SteamVR 2.18.1. `podman ps` was empty and vrserver showed no current game
-  scene. Steam CDP 8080 refused connections; no steamwebhelper was running.
-  The updater repeatedly extracted/installed, and the headset displayed
-  "There was an issue launching Steam". Bounded retries remained unavailable;
-  console_log had no new game launch entries. Captures/logs live under
-  `/tmp/vrlib-evidence/` (`device-preflight.log`, `device-final.log`).
-- No real APK was reinstalled/launched/stopped. Therefore actual Steam Play
-  and Stop/reaper tracking, app data across a real stop/relaunch, native
-  library artwork display, collection persistence, VR scene attribution and
-  automatic dashboard dismissal are **not verified**. No Steam library
-  screenshot was possible. Next: restore Steam, reinstall the two APKs,
-  test one brief Steam launch/Stop at a time, capture library/headset output,
-  and check podman + console_log after each transition.
-- VR shortcuts are marked through SetShortcutIsVR. Source inspection shows
-  Steam Resume hides the dashboard only when scene-app ID matches the
-  shortcut; whether Lepton gets that attribution remains open. No automatic
-  dashboard hiding or permanent standby workaround added. Power settings
-  were never changed, so no restoration was needed.
-- Full fakeframe container E2E suite was not run; its updated JS fixture was
-  exercised by the local Node/V8 test. Native Windows install path untested.
-- No independent reviewer process launched: the explicit brief forbids
-  delegation and assigns review/integration to the parent. No review claimed.
-- No registry observation write outside this worktree: brief explicitly
-  restricts work to this checkout (plus its requested evidence directory).
+Final sheet `/tmp/vrlib-evidence/artwork-preview-final.png` is an artwork
+preview, NOT a Steam UI screenshot. Rows: portrait, wide, hero, logo/icon.
+
+## Device verification (2026-09-28, build 20260925.6191901, SteamVR 2.18.1)
+
+Steam was initially unavailable (old notes/evidence), then recovered. Both
+APKs were reinstalled and refreshed successfully with zero library warnings:
+
+- Open Saber Plus: org.godotengine.open_saber_plus, instance 2802929330,
+  shortcut 3346865537, game ID 14374678025558032384.
+- SuperTux: org.supertux.supertux2, instance 2811892472,
+  shortcut 2883168793, game ID 12383115674816348160.
+
+`steam-cache-final.log`: both actual Steam cache sets are 600x900, 920x430,
+3840x1240, 1280x480, with app icon 256x256. `steam-details-targets.json`:
+both correct names/sort-as, Android + Android VR, existing Played preserved.
+Native managed note readback result 1 (success), saved as steam-notes-final.json.
+
+Open Saber first session: Steam tracked it for 32 seconds; process and
+container remained alive until only SteamClient TerminateApp was called.
+After identity fix, a second session remained alive at 22 seconds (Android
+PID 992), SteamVR identified steam.app.3346865537, and screenshot shows the
+actual game scene instead of blank Resume tile. Steam Stop removed tracked
+process and container within ~5 seconds. No direct podman-stop fallback was
+used for this verification. Same data paths; existing game play count shown
+in capture, but no separate save-file sentinel added to the real game.
+Evidence: opensaber-identity-session.log, opensaber-identity-headset.png,
+opensaber-running.log, opensaber-steam-stop.log, opensaber-headset-running.png.
+
+SuperTux: Steam Play tracked the wrapper for ~17 seconds. SDLClipboardHandler
+crashes with NullPointerException on missing ClipboardManager during activity
+creation. Lepton and supervisor then cleaned up; it never reached a VR scene.
+Steam Stop was issued after the crash, so sustained SuperTux Stop is NOT proven.
+Evidence: supertux-running.log, supertux-lepton.log, supertux-shot.json.
+
+Other test activity appeared on the device during checks (other Android
+container and Gravitas). Neither was stopped or modified. Final Open Saber
+preflight had no Android containers; other desktop overlays later appeared
+in its headset capture. No global VR standby/dashboard settings changed.
+Direct Steam UI Page.captureScreenshot timed out; no library UI screenshot.
+
+## Automated verification and limits
+
+- Whole suite: `python3 -m unittest discover -s tests`, Python 3.9.6. Final
+  result: **206 tests OK, 10.294 seconds, exit 0**. Log:
+  `/tmp/vrlib-evidence/tests-final.log`.
+- Offline entrypoint tests exercise real shared install/render/configure flow
+  with SSH/API mocked: CLI, upload, catalogue, versions, web download, source
+  seam, native title and refresh. Provider ranking/failure/settings tests.
+- Node contract test runs actual renderer against explicitly synthetic canvas,
+  validates all PNG dimensions and hero/logo text placement. This canvas is
+  also used by fakeframe; transparent fixture images are not visual evidence.
+- Launcher tests assert stable context plus shortcut passthrough, signals,
+  normal exit, duplicate guard and saved-data sentinel. Earlier real Linux
+  setsid/flock fixture run: 3 tests OK (linux-launcher-tests.log).
+- `bash -n`, Node syntax checks, Python AST feature_version=(3,9), diff checks.
+- Docker E2E not run: `docker info --format '{{.ServerVersion}}'` exits 1;
+  daemon socket /var/run/docker.sock does not exist.
+- Authenticated SGDB lookup/download unverified (no key configured).
+- Windows/Linux packaged binaries not built/launched; filters tested.
+- Native devkit art uses shared tested seam; no additional native title was
+  installed on device. Sibling source-search endpoint not in this worktree:
+  only its public installer contract is tested.
+- Independent review not spawned: explicit brief forbids delegation and assigns
+  parent review/integration. No other provider/model participation claimed.

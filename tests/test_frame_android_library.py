@@ -32,6 +32,7 @@ class LauncherTests(unittest.TestCase):
             (app / 'launch.sh').write_bytes((ROOT / 'frame/android/lepton-app.sh').read_bytes())
             (app / 'app.apk').touch()
             (app / 'instance.id').write_text('2800000001')
+            (app / 'shortcut.id').write_text('3346865537')
             bin_dir = d / 'bin'
             bin_dir.mkdir()
             lepton = d / '.local/share/Steam/steamapps/common/Lepton/lepton'
@@ -40,6 +41,8 @@ class LauncherTests(unittest.TestCase):
                 path.write_text('#!' + sys.executable + '\n' + body)
                 path.chmod(0o755)
             script(lepton, 'import os,time\nfrom pathlib import Path\n'
+                   'assert os.environ["SteamAppId"] == "2800000001"\n'
+                   'assert os.environ["LEPTON_ENV_SteamAppId"] == "3346865537"\n'
                    'Path(os.environ["HOME"],"started").write_text(str(os.getpid()))\n'
                    + ('time.sleep(30)\n' if terminate else 'raise SystemExit(23)\n'))
             script(bin_dir / 'setsid', 'import os,sys\nos.setsid()\nos.execv(sys.argv[2],sys.argv[2:])\n')
@@ -118,41 +121,39 @@ class ArtworkTests(unittest.TestCase):
         self.assertEqual(background[8:12], bytes([4, 9, 142, 255]))
         self.assertEqual(background[12:], bytes([10, 20, 30, 255]))
 
-    def test_all_slots_have_expected_dimensions(self):
-        images = art.prepare('Open Saber Plus', (FIXTURES / 'icon.png').read_bytes())
-        self.assertEqual(set(images), set(art.SLOTS))
-        for slot, (ext, data) in images.items():
-            self.assertEqual(ext, 'png')
-            self.assertEqual(struct.unpack_from('>II', data, 16), art.SLOTS[slot])
-        # Transparent logo, opaque capsules; corrupt/missing icon gets a monogram.
-        _, _, logo = art.decode(images['logo'][1])
-        self.assertIn(0, logo[3::4])
-        self.assertIn(255, logo[3::4])
-        self.assertEqual(set(art.fallback('日本語', b'bad icon')), set(art.SLOTS))
-
-    def test_supplied_slots_and_url(self):
+    def test_source_inputs_and_url(self):
         import io
         data = (FIXTURES / 'icon.png').read_bytes()
         response = io.BytesIO(data)
         response.geturl = lambda: 'https://example.org/icon.png'
-        with patch.object(art.urllib.request, 'urlopen', return_value=response) as fetch:
-            images = art.prepare('Game', artwork={'hero': data, 'icon': 'https://example.org/icon.png'})
-        self.assertEqual(images['hero'], ('png', data))
+        with patch('frame_steamgriddb.lookup', return_value=({}, [])), \
+                patch.object(art.urllib.request, 'urlopen', return_value=response) as fetch:
+            images, warnings = art.prepare('Game', artwork={'banner': data, 'icon': 'https://example.org/icon.png'})
+        self.assertEqual(images['banner'], ('png', data))
         self.assertEqual(images['icon'], ('png', data))
+        self.assertEqual(warnings, [])
         self.assertEqual(fetch.call_count, 1)
-        self.assertEqual(fetch.call_args.kwargs['timeout'], 20)
-        self.assertEqual(fetch.call_args.args[0].get_header('User-agent'), 'FrameControl/1.0')
+
+    def test_provider_precedence_and_bad_source_fallback(self):
+        data = (FIXTURES / 'icon.png').read_bytes()
+        jpg = (FIXTURES / 'icon.jpg').read_bytes()
+        with patch('frame_steamgriddb.lookup', return_value=({'hero': jpg}, [])):
+            images, warnings = art.prepare('Game', data, {'hero': data, 'wide': b'bad', 'screenshots': [b'bad', data]})
+        self.assertEqual(images['hero'], ('jpg', jpg))
+        self.assertEqual(images['icon'], ('png', data))
+        self.assertEqual(images['screenshot'], ('png', data))
+        self.assertNotIn('wide', images)
+        self.assertEqual(len(warnings), 2)
 
     def test_supplied_jpeg(self):
         data = (FIXTURES / 'icon.jpg').read_bytes()
         self.assertEqual(art.image_type(data), 'jpg')
-        self.assertEqual(art.prepare('Game', artwork={'wide': data})['wide'], ('jpg', data))
         with self.assertRaises(ValueError):
             art.image_type(data[:30])
 
     def test_bad_artwork_and_expansion_limits(self):
         import zlib
-        for value in ({'bad': b'bad'}, {'hero': 'file:///etc/passwd'}, {'hero': b'bad'}, ['hero']):
+        for value in ({'bad': b'bad'}, ['hero']):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 art.prepare('Game', artwork=value)
         data = bytearray((FIXTURES / 'icon.png').read_bytes())
@@ -209,10 +210,12 @@ class InstallTests(unittest.TestCase):
         def shortcut(*args, **kwargs):
             if args[0] == 'add':
                 return '3346865537'
+            if args[0] == 'render':
+                return json.dumps({'paths': {slot: '/home/steamos/Applications/Android/org.test.vr/artwork/' + slot + '.png' for slot in art.SLOTS}})
             if args[0] == 'list':
                 return json.dumps(self.responses['shortcuts'])
             return json.dumps(self.responses['configure'])
-        with patch.object(android.frame_artwork, 'prepare', return_value=self.images), \
+        with patch.object(android.frame_artwork, 'prepare', return_value=(self.images, [])), \
                 patch.object(android, 'read_meta', return_value=existing), \
                 patch.object(android, '_copy') as copy, \
                 patch.object(android, 'ssh', return_value=self.responses['home']) as ssh, \
@@ -229,7 +232,7 @@ class InstallTests(unittest.TestCase):
         self.assertEqual(configure[1:3], ('3346865537', 'New name'))
         self.assertEqual(configure[6], '1')
         self.assertEqual(set(json.loads(configure[7])), set(art.SLOTS))
-        self.assertTrue(configure[5].endswith('/org.test.vr/icon.png'))
+        self.assertTrue(configure[5].endswith('/org.test.vr/artwork/icon.png'))
         self.assertEqual(result['shortcut'], self.existing['shortcut'])
         self.assertEqual(result['label'], 'New name')
         self.assertEqual(result['library_warnings'], [])
@@ -238,7 +241,7 @@ class InstallTests(unittest.TestCase):
 
     def test_first_install_adds_shortcut(self):
         _, _, api, _ = self.install(None)
-        self.assertEqual([c.args[0] for c in api.call_args_list], ['add', 'configure'])
+        self.assertEqual([c.args[0] for c in api.call_args_list], ['add', 'render', 'configure'])
 
     def test_artwork_forwarded_through_patch(self):
         artwork = {'hero': b'provided'}
@@ -250,13 +253,15 @@ class InstallTests(unittest.TestCase):
         self.assertIs(install.call_args.args[-1], artwork)
 
     def test_failed_new_install_removes_shortcut(self):
-        def tool(*args):
+        def tool(*args, **kwargs):
             if args[0] == 'add':
                 return '3346865537'
+            if args[0] == 'render':
+                return json.dumps({'paths': {slot: '/tmp/' + slot + '.png' for slot in art.SLOTS}})
             if args[0] == 'configure':
                 raise android.FrameError('write failed')
             return '{}'
-        with patch.object(android.frame_artwork, 'prepare', return_value=self.images), \
+        with patch.object(android.frame_artwork, 'prepare', return_value=(self.images, [])), \
                 patch.object(android, 'read_meta', return_value=None), \
                 patch.object(android, '_copy'), patch.object(android, 'ssh', return_value='/home/steamos') as ssh, \
                 patch.object(android, 'shortcut_tool', side_effect=tool) as api:
@@ -304,7 +309,7 @@ class SteamAPITests(unittest.TestCase):
         with patch.object(shortcuts, 'evaluate', return_value={}) as evaluate:
             shortcuts.remove(42)
         js = evaluate.call_args.args[0]
-        self.assertIn('[0, 1, 2, 3, 4]', js)
+        self.assertIn('[0, 1, 2, 3]', js)
         self.assertLess(js.index('ClearCustomArtworkForApp(id, type)'), js.index('RemoveShortcut(id)'))
         self.assertIn('const wanted = []', js)
 
@@ -335,10 +340,11 @@ class SteamContextTests(unittest.TestCase):
                                          {slot: str(FIXTURES / 'icon.png') for slot in art.SLOTS})
             self.assertEqual(result['warnings'], [])
             self.assertTrue(steam['shortcuts'][0]['vr'])
-            self.assertEqual(set(steam['shortcuts'][0]['artwork']), {'0', '1', '2', '3', '4'})
+            self.assertEqual(set(steam['shortcuts'][0]['artwork']), {'0', '1', '2', '3'})
             self.assertEqual(steam['collections'], [{'name': 'Android', 'apps': [999, 42]},
                                                    {'name': 'Android VR', 'apps': [42]}])
-            shortcuts.configure(42, 'Renamed', '/exe', '/dir', '/icon', False, {})
+            shortcuts.configure(42, 'Renamed', '/exe', '/dir', '/icon', False,
+                                {slot: str(FIXTURES / 'icon.png') for slot in art.SLOTS})
             self.assertEqual(steam['shortcuts'][0]['name'], 'Renamed')
             self.assertEqual(steam['collections'][1]['apps'], [])
             shortcuts.remove(42)

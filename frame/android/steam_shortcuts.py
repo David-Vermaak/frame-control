@@ -9,7 +9,7 @@ Python stdlib only; the Mac runs it with `ssh frame python3 - <args> < this`.
   steam_shortcuts.py stop APPID
   steam_shortcuts.py remove APPID
 """
-import base64, json, os, socket, struct, sys, urllib.request
+import base64, json, os, re, socket, struct, sys, urllib.request
 
 DEVTOOLS = 'http://127.0.0.1:8080/json'
 
@@ -89,8 +89,8 @@ def evaluate(js):
 ASSETS = {'grid': 0, 'hero': 1, 'logo': 2, 'wide': 3, 'icon': 4}
 
 
-def collections_js(appid, vr=None):
-    wanted = [] if vr is None else ['Android', *(['Android VR'] if vr else [])]
+def collections_js(appid, vr=None, category='Android'):
+    wanted = [] if vr is None else [category, *(['Android VR'] if vr and category == 'Android' else [])]
     return f'''async function syncCollections() {{
       const wanted = {json.dumps(wanted)};
       if (typeof collectionStore === "undefined" ||
@@ -100,7 +100,7 @@ def collections_js(appid, vr=None):
         return ["Steam collections API unavailable"];
       const app = {{appid: {appid}}};
       const warnings = [];
-      for (const name of ["Android", "Android VR"]) {{
+      for (const name of ["Android", "Android VR", "Sideloaded"]) {{
         const matches = collectionStore.GetUserCollectionsByName(name);
         let collection = matches.find(c => !c.bIsDynamic && c.bAllowsDragAndDrop);
         if (wanted.includes(name)) {{
@@ -123,7 +123,65 @@ def collections_js(appid, vr=None):
     }}'''
 
 
-def configure(appid, name, exe, start_dir, icon, vr, artwork):
+
+def notes_js(name, details):
+    filename = 'notes_shortcut_' + re.sub(r'[!-/:-@ \[\\\]\^`]', '_', name.strip())
+    content = '\n'.join(str(details[k]) for k in ('package', 'version', 'source') if details.get(k))
+    return f'''if (SteamClient.GameNotes && typeof SteamClient.GameNotes.GetNotes === "function" &&
+                   typeof SteamClient.GameNotes.SaveNotes === "function") {{
+      try {{
+        const file = {json.dumps(filename)};
+        const previous = await SteamClient.GameNotes.GetNotes(file, file + "_images/");
+        if (previous.result !== 1 && previous.result !== 9) throw Error("read " + previous.result);
+        const data = previous.result === 1 ? JSON.parse(previous.notes) : {{notes: [], shortcut_name: {json.dumps(name)}}};
+        if (!Array.isArray(data.notes)) throw Error("unexpected notes format");
+        const id = "frame-control-library", now = Math.floor(Date.now()/1000);
+        const old = data.notes.find(n => n.id === id);
+        const note = {{id, shortcut_name: {json.dumps(name)}, title: "Installation details",
+                      content: {json.dumps(content)}, ordinal: old ? old.ordinal : data.notes.length,
+                      time_created: old ? old.time_created : now, time_modified: now}};
+        data.notes = data.notes.filter(n => n.id !== id).concat([note]);
+        const result = await SteamClient.GameNotes.SaveNotes(file, JSON.stringify(data));
+        if (result !== 1) throw Error("save " + result);
+      }} catch (e) {{ warnings.push("Steam notes: " + String(e)); }}
+    }}'''
+
+
+def render(plan):
+    with open(plan) as f:
+        source = json.load(f)
+    images = {}
+    for slot, path in source['images'].items():
+        ext = os.path.splitext(path)[1][1:]
+        with open(path, 'rb') as f:
+            data = f.read(12 * 1024 * 1024 + 1)
+        if len(data) > 12 * 1024 * 1024:
+            raise ValueError('source artwork too large')
+        images[slot] = [ext, base64.b64encode(data).decode()]
+    renderer = globals().get('ART_RENDERER')
+    if renderer is None:
+        with open(os.path.join(os.path.dirname(__file__), 'library_artwork.js')) as f:
+            renderer = f.read()
+    result = evaluate(renderer + '\nrenderLibraryArtwork(' + json.dumps({'label': source['label'], 'images': images}) + ')')
+    if not isinstance(result, dict) or set(result.get('images', {})) != set(ASSETS):
+        raise ValueError('incomplete artwork render')
+    paths = {}
+    for slot, encoded in result['images'].items():
+        path = os.path.join(os.path.dirname(plan), slot + '.png')
+        data = base64.b64decode(encoded, validate=True)
+        if not data.startswith(b'\x89PNG\r\n\x1a\n') or len(data) > 12 * 1024 * 1024:
+            raise ValueError('invalid rendered image')
+        with open(path + '.tmp', 'wb') as f:
+            f.write(data)
+        os.replace(path + '.tmp', path)
+        paths[slot] = path
+    return {'paths': paths, 'warnings': result.get('warnings', [])}
+
+
+def configure(appid, name, exe, start_dir, icon, vr, artwork, options=None):
+    options = options or {}
+    if set(artwork) != set(ASSETS):
+        raise ValueError('all five Steam artwork slots are required')
     images = []
     for slot, path in artwork.items():
         if slot not in ASSETS:
@@ -135,12 +193,15 @@ def configure(appid, name, exe, start_dir, icon, vr, artwork):
             data = f.read(12 * 1024 * 1024 + 1)
         if len(data) > 12 * 1024 * 1024:
             raise ValueError('artwork is too large')
-        images.append([ASSETS[slot], ext, base64.b64encode(data).decode()])
+        if slot != 'icon':  # Frame's custom-art API maps type 4 to Header; use SetShortcutIcon.
+            images.append([ASSETS[slot], ext, base64.b64encode(data).decode()])
     return evaluate(f'''(async () => {{
       const id = {int(appid)}, warnings = [];
       SteamClient.Apps.SetShortcutName(id, {json.dumps(name)});
-      SteamClient.Apps.SetShortcutExe(id, {json.dumps(exe)});
-      SteamClient.Apps.SetShortcutStartDir(id, {json.dumps(start_dir)});
+      if ({json.dumps(exe)}) SteamClient.Apps.SetShortcutExe(id, {json.dumps(exe)});
+      if ({json.dumps(start_dir)}) SteamClient.Apps.SetShortcutStartDir(id, {json.dumps(start_dir)});
+      if (typeof SteamClient.Apps.SetShortcutSortAs === "function")
+        SteamClient.Apps.SetShortcutSortAs(id, {json.dumps(name)});
       SteamClient.Apps.SetShortcutIcon(id, {json.dumps(icon)});
       if (typeof SteamClient.Apps.SetShortcutIsVR === "function")
         SteamClient.Apps.SetShortcutIsVR(id, {json.dumps(vr)});
@@ -148,10 +209,11 @@ def configure(appid, name, exe, start_dir, icon, vr, artwork):
       if (typeof SteamClient.Apps.SetCustomArtworkForApp === "function") {{
         for (const [type, ext, data] of {json.dumps(images)})
           await SteamClient.Apps.SetCustomArtworkForApp(id, data, ext, type);
-      }} else warnings.push("Steam artwork API unavailable");
-      {collections_js(int(appid), vr)}
+      }} else throw new Error("Steam artwork API unavailable; installation is incomplete");
+      {collections_js(int(appid), vr, options.get('category', 'Android'))}
       try {{ warnings.push(...await syncCollections()); }}
       catch (e) {{ warnings.push("Steam collections: " + String(e)); }}
+      {notes_js(name, options.get('details', {}))}
       return {{warnings}};
     }})()''')
 
@@ -162,7 +224,7 @@ def remove(appid):
       {collections_js(int(appid))}
       const warnings = await syncCollections();
       if (typeof SteamClient.Apps.ClearCustomArtworkForApp === "function") {{
-        for (const type of [0, 1, 2, 3, 4])
+        for (const type of [0, 1, 2, 3])
           await SteamClient.Apps.ClearCustomArtworkForApp(id, type);
       }} else throw new Error("Steam artwork removal API unavailable");
       SteamClient.Apps.RemoveShortcut(id);
@@ -185,10 +247,13 @@ def main():
         print(evaluate(js))
     elif cmd == 'list':
         js = '''(() => appStore.allApps.filter(a => a.app_type === 1073741824)
-                  .map(a => ({appid: a.appid, name: a.display_name})))()'''
+                  .map(a => ({appid: a.appid, name: a.display_name, devkit_gameid: a.devkit_gameid})))()'''
         print(json.dumps(evaluate(js)))
+    elif cmd == 'render':
+        print(json.dumps(render(args[0])))
     elif cmd == 'configure':
-        print(json.dumps(configure(int(args[0]), *args[1:5], args[5] == '1', json.loads(args[6]))))
+        print(json.dumps(configure(int(args[0]), *args[1:5], args[5] == '1', json.loads(args[6]),
+                                   json.loads(args[7]) if len(args) > 7 else None)))
     elif cmd == 'stop':
         evaluate(f'SteamClient.Apps.TerminateApp({json.dumps(str((int(args[0]) << 32) | 0x02000000))}, false)')
         print('stopping')

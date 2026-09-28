@@ -632,7 +632,7 @@ def _rsync():
 _install_lock = threading.Lock()
 
 
-def install(path, name=None, exe=None, runtime=None, progress=None):
+def install(path, name=None, exe=None, runtime=None, progress=None, artwork=None):
     """Sideload a .zip, folder or executable as a Devkit Game; returns the title dict.
 
     name: the Steam name (sanitised to the title id), default from the file name.
@@ -643,12 +643,12 @@ def install(path, name=None, exe=None, runtime=None, progress=None):
     """
     plan = inspect(path, name)
     try:
-        return install_plan(plan, name=name, exe=exe, runtime=runtime, progress=progress)
+        return install_plan(plan, name=name, exe=exe, runtime=runtime, progress=progress, artwork=artwork)
     finally:
         discard(plan)
 
 
-def install_plan(plan, name=None, exe=None, runtime=None, progress=None):
+def install_plan(plan, name=None, exe=None, runtime=None, progress=None, artwork=None):
     """Install an inspect() plan, optionally with another name, target or runtime."""
     if name:
         plan['name'], plan['id'] = name, title_id(name)
@@ -656,13 +656,21 @@ def install_plan(plan, name=None, exe=None, runtime=None, progress=None):
         _choose(plan, exe or plan['target'], runtime)
     step = progress or (lambda *a: None)
     with _install_lock:
-        return _install(plan, step)
+        return _install(plan, step, artwork)
 
 
-def _install(plan, step):
+def _install(plan, step, artwork=None):
     gid = plan['id']
     if not NEW_ID_RE.match(gid) or gid.lower() in RESERVED_IDS:
         raise FrameError(f'bad title id {gid!r}')
+    icon = None
+    for filename in ('icon.png', 'logo.png'):
+        path = os.path.join(plan['root'], filename)
+        if os.path.isfile(path):
+            with open(path, 'rb') as f:
+                icon = f.read(frame_android.frame_artwork.MAX_IMAGE + 1)
+            break
+    images, warnings = frame_android.frame_artwork.prepare(plan['name'], icon, artwork)
     step("Syncing Valve's devkit tools to the Frame", 0.02)
     ensure_utils()
     existed = ssh(f'test -d {GAMES}/{gid} && echo yes || true', timeout=30).strip() == 'yes'
@@ -672,6 +680,7 @@ def _install(plan, step):
     if not DIR_RE.match(directory) or not directory.endswith(f'/{GAMES}/{gid}'):
         raise FrameError(f'steamos-prepare-upload returned an unexpected folder {directory!r}')
     registered = False
+    library_ready, shortcut, steam_registered = False, None, False
     try:
         step(f"Copying {plan['size'] / 1e6:.0f} MB to the Frame", 0.1)
         if _rsync():
@@ -694,16 +703,49 @@ def _install(plan, step):
             err = str(reply['error']).strip().rstrip('.')
             hint = ' With Steam running on the Frame, install it again.' if 'not running' in err else ''
             raise FrameError(f"Uploaded, but Steam didn't register it: {err}.{hint}")
+        steam_registered = True
+        shortcut = _library_shortcut(gid, plan['name'])
+        if not shortcut:
+            raise FrameError('Steam registered the title but its shortcut is not available for mandatory artwork; retry install')
+        result = frame_android.apply_library(shortcut, plan['name'], directory + '/.frame-artwork', images,
+                                             category='Sideloaded', details={'source': plan['source']})
+        meta.update(shortcut=shortcut, library_warnings=warnings + result.get('warnings', []))
+        ssh(f'cat > {GAMES}/{gid}-framecontrol.json', input=json.dumps(meta, indent=1), timeout=30)
+        library_ready = True
         step('Done', 1.0)
         meta.update(runtime_label=RUNTIMES[plan['runtime']]['label'], steam=str(reply.get('success', '')).strip())
         return meta
     finally:
+        if steam_registered and not library_ready and not existed:
+            # A newly registered title must not remain as a blank library tile.
+            if shortcut:
+                frame_android.shortcut_tool('remove', str(shortcut))
+            else:
+                ssh(f'{PY}steamos-delete --delete-title {gid}', timeout=120)
+            registered = False
         if not registered and not existed:
             # A first install that failed part-way: don't leave an orphan folder behind.
             try:
                 ssh(f'rm -rf {GAMES}/{gid} {GAMES}/.{gid}.upload {_json_files(gid)}', timeout=60)
             except FrameError:
                 pass
+
+
+
+def _library_shortcut(gid, name):
+    shortcuts = json.loads(frame_android.shortcut_tool('list'))
+    matches = [s for s in shortcuts if s.get('devkit_gameid') == gid]
+    if not matches:
+        try:
+            meta = json.loads(ssh(f'cat {GAMES}/{gid}-framecontrol.json 2>/dev/null || true'))
+            matches = [s for s in shortcuts if s.get('appid') == meta.get('shortcut')]
+        except (ValueError, AttributeError):
+            pass
+    if not matches:
+        matches = [s for s in shortcuts if s.get('name') in (gid, name)]
+    if len(matches) > 1:
+        raise FrameError('ambiguous Steam shortcut for ' + gid)
+    return int(matches[0]['appid']) if matches else None
 
 
 LIST_SCRIPT = r'''
@@ -772,6 +814,9 @@ def remove(gid):
     try:
         gid = _check_id(gid)
         ensure_utils()
+        shortcut = _library_shortcut(gid, gid)
+        if shortcut:
+            frame_android.shortcut_tool('remove', str(shortcut))
         # steamos-delete removes the folder and syncs Steam's shortcuts; its json files stay, so clear them too.
         ssh(f'{PY}steamos-delete --delete-title {gid}', timeout=120)
         ssh(f'rm -f {_json_files(gid)}', timeout=30)
