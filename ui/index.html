@@ -2009,6 +2009,7 @@ async function searchSources(quiet) {
     const notes=[];
     if(loading.length)notes.push(`Still fetching ${loading.join(" and ")}; more results will appear in a moment.`);
     if(unavailable.length)notes.push(`${unavailable.join(" and ")} ${unavailable.length===1 ? "isn't" : "aren't"} responding right now. You can still explore the other sources.`);
+    result.sources.filter(s=>s.status==='limited').forEach(s=>notes.push(`${s.error}.`));
     $("sourceStatus").innerHTML=notes.map(esc).join(" ")+(result.elsewhere||[]).map(x=>` <a href="${esc(x.url)}" target="_blank" rel="noopener">Browse ${esc(storeName(x.name))} ↗</a>`).join("");
     $("sourceStatus").hidden=!notes.length && !(result.elsewhere||[]).length;
     clearTimeout(sourceState.retry);

@@ -25,7 +25,8 @@ def _api(path):
     if token:
         headers['Authorization'] = 'Bearer ' + token
     try:
-        return json.loads(_web.read(API + path, ('api.github.com',), headers))
+        return json.loads(_web.read(API + path, ('api.github.com',), headers, name='GitHub',
+                                    hint='' if token else ' (set FRAME_GITHUB_TOKEN to raise the limit)'))
     except (ValueError, TypeError) as e:
         raise SourceError('Invalid GitHub response') from e
 
@@ -112,4 +113,4 @@ def download(source, entry_id, version_code=None):
     expected = 'https://github.com/' + entry['id'] + '/releases/download/'
     if not v['url'].startswith(expected):
         raise SourceError('APK URL does not belong to the curated publisher')
-    return _web.apk(v['url'], HOSTS, v['sha256'])
+    return _web.apk(v['url'], HOSTS, v['sha256'], name='GitHub')

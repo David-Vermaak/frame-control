@@ -18,6 +18,8 @@ class PublisherSources(unittest.TestCase):
         self.network = patch('urllib.request.OpenerDirector.open', side_effect=AssertionError('network in test'))
         self.network.start()
         self.addCleanup(self.network.stop)
+        _web._limited.clear()
+        self.addCleanup(_web._limited.clear)
 
     def test_curated_search_is_offline(self):
         self.assertEqual(github.search(github.sources()[0], 'hello')[0]['id'], 'KhronosGroup/OpenXR-SDK-Source')
@@ -138,12 +140,48 @@ class PublisherSources(unittest.TestCase):
             self.assertEqual(_web.read('https://itch.io/test', ('itch.io',)), b'index')
             self.assertEqual(op.call_count, 1)
         error = urllib.error.HTTPError('https://api.github.com/x', 403, 'limited', {}, None)
-        with patch.object(_web, 'open_url', side_effect=error), self.assertRaisesRegex(SourceError, 'FRAME_GITHUB_TOKEN'):
-            _web.read('https://api.github.com/x', ('api.github.com',))
+        with patch.object(_web, 'open_url', side_effect=error), patch.dict(os.environ, {'FRAME_GITHUB_TOKEN': ''}), \
+                self.assertRaisesRegex(SourceError, 'FRAME_GITHUB_TOKEN'):
+            github._api('/x')
         with patch.object(_web, 'open_url', side_effect=error), patch.object(_web.time, 'time', return_value=1e12):
             self.assertEqual(_web.read('https://itch.io/test', ('itch.io',)), b'index')  # throttled: stale copy
         with patch.object(_web, 'read', return_value=b'<html>'), self.assertRaises(SourceError):
             github._api('/x')
+
+    def test_backoff_honours_retry_after_per_host(self):
+        from apk_sources import SourceLimited
+        from email.utils import formatdate
+        now = [1e9]
+        clock = patch.object(_web.time, 'time', side_effect=lambda: now[0])
+        clock.start()
+        self.addCleanup(clock.stop)
+        error = urllib.error.HTTPError('https://itch.io/a', 429, 'slow down', {'Retry-After': '120'}, None)
+        with patch.object(_web, 'open_url', side_effect=error) as op:
+            with self.assertRaisesRegex(SourceLimited, '^itch.io is limiting requests; try again in 2 minutes$'):
+                itch.search(itch.sources()[0], '')
+            with self.assertRaises(SourceLimited) as caught:  # other URLs on the host wait too
+                _web.read('https://itch.io/b', ('itch.io',), name='itch.io')
+            self.assertEqual(op.call_count, 1)
+            self.assertAlmostEqual(caught.exception.retry_after, 120)
+            with self.assertRaises(SourceLimited):
+                _web.apk('https://itch.io/c.apk', ('itch.io',))
+            self.assertEqual(op.call_count, 1)
+        with patch.object(_web, 'open_url', return_value=io.BytesIO(b'fresh')):
+            self.assertEqual(_web.read('https://api.github.com/x', ('api.github.com',)), b'fresh')  # other hosts unaffected
+        now[0] += 121
+        with patch.object(_web, 'open_url', return_value=io.BytesIO(b'feed')):
+            self.assertEqual(_web.read('https://itch.io/b', ('itch.io',)), b'feed')
+        cases = [({}, 600), ({'Retry-After': formatdate(now[0] + 300, usegmt=True)}, 300),
+                 ({'X-RateLimit-Remaining': '0', 'X-RateLimit-Reset': str(int(now[0]) + 60)}, 60)]
+        for headers, expected in cases:
+            with self.subTest(headers=headers):
+                _web._limited.clear()
+                self.assertAlmostEqual(_web.throttle('https://h.test/x', headers), expected, delta=1)
+                self.assertAlmostEqual(_web.wait_time('https://h.test/y'), expected, delta=1)
+        error = urllib.error.HTTPError('https://api.github.com/x', 403, 'limited', {}, None)
+        with patch.object(_web, 'open_url', side_effect=error), patch.dict(os.environ, {'FRAME_GITHUB_TOKEN': ''}), \
+                self.assertRaisesRegex(SourceLimited, '^GitHub is limiting requests; try again in 10 minutes .*TOKEN'):
+            github._api('/y')
 
 
 if __name__ == '__main__':

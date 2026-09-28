@@ -18,7 +18,7 @@ import zipfile
 
 if __package__ in (None, ''):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from apk_sources import SourceError
+from apk_sources import SourceError, SourceLimited, _web
 import frame_host
 from frame_apk_sign import _der_parts, _cert_key, der
 from frame_catalog import _IndexReader, _reduce_index, _sha256
@@ -85,17 +85,30 @@ class _HTTPSRedirect(urllib.request.HTTPRedirectHandler):
 
 
 def _fetch(url, path, maximum):
+    host = urllib.parse.urlsplit(url).hostname
+    wait = _web.wait_time(url)
+    if wait:
+        raise _web.limited_error(host, wait)
     request = urllib.request.Request(url, headers={'User-Agent': 'FrameControl/1.0'})
-    with urllib.request.build_opener(_HTTPSRedirect()).open(request, timeout=60) as r, open(path, 'wb') as f:
-        total = 0
-        while True:
-            chunk = r.read(1 << 20)
-            if not chunk:
-                break
-            total += len(chunk)
-            if total > maximum:
-                raise SourceError('repository file exceeds size limit')
-            f.write(chunk)
+    try:
+        with urllib.request.build_opener(_HTTPSRedirect()).open(request, timeout=60) as r, open(path, 'wb') as f:
+            total = 0
+            while True:
+                chunk = r.read(1 << 20)
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > maximum:
+                    raise SourceError('repository file exceeds size limit')
+                f.write(chunk)
+    except urllib.error.HTTPError as e:
+        if e.code in (403, 429):
+            raise _web.limited_error(host, _web.throttle(url, e.headers)) from e
+        raise
+
+
+def _limited(source, error):
+    return _web.limited_error(source['name'], error.retry_after or _web.BACKOFF)
 
 
 def _children(item):
@@ -474,6 +487,8 @@ def _load(source, force=False):
                 _write(cache, {'version': CACHE_VERSION, 'url': source['url'], 'fingerprint': pin, 'apps': apps})
                 _accept(source, timestamp, v2)
                 return apps, pin
+        except SourceLimited as e:
+            raise _limited(source, e) from e
         except SourceError:
             raise
         except (OSError, ValueError, KeyError, TypeError, IndexError) as e:
@@ -572,6 +587,8 @@ def download(source, entry_id, version_code=None):
                 if os.path.exists(tmp):
                     os.unlink(tmp)
         return {'apk': str(path), 'obb': [], 'sha256': sha, 'verified': True}
+    except SourceLimited as e:
+        raise _limited(source, e) from e
     except OSError as e:
         raise SourceError('cannot download APK: ' + str(e)) from e
 

@@ -1,10 +1,50 @@
 """Small HTTPS cache and APK downloader for public publisher sources."""
-import hashlib, os, tempfile, time, urllib.error, urllib.parse, urllib.request, zipfile
+import hashlib, os, tempfile, threading, time, urllib.error, urllib.parse, urllib.request, zipfile
+from email.utils import parsedate_to_datetime
 
 import frame_host
-from . import SourceError
+from . import SourceError, SourceLimited
 
 UA = 'FrameControl/0.1'
+BACKOFF = 600  # seconds to leave a host alone after 403/429 without Retry-After
+_limited = {}  # host -> time.time() before which we don't contact it
+_limited_lock = threading.Lock()
+
+
+def _host(url):
+    return (urllib.parse.urlsplit(url).hostname or '').lower()
+
+
+def throttle(url, headers=None):
+    """Remember that url's host asked us to back off; return the delay in seconds."""
+    headers = headers or {}
+    now, delay = time.time(), None
+    value = (headers.get('Retry-After') or '').strip()
+    if value.isdigit():
+        delay = int(value)
+    elif value:
+        try:
+            delay = parsedate_to_datetime(value).timestamp() - now
+        except (TypeError, ValueError, OverflowError):
+            pass
+    reset = headers.get('X-RateLimit-Reset') or ''
+    if delay is None and headers.get('X-RateLimit-Remaining') == '0' and reset.isdigit():
+        delay = int(reset) - now  # GitHub
+    delay = min(max(delay if delay is not None else BACKOFF, 1), 6 * 3600)
+    with _limited_lock:
+        _limited[_host(url)] = max(_limited.get(_host(url), 0), now + delay)
+    return delay
+
+
+def wait_time(url):
+    with _limited_lock:
+        return max(0, _limited.get(_host(url), 0) - time.time())
+
+
+def limited_error(name, seconds, hint=''):
+    minutes = max(1, int(round(seconds / 60)))
+    return SourceLimited('%s is limiting requests; try again in %d minute%s%s'
+                         % (name, minutes, '' if minutes == 1 else 's', hint), seconds)
 
 
 def cache():
@@ -42,12 +82,24 @@ def open_url(url, hosts, headers=None):
         urllib.request.Request(url, headers={'User-Agent': UA, **(headers or {})}), timeout=60)
 
 
-def read(url, hosts, headers=None, ttl=3600):
+def read(url, hosts, headers=None, ttl=3600, name=None, hint=''):
     path = os.path.join(cache(), hashlib.sha256(url.encode()).hexdigest() + '.data')
+    name = name or _host(url) or 'The source'
+
+    def cached():
+        if os.path.isfile(path):  # throttled: an older copy beats no results
+            with open(path, 'rb') as f:
+                return f.read()
     try:
         if os.path.isfile(path) and time.time() - os.path.getmtime(path) < ttl:
             with open(path, 'rb') as f:
                 return f.read()
+        wait = wait_time(url)
+        if wait:
+            data = cached()
+            if data is None:
+                raise limited_error(name, wait, hint)
+            return data
         with open_url(url, hosts, headers) as r:
             data = r.read(8 * 1024 * 1024 + 1)
         if len(data) > 8 * 1024 * 1024:
@@ -63,19 +115,22 @@ def read(url, hosts, headers=None, ttl=3600):
         return data
     except urllib.error.HTTPError as e:
         if e.code in (403, 429):
-            if os.path.isfile(path):  # throttled: an older copy beats no results
-                with open(path, 'rb') as f:
-                    return f.read()
-            host = urllib.parse.urlsplit(url).hostname or 'The source'
-            hint = ' (set FRAME_GITHUB_TOKEN to raise the limit)' if host.endswith('github.com') else ''
-            raise SourceError(host + ' is limiting requests right now; try again later' + hint) from e
+            delay = throttle(url, e.headers)
+            data = cached()
+            if data is None:
+                raise limited_error(name, delay, hint) from e
+            return data
         raise SourceError('Source HTTP error: ' + str(e.code)) from e
     except (OSError, ValueError) as e:
         raise SourceError('Could not read source: ' + str(e)) from e
 
 
-def apk(url, hosts, digest=None):
+def apk(url, hosts, digest=None, name=None):
     tmp = None
+    name = name or _host(url)
+    wait = wait_time(url)
+    if wait:
+        raise limited_error(name, wait)
     try:
         fd, tmp = tempfile.mkstemp(dir=cache(), suffix='.part')
         h = hashlib.sha256()
@@ -99,6 +154,10 @@ def apk(url, hosts, digest=None):
         path = os.path.join(cache(), actual + '.apk')
         os.replace(tmp, path)
         return {'apk': path, 'obb': [], 'sha256': actual, 'verified': bool(digest)}
+    except urllib.error.HTTPError as e:
+        if e.code in (403, 429):
+            raise limited_error(name, throttle(url, e.headers)) from e
+        raise SourceError('Could not download APK: HTTP error ' + str(e.code)) from e
     except (OSError, ValueError, zipfile.BadZipFile) as e:
         raise SourceError('Could not download APK: ' + str(e)) from e
     finally:

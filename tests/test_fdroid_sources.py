@@ -10,7 +10,7 @@ import urllib.error
 import zipfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'ui'))
-from apk_sources import SourceError, fdroid
+from apk_sources import SourceError, SourceLimited, _web, fdroid
 
 FIXTURES = Path(__file__).parent / 'fixtures' / 'fdroid'
 PIN = (FIXTURES / 'fingerprint.txt').read_text().strip()
@@ -69,12 +69,14 @@ class Repositories(unittest.TestCase):
         net = patch.object(fdroid.urllib.request, 'build_opener', side_effect=AssertionError('network forbidden'))
         net.start()
         self.addCleanup(net.stop)
-        mock = patch.object(fdroid, '_fetch', side_effect=self.fetch)
+        mock = self.fetch_patch = patch.object(fdroid, '_fetch', side_effect=self.fetch)
         self.fetch_mock = mock.start()
         self.addCleanup(mock.stop)
         self.v1 = False
         self.corrupt = None
         self.files = {}
+        _web._limited.clear()
+        self.addCleanup(_web._limited.clear)
 
     def fetch(self, url, path, maximum):
         name = url.rsplit('/', 1)[-1]
@@ -331,6 +333,19 @@ class Repositories(unittest.TestCase):
         self.assertEqual(fdroid.user_repos(), [])
         stream = io.BytesIO(self.files['entry.jar'])
         self.assertIn(b'index', fdroid._jar(stream, 'entry.json', None)[0])  # index-v1.jar may still use SHA-1
+
+    def test_rate_limited_host_backs_off(self):
+        source = dict(self.add(), name='My repo')
+        self.fetch_patch.stop()
+        error = urllib.error.HTTPError(URL, 429, 'slow down', {'Retry-After': '300'}, None)
+        with patch.object(fdroid.urllib.request, 'build_opener') as opener:
+            opener.return_value.open.side_effect = error
+            with self.assertRaisesRegex(SourceLimited, '^My repo is limiting requests; try again in 5 minutes$'):
+                fdroid._load(source, force=True)
+            with self.assertRaisesRegex(SourceLimited, 'My repo'):
+                fdroid.download(source, 'org.example.app', 1)
+            self.assertEqual(opener.return_value.open.call_count, 1)
+        self.fetch_mock = self.fetch_patch.start()
 
     def test_cached_index_does_not_cross_pins(self):
         source = self.add()

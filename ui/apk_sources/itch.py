@@ -54,7 +54,7 @@ def search(source, query, limit=50):
     if tag not in FEEDS:
         raise SourceError('Unsupported itch.io feed')
     url = 'https://itch.io/games/free/platform-android/tag-' + tag + '.xml'
-    for entry in _parse(source, _web.read(url, ('itch.io',))):
+    for entry in _parse(source, _web.read(url, ('itch.io',), name='itch.io')):
         entries.setdefault(entry['id'], entry)
     words = query.lower().split()
     return [e for e in entries.values() if all(w in (e['name'] + ' ' + e['summary']).lower()
