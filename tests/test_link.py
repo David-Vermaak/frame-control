@@ -316,6 +316,8 @@ class Connecting(unittest.TestCase):
         opts = ["-o", "HostName=10.0.0.5"]
         self.assertFalse(fl.Link.is_target('Authenticated to bastion ([1.2.3.4]:22) using "publickey".', opts, "frame"))
         self.assertTrue(fl.Link.is_target('Authenticated to 10.0.0.5 ([10.0.0.5]:22) using "publickey".', opts, "frame"))
+        self.assertTrue(fl.Link.is_target('Authenticated to frame.local ([10.0.0.5]:22) using "publickey".',
+                                          ["-o", "HostName=FRAME.LOCAL"], "frame"))
 
     def test_a_forward_the_jump_host_couldnt_open_tries_the_next_address(self):
         said = ["Authenticated to bastion ([1.2.3.4]:22) using \"publickey\".",

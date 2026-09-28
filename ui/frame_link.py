@@ -906,7 +906,8 @@ class Link:
         (ssh -v passes its verbosity on to ProxyJump's own ssh)."""
         host = next((o.split("=", 1)[1].replace("%%", "%") for o in opts if o.startswith("HostName=")), alias)
         m = re.search(r"Authenticated to (\S+)", line)
-        return not m or m.group(1) in (host, alias) or "Authentication succeeded" in line
+        # OpenSSH lower-cases host names (FRAME.LOCAL logs as frame.local).
+        return not m or m.group(1).lower() in (host.lower(), alias.lower()) or "Authentication succeeded" in line
 
     def failed(self, step, said, mismatch, alias):
         text = "\n".join(said).strip()
