@@ -61,7 +61,7 @@ class Base(unittest.TestCase):
 
 class Validation(unittest.TestCase):
     def test_hosts(self):
-        for good in ("frame.local", "192.168.1.40", "fd7a:115c:a1e0::5928:ae55", "fe80::1%en0", "frame-2.tail1234.ts.net"):
+        for good in ("frame.local", "192.168.1.40", "fd7a:115c:a1e0::1234:5678", "fe80::1%en0", "frame-2.tail1234.ts.net"):
             self.assertEqual(fd.check_host(good), good)
         for bad in ("", " ", "-oProxyCommand=sh", "a b", "frame;id", "frame\nHost *", "frame..local", "$(id)",
                     "frame%en0", "x" * 300, None, 5, "frame/../x"):
