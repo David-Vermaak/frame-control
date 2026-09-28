@@ -174,13 +174,48 @@ class VRTests(unittest.TestCase):
     def test_install_auto_and_override(self):
         base = {'package': 'org.test.vr', 'label': 'VR', 'abis': [], 'min_sdk': None,
                 'vr': True, 'vr_activity': True, 'launchable': False}
-        with patch.object(frame_android, 'apk_info', return_value=base), patch.object(frame_android, 'patch') as repair, patch.object(frame_android, '_install', return_value={}) as install:
+        with patch.object(frame_android, 'apk_info', return_value=base), \
+                patch.object(frame_android, 'xr_compat_files', return_value={}), \
+                patch.object(frame_android, 'patch', return_value={'patched': ['launcher']}) as repair, \
+                patch.object(frame_android, '_install', return_value={}) as install:
             frame_android.install('original.apk')
             repair.assert_called_once()
             self.assertFalse(install.call_args.args[3])
             self.assertEqual(install.call_args.args[1]['patched'], ['launcher'])
             frame_android.install('original.apk', flatscreen=True)
             self.assertTrue(install.call_args.args[3])
+
+    def test_xr_compat_layer(self):
+        with tempfile.TemporaryDirectory() as d:
+            apk = Path(d) / 'a.apk'
+            with zipfile.ZipFile(apk, 'w') as z:
+                z.writestr('lib/arm64-v8a/libopenxr_loader.so', b'')
+            add = frame_android.xr_compat_files(str(apk))
+            self.assertEqual(set(add), set(frame_android.XR_COMPAT_FILES))
+            self.assertIn(b'XR_APILAYER_FRAME_compat', add['assets/openxr/1/api_layers/implicit.d/XrApiLayer_FRAME_compat.json'])
+            self.assertTrue(add['lib/arm64-v8a/libXrApiLayer_FRAME_compat.so'].startswith(b'\x7fELF'))
+            with zipfile.ZipFile(apk, 'a') as z:  # already injected: nothing more to add
+                z.writestr('lib/arm64-v8a/libXrApiLayer_FRAME_compat.so', b'')
+            self.assertEqual(frame_android.xr_compat_files(str(apk)), {})
+            flat = Path(d) / 'flat.apk'
+            with zipfile.ZipFile(flat, 'w') as z:
+                z.writestr('classes.dex', b'')
+            self.assertEqual(frame_android.xr_compat_files(str(flat)), {})
+
+    def test_install_adds_layer_to_vr_apps(self):
+        base = {'package': 'org.test.vr', 'label': 'VR', 'abis': [], 'min_sdk': None,
+                'vr': True, 'vr_activity': True, 'launchable': True}
+        layer = {'x': b''}
+        with patch.object(frame_android, 'apk_info', return_value=dict(base)), \
+                patch.object(frame_android, 'xr_compat_files', return_value=layer), \
+                patch.object(frame_android, 'patch', return_value={'patched': ['openxr-compat']}) as repair, \
+                patch.object(frame_android, '_install', return_value={}) as install:
+            frame_android.install('game.apk')
+            self.assertIs(repair.call_args.args[2], layer)
+            self.assertEqual(install.call_args.args[1]['patched'], ['openxr-compat'])
+            repair.reset_mock()
+            frame_android.install('game.apk', xr_compat=False)  # launchable, no layer: install as is
+            repair.assert_not_called()
 
 
 if __name__ == '__main__':

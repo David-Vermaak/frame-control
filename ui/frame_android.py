@@ -7,7 +7,7 @@ in the Steam library and gets its own SteamVR panel. Nothing goes through
 Lepton Development, which wipes its apps on exit. See docs/apks.md.
 
 Python stdlib only. CLI: python3 ui/frame_android.py
-  install APK [--vr|--flat] | info APK | patch SRC DST [--add NAME=PATH ...]
+  install APK [--vr|--flat] [--no-xr-compat] | info APK | patch SRC DST [--add NAME=PATH ...]
   list | launch PKG | stop PKG | remove PKG | probe PKG
 """
 import json, os, re, shlex, shutil, subprocess, sys, threading, time, zlib
@@ -26,6 +26,13 @@ COMPAT = '.local/share/Steam/steamapps/compatdata'
 SHADERS = '.local/share/Steam/steamapps/shadercache'
 LAUNCHER = os.path.join(ROOT, 'frame', 'android', 'lepton-app.sh')
 SHORTCUTS = os.path.join(ROOT, 'frame', 'android', 'steam_shortcuts.py')
+# OpenXR API layer that lets OpenXR 1.1 apps run on SteamVR's 1.0-only Android
+# runtime (frame/openxr-compat, docs/vr-apks.md). Injected into VR APKs.
+XR_COMPAT = os.path.join(ROOT, 'frame', 'openxr-compat')
+XR_COMPAT_FILES = {
+    'assets/openxr/1/api_layers/implicit.d/XrApiLayer_FRAME_compat.json': 'XrApiLayer_FRAME_compat.json',
+    'lib/arm64-v8a/libXrApiLayer_FRAME_compat.so': 'prebuilt/arm64-v8a/libXrApiLayer_FRAME_compat.so',
+}
 PKG_RE = re.compile(r'^[A-Za-z][\w]*(\.[A-Za-z_][\w]*)+$')
 SSH_OPTS = ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=8']
 
@@ -71,6 +78,19 @@ def apk_info(path):
         raise FrameError(f'{os.path.basename(path)}: {e}')
 
 
+def xr_compat_files(apk_path):
+    """The layer's files to add, or {} if the APK has no OpenXR loader or already has the layer."""
+    with zipfile.ZipFile(apk_path) as z:
+        names = set(z.namelist())
+    if 'lib/arm64-v8a/libopenxr_loader.so' not in names or names & set(XR_COMPAT_FILES):
+        return {}
+    add = {}
+    for entry, rel in XR_COMPAT_FILES.items():
+        with open(os.path.join(XR_COMPAT, rel), 'rb') as f:
+            add[entry] = f.read()
+    return add
+
+
 def check_installable(info):
     if info['min_sdk'] and info['min_sdk'] > 30:
         raise FrameError(f"{info['label']} needs Android API {info['min_sdk']}; Lepton is Android 11 (API 30)")
@@ -112,7 +132,7 @@ def _write_meta(d, meta):
     ssh(f'cat > {d}/meta.json.tmp && mv {d}/meta.json.tmp {d}/meta.json', input=json.dumps(meta, indent=1))
 
 
-def install(apk_path, flatscreen=None, name=None, source=None, icon_png=None):
+def install(apk_path, flatscreen=None, name=None, source=None, icon_png=None, xr_compat=None):
     info = apk_info(apk_path)
     if icon_png:
         info['icon_png'] = icon_png
@@ -122,12 +142,14 @@ def install(apk_path, flatscreen=None, name=None, source=None, icon_png=None):
         raise FrameError(f'unexpected package name {pkg!r}')
     if flatscreen is None:
         flatscreen = not info['vr']
+    # VR apps get the OpenXR compatibility layer unless told otherwise; it only
+    # changes calls SteamVR would otherwise reject.
+    add = xr_compat_files(apk_path) if (info['vr'] if xr_compat is None else xr_compat) else {}
     with _install_lock:
-        if not info['launchable'] and info['vr_activity']:
+        if add or (not info['launchable'] and info['vr_activity']):
             with tempfile.TemporaryDirectory(prefix='frame-vr-') as tmp:
                 patched = os.path.join(tmp, 'app.apk')
-                patch(apk_path, patched)
-                info['patched'] = ['launcher']
+                info['patched'] = patch(apk_path, patched, add)['patched']
                 info['launchable'] = True
                 return _install(patched, info, pkg, flatscreen, name, source or os.path.basename(apk_path))
         return _install(apk_path, info, pkg, flatscreen, name, source)
@@ -301,7 +323,8 @@ def patch(src, dst, add=None):
         repack(src, dst, replace={'AndroidManifest.xml': manifest}, add=add)
         result = apk_info(dst)
         result.pop('icon_png', None)
-        result['patched'] = ['launcher'] if manifest != original else []
+        result['patched'] = (['launcher'] if manifest != original else []) + \
+            (['openxr-compat'] if add and set(XR_COMPAT_FILES) <= set(add) else [])
         return result
     except (OSError, ValueError, zipfile.BadZipFile, frame_apk.ApkError) as e:
         raise FrameError(str(e)) from e
@@ -311,7 +334,8 @@ def main():
     cmd, *args = sys.argv[1:] or ['help']
     try:
         if cmd == 'install':
-            r = install(args[0], flatscreen=False if '--vr' in args else True if '--flat' in args else None)
+            r = install(args[0], flatscreen=False if '--vr' in args else True if '--flat' in args else None,
+                        xr_compat=False if '--no-xr-compat' in args else None)
         elif cmd in ('info', 'describe'):
             r = apk_info(args[0])
             r.pop('icon_png', None)

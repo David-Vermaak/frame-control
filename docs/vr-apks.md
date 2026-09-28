@@ -109,6 +109,30 @@ in Frame Control's per-user app-data directory as `apk-signing-key.json`
 updates. A re-signed APK cannot update an installation signed by its original
 publisher; Android also treats it as a different signer for signature checks.
 
+VR apps with an arm64 OpenXR loader also get the OpenXR compatibility layer
+([frame/openxr-compat](../frame/openxr-compat/README.md)): an implicit API
+layer in the APK's `assets/openxr/1/api_layers/implicit.d/`, which the app's
+own loader picks up next to Valve's layer. It asks SteamVR for OpenXR 1.0 when
+the app wants 1.1 and enables the extensions that became 1.1 core; maps
+`xrLocateSpaces` to `xrLocateSpacesKHR` and `grip_surface` to `palm_ext`; drops
+1.1 controller profiles SteamVR doesn't know; stubs
+`XR_KHR_android_thread_settings` and `XR_OCULUS_android_session_state_enable`;
+and keeps the current refresh rate when SteamVR refuses a requested one.
+`meta.json` records `"patched": ["openxr-compat"]`. Skip it with
+`install … --no-xr-compat`. Its decisions go to logcat under `FrameXrCompat`.
+
+Verified on the headset (2026-09-28):
+
+- **Wolvic 1.9, Quest build**, installed as downloaded: Frame Control added
+  `LAUNCHER` and the layer. The layer turned OpenXR 1.1.48 into 1.0.63, the
+  instance and session were created, and a 144 Hz refresh request that SteamVR
+  refused was kept at the current rate. The session reached `SYNCHRONIZED`;
+  then Wolvic's Gecko engine crashed (null SIGSEGV on its Gecko thread, the
+  same crash its Lynx build has), which is Wolvic's, not OpenXR's.
+- **Open Brush, Quest build**, with the layer: 1.1.54 → 1.0.63, the thread
+  settings stub in use, `bytedance/pico4_controller` bindings dropped, and the
+  session reached `FOCUSED`, the same as without the layer.
+
 Inspect or prepare an APK without contacting the headset:
 
 ```sh
