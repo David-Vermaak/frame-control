@@ -283,11 +283,17 @@ def rewrite_block(alias, path=None, hostname=None, user=None, port=None, expect=
             if not block or any(v is not None and block[k] != v and (k != "port" or block["port_set"])
                                 for k, v in expect.items()):
                 return None
-        return _rewritten(lines, alias, hostname, user, port)
-    return _edit_config(Path(path or ssh_config()), change)
+        block = next((b for b in parse_blocks("\n".join(lines)) if b["alias"] == alias), None)
+        # Port 22 needs no line, unless the block would otherwise inherit another port
+        # from a later Host entry (which ssh would use).
+        force = bool(port) and block is not None and not block["port_set"] and \
+            effective_port(alias, config_path) != int(port)
+        return _rewritten(lines, alias, hostname, user, port, force)
+    config_path = Path(path or ssh_config())
+    return _edit_config(config_path, change)
 
 
-def _rewritten(lines, alias, hostname, user, port):
+def _rewritten(lines, alias, hostname, user, port, force_port=False):
     begin, end = begin_mark(alias), end_mark(alias)
     if begin not in lines or end not in lines:
         return None
@@ -308,7 +314,7 @@ def _rewritten(lines, alias, hostname, user, port):
             out.append(f"  {f[0]} {want[key]}")
         else:
             out.append(line)
-    if want["port"] and want["port"] != "22" and "port" not in seen:  # 22 needs no line (as connect.sh writes it)
+    if want["port"] and (want["port"] != "22" or force_port) and "port" not in seen:
         at = next((n + 1 for n, line in enumerate(out) if line.split(None, 1)[:1] == ["HostName"]), 2)
         out.insert(at, f"  Port {want['port']}")
     new = lines[:i] + out + lines[j:]

@@ -130,6 +130,10 @@ class Migration(Base):
         self.reg.sync_from_config(seed=False)
         self.assertEqual(self.reg.by_alias("frame")["port"], 2222)  # what ssh itself would use
         self.assertEqual(self.reg.by_alias("frame-2")["port"], 2222)  # its own Port line
+        # Saving 22 must then say so in the block, or ssh would go on inheriting 2222.
+        self.assertTrue(fd.rewrite_block("frame", port=22))
+        self.assertEqual(fd.effective_port("frame", self.ssh / "config"), 22)
+        self.assertFalse(fd.rewrite_block("frame", port=22))  # and only once
 
     def test_setup_finding_a_new_address_adds_it(self):
         self.reg.sync_from_config(seed=False)
