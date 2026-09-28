@@ -150,3 +150,13 @@ npm run dist:linux     # Linux: AppImage and .deb, x64 and arm64
 
 Pushing a `v*` tag builds all three in GitHub Actions and attaches them to the
 release (`.github/workflows/release.yml`).
+
+## AI agents and assistant
+
+**Documented:** [the MCP adapter and assistant panel](agents.md) are Frame
+Control implementations. MCP wraps this HTTP API without API keys. Changes
+require a separate user approval; power also retains its password prompt. The
+assistant uses a user-chosen endpoint and sends nothing until the user opts in
+for a message. Screenshot context is separately opt-in. Model replies cannot
+operate the headset. Tools → Open assistant opens the page; the linked guide
+covers putting it in a Chromium panel on the Frame.
