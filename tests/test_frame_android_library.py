@@ -222,12 +222,34 @@ class ArtworkTests(unittest.TestCase):
         data = (FIXTURES / 'icon.jpg').read_bytes()
         self.assertEqual(art.image_type(data), 'jpg')
         self.assertEqual(art.image_type(data + b'\0' * 64), 'jpg')  # trailing padding after EOI
-        gif = b'GIF89a' + struct.pack('<HH', 640, 360) + b'\0' * 20  # gameplay GIFs: first frame drawn
-        self.assertEqual(art.image_type(gif), 'gif')
-        with self.assertRaises(ValueError):
-            art.image_type(b'GIF89a' + struct.pack('<HH', 0, 360) + b'\0' * 20)
         with self.assertRaises(ValueError):
             art.image_type(data[:30])
+
+    FRAME = b'\x21\xf9\x04\x01\x00\x00\x00\x00' + b'\x2c' + struct.pack('<HHHHB', 0, 0, 1, 1, 0) + b'\x02\x02\x44\x01\x00'
+
+    def gif(self, frames=1, screen=(1, 1), frame=None):
+        head = b'GIF89a' + struct.pack('<HHBBB', *screen, 0x80, 0, 0) + b'\xff\xff\xff\x00\x00\x00'
+        return head + (frame or self.FRAME) * frames + b'\x3b'
+
+    def test_gif_first_frame_is_bounded_and_re_emitted(self):
+        one = self.gif()
+        self.assertEqual(art.image_type(one), 'gif')
+        self.assertEqual(art.gif_frame(one), one)  # already minimal: unchanged
+        self.assertEqual(art.fetch(self.gif(frames=3)), ('gif', one))  # animation: first frame only
+        start = time.monotonic()
+        self.assertEqual(art.gif_frame(self.gif(frames=500000)), one)  # ~10 MB of frames, never parsed
+        self.assertLess(time.monotonic() - start, 1)
+        big = b'\x2c' + struct.pack('<HHHHB', 0, 0, 8192, 8192, 0) + b'\x02\x02\x44\x01\x00'
+        for bomb in (self.gif(frame=big), self.gif(screen=(8192, 8192), frame=big), self.gif(screen=(5000, 10)),
+                     self.gif(frame=b'\x2c' + struct.pack('<HHHHB', 1, 0, 1, 1, 0) + b'\x02\x02\x44\x01\x00'),
+                     b'GIF89a' + struct.pack('<HHBBB', 1, 1, 0, 0, 0) + self.FRAME + b'\x3b',  # no colour table
+                     self.gif(frame=b'\x2c' + struct.pack('<HHHHB', 0, 0, 1, 1, 0) + b'\x0c\x02\x44\x01\x00'),
+                     self.gif(frame=b'\x99')):
+            with self.subTest(bomb=bomb[:40]), self.assertRaises(ValueError):
+                art.image_type(bomb)
+        for cut in range(len(one) - 1):  # every truncation before the image's last block
+            with self.subTest(cut=cut), self.assertRaises(ValueError):
+                art.gif_frame(one[:cut])
 
     def test_png_variants_left_to_chromium_and_limits(self):
         def png(w, h, depth, color, interlace):

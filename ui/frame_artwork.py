@@ -28,18 +28,62 @@ def png_size(data):
     return w, h
 
 
+def _gif_blocks(data, pos):
+    """Position after a run of GIF data sub-blocks and its terminator."""
+    while True:
+        if pos >= len(data):
+            raise ValueError('truncated GIF')
+        size = data[pos]
+        pos += 1 + size
+        if not size:
+            return pos
+
+
+def gif_frame(data):
+    """A GIF's first frame as a minimal single-frame GIF, so no frame count or oversized frame
+    reaches the Frame's Chromium. Raises ValueError for anything malformed or out of bounds."""
+    if data[:6] not in (b'GIF87a', b'GIF89a') or len(data) < 13:
+        raise ValueError('invalid GIF')
+    sw, sh, flags = struct.unpack_from('<HHB', data, 6)
+    if not sw or not sh or sw * sh > MAX_PIXELS or max(sw, sh) > 4096:
+        raise ValueError('artwork GIF has unsupported dimensions')
+    pos = 13 + (3 << ((flags & 7) + 1) if flags & 0x80 else 0)
+    head, control = data[:pos], b''
+    if len(head) != pos:
+        raise ValueError('truncated GIF')
+    while True:
+        if pos >= len(data):
+            raise ValueError('truncated GIF')
+        if data[pos] == 0x21 and pos + 1 < len(data):  # extension: keep the frame's graphic control
+            end = _gif_blocks(data, pos + 2)
+            if data[pos + 1] == 0xf9:
+                control = data[pos:end]
+            pos = end
+        elif data[pos] == 0x2c and pos + 10 <= len(data):  # the first image
+            x, y, w, h, local = struct.unpack_from('<HHHHB', data, pos + 1)
+            if not w or not h or x + w > sw or y + h > sh:
+                raise ValueError('artwork GIF frame exceeds its screen')
+            if not flags & 0x80 and not local & 0x80:
+                raise ValueError('GIF has no colour table')
+            start = pos
+            pos += 10 + (3 << ((local & 7) + 1) if local & 0x80 else 0)
+            if pos >= len(data) or not 2 <= data[pos] <= 8:  # the LZW minimum code size
+                raise ValueError('invalid GIF image data')
+            end = _gif_blocks(data, pos + 1)
+            return head + control + data[start:end] + b'\x3b'
+        else:
+            raise ValueError('invalid GIF block')
+
+
 def image_type(data):
     if not isinstance(data, bytes) or len(data) > MAX_IMAGE:
         raise ValueError('artwork must be image bytes or an HTTP(S) URL, at most 12 MiB')
     if data.startswith(PNG):
         png_size(data)
         return 'png'
-    if data[:6] in (b'GIF87a', b'GIF89a') and len(data) >= 10:
-        # Gameplay GIFs are common source screenshots; the Frame's Chromium draws their first frame.
-        w, h = struct.unpack_from('<HH', data, 6)
-        if w and h and w * h <= MAX_PIXELS and max(w, h) <= 8192:
-            return 'gif'
-        raise ValueError('artwork GIF has unsupported dimensions')
+    if data[:6] in (b'GIF87a', b'GIF89a'):
+        gif_frame(data)
+        return 'gif'
     if data.startswith(b'\xff\xd8'):
         # Check JPEG SOF dimensions without depending on an image library; trailing padding is fine.
         pos = 2
@@ -66,7 +110,8 @@ def fetch(value, deadline=None):
         from apk_sources import _images
         # Public addresses only, at most three redirects, within the overall deadline.
         value = _images.fetch(value, deadline=deadline, limit=MAX_IMAGE)[0]
-    return image_type(value), value
+    kind = image_type(value)
+    return kind, gif_frame(value) if kind == 'gif' else value
 
 
 def prepare(label, icon_png=None, artwork=None, budget=90):
