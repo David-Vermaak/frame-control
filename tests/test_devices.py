@@ -170,6 +170,20 @@ class Migration(Base):
         self.assertEqual([a["host"] for a in devices[0]["addresses"]], ["frame.local"])
 
 
+
+class SharedFile(Base):
+    """The desktop app and a standalone server can share devices.json."""
+
+    def test_one_server_never_saves_over_anothers_change(self):
+        self.reg.sync_from_config(seed=False)
+        other = fd.Registry(self.dir / "devices.json")  # a second server, loaded now
+        d = self.reg.by_alias("frame")
+        self.reg.add_address(d["id"], "100.101.1.2", "tailscale")
+        other.record_success(d["id"], d["addresses"][0]["host"], "net-1", 12)  # works from its older copy
+        hosts = [a["host"] for a in fd.Registry(self.dir / "devices.json").get(d["id"])["addresses"]]
+        self.assertIn("100.101.1.2", hosts)
+        self.assertIn("100.101.1.2", [a["host"] for a in other.get(d["id"])["addresses"]])  # and it sees it
+
 class ConfigRewrite(Base):
     def test_hostname_user_and_port_change_only_inside_the_block(self):
         cfg = self.ssh / "config"

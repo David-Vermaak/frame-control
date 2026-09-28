@@ -444,6 +444,8 @@ class Registry:
         self.path = Path(path or frame_host.data_dir("devices.json"))
         self.config = Path(config) if config else None  # None: ssh_config() at call time
         self.lock = threading.RLock()
+        self._depth = 0  # nested _changing() calls
+        self._mtime = None  # devices.json as last loaded or saved
         self.data = {"version": VERSION, "active": None, "devices": [], "networks": {}}
         self.load()
 
@@ -451,6 +453,7 @@ class Registry:
     def load(self):
         with self.lock:
             try:
+                self._mtime = self.path.stat().st_mtime_ns
                 data = json.loads(self.path.read_text(encoding="utf-8"))
             except (OSError, ValueError):
                 return
@@ -479,13 +482,47 @@ class Registry:
             tmp = self.path.with_name(self.path.name + ".tmp")
             tmp.write_text(json.dumps(self.data, indent=1), encoding="utf-8")
             os.replace(tmp, self.path)
+            self._mtime = self.path.stat().st_mtime_ns
+
+    def _refresh(self):
+        """Pick up what another Frame Control server saved (the app and a standalone
+        server can share devices.json)."""
+        with self.lock:
+            try:
+                if self.path.stat().st_mtime_ns != self._mtime:
+                    self.load()
+            except OSError:
+                pass
+
+    @contextlib.contextmanager
+    def _changing(self):
+        """Every change holds this registry's lock and a lock file shared with other
+        processes, and starts from what's on disk, so no server saves over another's
+        change. Nested calls (sync_from_config adding a device) share the outer one."""
+        with self.lock:
+            if self._depth:
+                self._depth += 1
+                try:
+                    yield
+                finally:
+                    self._depth -= 1
+                return
+            with file_lock(self.path.with_name(self.path.name + ".lock")):
+                self.load()
+                self._depth = 1
+                try:
+                    yield
+                finally:
+                    self._depth = 0
 
     def snapshot(self):
+        self._refresh()
         with self.lock:
             return copy.deepcopy(self.data)
 
     # -- lookups --
     def devices(self):
+        self._refresh()
         with self.lock:
             return copy.deepcopy(self.data["devices"])
 
@@ -496,30 +533,34 @@ class Registry:
         raise DeviceError("No such headset (it may have been removed)")
 
     def get(self, device_id):
+        self._refresh()
         with self.lock:
             return copy.deepcopy(self._find(device_id))
 
     def by_alias(self, alias):
+        self._refresh()
         with self.lock:
             return next((copy.deepcopy(d) for d in self.data["devices"] if d["alias"] == alias), None)
 
     def active(self):
+        self._refresh()
         with self.lock:
             return self.data.get("active")
 
     def emptied(self):
+        self._refresh()
         with self.lock:
             return bool(self.data.get("emptied")) and not self.data["devices"]
 
     def set_active(self, device_id):
-        with self.lock:
+        with self._changing():
             self._find(device_id)
             self.data["active"] = device_id
             self.save()
 
     # -- devices --
     def add_device(self, alias, name=None, user=DEFAULT_USER, port=22, hosts=(), identity_files=()):
-        with self.lock:
+        with self._changing():
             check_alias(alias)
             if any(d["alias"] == alias for d in self.data["devices"]):
                 raise DeviceError(f"There's already a headset with the alias {alias}")
@@ -543,7 +584,7 @@ class Registry:
 
     def update_device(self, device_id, name=None, user=None, port=None):
         """-> the device after the change. The caller mirrors user and port into ~/.ssh/config."""
-        with self.lock:
+        with self._changing():
             d = self._find(device_id)
             # Check everything first: a rejected edit changes nothing.
             name = None if name is None else (check_text(name, "name") or d["alias"])
@@ -556,7 +597,7 @@ class Registry:
     def remove_device(self, device_id):
         """Forget a headset. Its ~/.ssh/config block (if kept) isn't imported again
         unless Set Up Connection changes it."""
-        with self.lock:
+        with self._changing():
             d = self._find(device_id)
             self.data["devices"].remove(d)
             self.data.setdefault("dismissed", {})[d["alias"]] = d.get("config_host") or ""
@@ -575,7 +616,7 @@ class Registry:
         raise DeviceError(f"{host} isn't one of this headset's addresses")
 
     def add_address(self, device_id, host, kind=None, label=""):
-        with self.lock:
+        with self._changing():
             d = self._find(device_id)
             a = new_address(host, kind, label)
             if any(x["host"] == a["host"] for x in d["addresses"]):
@@ -587,7 +628,7 @@ class Registry:
             return copy.deepcopy(a)
 
     def update_address(self, device_id, host, new_host=None, kind=None, label=None):
-        with self.lock:
+        with self._changing():
             d = self._find(device_id)
             a = self._addr(d, host)
             # Check everything first: a rejected edit changes nothing.
@@ -608,13 +649,13 @@ class Registry:
             return copy.deepcopy(a)
 
     def remove_address(self, device_id, host):
-        with self.lock:
+        with self._changing():
             d = self._find(device_id)
             d["addresses"].remove(self._addr(d, host))
             self.save()
 
     def move_address(self, device_id, host, delta):
-        with self.lock:
+        with self._changing():
             d = self._find(device_id)
             a = self._addr(d, host)
             i = d["addresses"].index(a)
@@ -624,7 +665,7 @@ class Registry:
 
     def record_success(self, device_id, host, network_id, rtt_ms):
         """Learn: this address worked on this network."""
-        with self.lock:
+        with self._changing():
             try:
                 a = self._addr(self._find(device_id), host)
             except DeviceError:
@@ -637,12 +678,12 @@ class Registry:
 
     def undismiss(self, alias):
         """Set Up Connection is about to run for this alias: import its block again."""
-        with self.lock:
+        with self._changing():
             if self.data.get("dismissed", {}).pop(alias, None) is not None:
                 self.save()
 
     def set_config_host(self, device_id, host):
-        with self.lock:
+        with self._changing():
             try:
                 self._find(device_id)["config_host"] = host
             except DeviceError:
@@ -654,7 +695,7 @@ class Registry:
         """Remember a network we've seen (for naming it), keeping its user-given name."""
         if not net or not net.get("id"):
             return
-        with self.lock:
+        with self._changing():
             known = self.data["networks"].get(net["id"]) or {"name": ""}
             changed = (known.get("ssid") != (net.get("ssid") or known.get("ssid")) or
                        time.time() - (known.get("last_seen") or 0) > 3600 or "gateway" not in known)
@@ -665,7 +706,7 @@ class Registry:
                 self.save()
 
     def name_network(self, network_id, name):
-        with self.lock:
+        with self._changing():
             if network_id not in self.data["networks"]:
                 raise DeviceError("That network hasn't been seen")
             self.data["networks"][network_id]["name"] = check_text(name, "network name")
@@ -675,6 +716,7 @@ class Registry:
         """What to call a network: the name given to it, its Wi-Fi name, or its router."""
         if not net:
             return "No network"
+        self._refresh()
         with self.lock:
             known = self.data["networks"].get(net.get("id") or "") or {}
         if known.get("name"):
@@ -696,7 +738,7 @@ class Registry:
                 # No Port in the block: another Host entry may give one (ssh uses the first).
                 b["port"] = effective_port(b["alias"], self.config or ssh_config())
         changed = False
-        with self.lock:
+        with self._changing():
             first = not self.data["devices"] and not self.data.get("active")
             for b in blocks:
                 host = b["hostname"] if b["hostname"] and HOST_RE.fullmatch(b["hostname"]) else None
