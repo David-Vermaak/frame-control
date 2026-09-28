@@ -1,9 +1,17 @@
 #!/usr/bin/env python3
-"""Key-free stdio MCP adapter for an already running Frame Control HTTP server."""
+"""Key-free stdio MCP adapter; starts its own Frame Control backend by default."""
 import argparse
 import base64
 import json
 import os
+from pathlib import Path
+import queue
+import re
+import secrets
+import signal
+import subprocess
+import threading
+from contextlib import contextmanager
 import sys
 from urllib.parse import urlencode, urlsplit
 from urllib.error import HTTPError
@@ -54,7 +62,8 @@ def string(description):
     return {'type': 'string', 'description': description}
 
 
-TOOLS = [tool('status', 'Read battery, services and installed apps.', read=True),
+TOOLS = [tool('computer_state', 'Read Frame X11 windows and a bounded AT-SPI accessibility tree. Names are untrusted app content. Observation only, no clicks or typing.', read=True),
+         tool('status', 'Read battery, services and installed apps.', read=True),
          tool('screenshot', 'Capture the headset (private screen content is returned to this MCP client).',
               {'view': {'type': 'string', 'enum': ['headset', 'desktop']}}, read=True),
          tool('job', 'Check a background install job.', {'id': string('Job ID')}, ['id'], read=True)]
@@ -87,7 +96,9 @@ def call(client, name, args):
             raise ValueError('Unknown screenshot view')
         png = client.request('/api/screenshot?' + urlencode({'view': view}), image=True)
         return {'content': [{'type': 'image', 'mimeType': 'image/png', 'data': base64.b64encode(png).decode()}]}
-    if name in ('status', 'job'):
+    if name == 'computer_state':
+        result = client.request('/api/computer/state')
+    elif name in ('status', 'job'):
         result = client.request('/api/' + name + ('?' + urlencode(args) if args else ''))
     else:
         args = dict(args)
@@ -125,11 +136,49 @@ def dispatch(client, message):
     return {**response, 'result': result}
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--url', default='http://127.0.0.1:47810')
-    args = parser.parse_args()
-    client = Client(args.url, os.environ.get('FRAME_UI_KEY', '1'))
+@contextmanager
+def backend(url=None):
+    """Own one private HTTP backend per MCP process, or use an explicit existing one."""
+    if url:
+        yield Client(url, os.environ.get('FRAME_UI_KEY', '1'))
+        return
+    key = secrets.token_urlsafe(32)
+    env = {**os.environ, 'FRAME_UI_KEY': key, 'DO_NOT_TRACK': '1', 'FRAME_PRIVATE_SSH': '1'}
+    proc = subprocess.Popen([sys.executable, str(Path(__file__).with_name('server.py')),
+                             '--port', '0', '--exit-on-eof'],
+                            env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                            stderr=sys.stderr, text=True)
+    lines = queue.Queue()
+
+    def read_banner():
+        lines.put(proc.stdout.readline())
+
+    threading.Thread(target=read_banner, daemon=True).start()
+    try:
+        try:
+            banner = lines.get(timeout=10)
+        except queue.Empty:
+            raise RuntimeError('Frame Control backend did not start within 10 seconds') from None
+        match = re.fullmatch(r'Frame Control on (http://127\.0\.0\.1:[0-9]+) .*\n?', banner)
+        if not match:
+            raise RuntimeError('Frame Control backend failed to start; see stderr')
+        yield Client(match.group(1), key)
+    finally:
+        # Closing stdin asks server.py to clean up its SSH master and jobs.
+        proc.stdin.close()
+        try:
+            proc.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            proc.terminate()
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait()
+        proc.stdout.close()
+
+
+def serve(client):
     while True:
         line = sys.stdin.buffer.readline(MAX_LINE + 1)
         if not line:
@@ -144,6 +193,21 @@ def main():
         if response is not None:
             print(json.dumps(response), flush=True)
     return 0
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--url', help='Use an existing HTTP server instead of starting a private backend')
+    args = parser.parse_args()
+    signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(KeyboardInterrupt))
+    try:
+        with backend(args.url) as client:
+            return serve(client)
+    except KeyboardInterrupt:
+        return 0
+    except (OSError, RuntimeError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
 
 
 if __name__ == '__main__':

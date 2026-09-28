@@ -8,25 +8,36 @@ Installing other apps is an optional management action, never a prerequisite.
 
 ## Connect an MCP client
 
-Start the HTTP server from this checkout:
+The default MCP command starts a private HTTP backend on a free loopback port,
+with a fresh local access key. It stops that backend when the MCP client closes
+stdin or sends SIGTERM. It uses its own SSH control socket, so closing it does
+not close the desktop app's connection. No manually started server is needed.
 
-```sh
-python3 ui/server.py --port 47810
-```
-
-Add a stdio server to your MCP client (use absolute paths):
+Add this stdio server to your MCP client (use absolute paths):
 
 ```json
 {
   "mcpServers": {
     "frame-control": {
       "command": "python3",
-      "args": ["/absolute/path/frame-control/ui/frame_mcp.py", "--url", "http://127.0.0.1:47810"]
+      "args": ["/absolute/path/frame-control/ui/frame_mcp.py"]
     }
   }
 }
 ```
 
+For Codex, the equivalent registration is:
+
+```sh
+codex mcp add frame-control -- python3 /absolute/path/frame-control/ui/frame_mcp.py
+```
+
+New agent sessions load the entry. An already running session may need its MCP
+connections reloaded; registration does not retroactively add tools to its
+initial tool inventory. Keep the checkout at that path while it is registered.
+Use `codex mcp remove frame-control` to remove only this registration.
+
+To reuse a running server instead, pass `--url http://127.0.0.1:47810`.
 The desktop app uses a random port; use that port with `--url`, or run the
 checkout server above. If the HTTP server uses `FRAME_UI_KEY`, pass the same
 value in the MCP process environment. This is local access control, not an LLM
@@ -37,6 +48,7 @@ resources, prompts or streaming transport.
 
 | Tool | Arguments | Effect |
 |---|---|---|
+| `computer_state` | none | Read-only gamescope window IDs/focus and bounded AT-SPI tree; reports incomplete observations |
 | `status` | none | Battery, services, installed games and Flatpaks |
 | `screenshot` | `view`: `headset` (default) or `desktop` | Returns PNG image content to the MCP client |
 | `job` | `id` | Background install status; poll until `done`, inspect `error` |
@@ -66,7 +78,7 @@ The panel does not execute an action merely because it was approved.
 
 MCP has no approval tool. This is protection against accidental model tool
 calls, not a sandbox against a client with independent shell/HTTP access to your
-computer. Grant the MCP client only the access you intend. Status and captures
+computer. Grant the MCP client only the access you intend. Status, captures and computer-state observations
 are returned directly to that client, which may forward them to its configured
 model. The assistant's separate opt-in does not govern an external MCP client.
 
@@ -157,3 +169,17 @@ on this branch (run 36421345682).
 browser profile and SSH tunnel and remove the profile and panel log.
 
 ![Assistant in Frame Chromium, after an opted-in request to the local test endpoint](img/assistant-panel.png)
+
+## Computer-use coverage
+
+MCP is the tool transport, not a limit on what an agent can do. A screenshot,
+accessibility snapshot, click or keystroke can all be MCP tools when we have a
+reliable underlying implementation. See [the investigation](computer-use.md)
+for the verified boundaries. `computer_state` adds observation, not an input
+channel: it cannot click an approval button or send keyboard/mouse events.
+
+**Verified 2026-09-29, SteamOS 0.4.1, BUILD_ID 20260925.6191901:** the command saved
+by `codex mcp add` launched without a prestarted server, negotiated MCP, listed
+12 tools, read live Frame status and returned X11 window state plus AT-SPI
+observations. It exited 0 at EOF. Steam's accessibility tree had inaccessible
+children, reported as `incomplete: true`; this is not a complete actionable UI.

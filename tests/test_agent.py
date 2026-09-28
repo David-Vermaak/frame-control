@@ -189,5 +189,65 @@ class Protocol(unittest.TestCase):
             with self.assertRaises(ValueError): mcp.Client(url)
 
 
+class ManagedBackend(unittest.TestCase):
+    def test_private_backend_auth_and_cleanup(self):
+        from urllib.error import HTTPError, URLError
+        from urllib.request import urlopen
+        with mock.patch.dict(os.environ, {'FRAME_ALIAS': 'frame-control-test.invalid'}):
+            with mcp.backend() as client:
+                url = client.url
+                self.assertIn('os', client.request('/api/host'))
+                with self.assertRaises(HTTPError) as error:
+                    urlopen(url + '/api/host', timeout=2)
+                self.assertEqual(error.exception.code, 403)
+                error.exception.close()
+                # A second client has its own backend and key.
+                with mcp.backend() as other:
+                    self.assertNotEqual(client.url, other.url)
+                    self.assertNotEqual(client.key, other.key)
+                self.assertIn('os', client.request('/api/host'))
+            with self.assertRaises(URLError):
+                urlopen(url + '/', timeout=2)
+
+    def test_private_ssh_socket_is_not_the_desktop_socket(self):
+        with mock.patch.object(server.frame_host, 'MUX', True), \
+             mock.patch.object(server.frame_host.os, 'getuid', return_value=501, create=True), \
+             mock.patch.object(server.frame_host.os, 'getpid', return_value=123):
+            self.assertEqual(server.frame_host.control_path(), '/tmp/frame-ui-501-%C')
+            self.assertEqual(server.frame_host.control_path(private=True), '/tmp/frame-ui-501-123-%C')
+
+
+class ComputerState(unittest.TestCase):
+    def test_gamescope_triplets_and_empty_focus(self):
+        import frame_computer
+        parsed = frame_computer.parse_windows('GAMESCOPE_FOCUSABLE_WINDOWS(CARDINAL) = 16, 42, 123, 32, 55, 999\nGAMESCOPE_FOCUSED_APP(CARDINAL) = \n')
+        self.assertEqual(parsed['windows'], [{'windowId': '0x10', 'appid': 42, 'pid': 123}, {'windowId': '0x20', 'appid': 55, 'pid': 999}])
+        self.assertIsNone(parsed['focusedApp'])
+        with self.assertRaises(ValueError):
+            frame_computer.parse_windows('GAMESCOPE_FOCUSABLE_WINDOWS(CARDINAL) = 1, 2')
+        with self.assertRaises(ValueError):
+            frame_computer.parse_windows('GAMESCOPE_FOCUSABLE_WINDOWS(CARDINAL) = untrusted')
+        with self.assertRaises(ValueError):
+            frame_computer.parse_windows('GAMESCOPE_FOCUSABLE_WINDOWS: no such atom on any window.')
+
+    def test_partial_snapshot_reports_failure_not_empty_success(self):
+        import frame_computer
+        with mock.patch.object(frame_computer.subprocess, 'run', side_effect=OSError('no display')), \
+             mock.patch.object(frame_computer, 'accessibility', side_effect=OSError('no AT-SPI')):
+            result = frame_computer.snapshot()
+        self.assertIn('windowError', result)
+        self.assertIn('accessibilityError', result)
+        self.assertFalse(result['inputEnabled'])
+        self.assertNotIn('windows', result)
+
+    def test_mcp_computer_state_is_read_only(self):
+        client = mock.Mock()
+        client.request.return_value = {'windows': []}
+        mcp.call(client, 'computer_state', {})
+        client.request.assert_called_once_with('/api/computer/state')
+        spec = next(t for t in mcp.TOOLS if t['name'] == 'computer_state')
+        self.assertTrue(spec['annotations']['readOnlyHint'])
+
+
 if __name__ == '__main__':
     unittest.main()
