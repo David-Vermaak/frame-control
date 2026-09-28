@@ -5,6 +5,7 @@ request guards and input validation, which all run before any SSH call.
 
 Run: python3 -m unittest discover -s tests
 """
+import sandbox  # noqa: F401  (first: keeps tests off real data and services)
 import http.client
 import io
 import json
@@ -33,7 +34,9 @@ class ServerGuards(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.port = free_port()
-        env = {**os.environ, "FRAME_ALIAS": "frame-control-test.invalid", "PYTHONDONTWRITEBYTECODE": "1"}
+        cls.ssh_dir = tempfile.mkdtemp(prefix="frame-control-ssh-")  # an empty ~/.ssh: no headsets set up
+        env = {**os.environ, "FRAME_ALIAS": "frame-control-test.invalid", "PYTHONDONTWRITEBYTECODE": "1",
+               "FRAME_CONTROL_SSH_DIR": cls.ssh_dir}
         cls.log = tempfile.TemporaryFile()
         cls.proc = subprocess.Popen([sys.executable, str(ROOT / "ui" / "server.py"), "--port", str(cls.port)],
                                     env=env, stdout=cls.log, stderr=subprocess.STDOUT)

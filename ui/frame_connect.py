@@ -6,8 +6,9 @@ asking for the Developer Mode password once. The Linux and Windows twin of
 scripts/connect.sh (which the Mac app uses); same config block, so either can
 re-run over the other. Idempotent.
 
-Usage: python3 ui/frame_connect.py [HOST_OR_IP[:PORT]]
-Env:   FRAME_USER (default steamos), FRAME_ALIAS (default frame)
+Usage: python3 ui/frame_connect.py [--alias NAME] [HOST_OR_IP[:PORT]]
+Env:   FRAME_USER (default steamos), FRAME_ALIAS (default frame; --alias wins, for
+       terminals that don't pass the environment on, like Windows' `start`)
 """
 import base64
 import json
@@ -367,9 +368,22 @@ def pair_with_devkit(host, port, user):
     return chosen[0], "paired, but key login still fails"
 
 
+def use_alias(alias):
+    """--alias: set up another headset under its own ~/.ssh/config alias (Devices tab)."""
+    global FRAME_ALIAS, BEGIN, END
+    if not NAME_RE.fullmatch(alias):
+        sys.exit(f"--alias must be a plain name, not {alias!r}")
+    FRAME_ALIAS = alias
+    BEGIN = f"# >>> steam-frame ({FRAME_ALIAS}) >>>"
+    END = f"# <<< steam-frame ({FRAME_ALIAS}) <<<"
+
+
 def main(argv):
     if argv and argv[0] in ("-h", "--help"):
         sys.exit(__doc__)
+    if len(argv) >= 2 and argv[0] == "--alias":
+        use_alias(argv[1])
+        argv = argv[2:]
     say("==> Looking for the Steam Frame")
     found = pick_host(argv[0] if argv else None)
     while not found:

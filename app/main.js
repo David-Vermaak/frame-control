@@ -245,6 +245,23 @@ function fromUi(e) {
 ipcMain.handle("clipboard:read", (e) => fromUi(e) ? clipboard.readText() : "");
 ipcMain.handle("connection:setup", (e) => { if (fromUi(e)) setUpConnection(); });
 
+// The page reports the headsets it knows (the server's Devices tab), so the Frame
+// menu can switch between them. Only plain names and ids go into the menu.
+const ALIAS_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+let devices = [];
+ipcMain.on("devices:changed", (e, list) => {
+  if (!fromUi(e) || !Array.isArray(list)) return;
+  const next = list.slice(0, 20).filter(d => d && typeof d.id === "string" && ALIAS_RE.test(d.alias || ""))
+    .map(d => ({ id: d.id.slice(0, 80), name: String(d.name || d.alias).slice(0, 60), alias: d.alias, active: !!d.active }));
+  if (JSON.stringify(next) === JSON.stringify(devices)) return;
+  devices = next;
+  buildMenu();
+});
+const activeAlias = () => (devices.find(d => d.active) || {}).alias || FRAME;
+function showDevices() {
+  if (win && url) win.webContents.executeJavaScript('location.hash = "devices"').catch(() => {});
+}
+
 // frame-control://install links from websites (docs/web-install.md). They can
 // arrive before the window or server exists (macOS open-url on a cold launch),
 // so they wait here until the page asks for them. The page checks the link with
@@ -326,13 +343,14 @@ async function runInTerminal(argv) {
   }
 }
 
-async function setUpConnection() {
-  const alias = `FRAME_ALIAS=${FRAME}`;
+// Set Up Connection for the headset in use (or another alias, from the Devices tab).
+async function setUpConnection(name = activeAlias()) {
+  if (!ALIAS_RE.test(name)) return;
+  const alias = `FRAME_ALIAS=${name}`;
   if (IS_MAC) return runInTerminal(["env", alias, "zsh", path.join(SCRIPTS, "connect.sh")]);
   const py = python || await findPython({ ...process.env, PATH: await loginPath() });
-  const setup = [py || "python3", ...PY_FLAGS, path.join(ROOT, "ui", "frame_connect.py")];
-  // A new console inherits our environment on Windows; Linux terminals may not.
-  runInTerminal(IS_WIN ? setup : ["env", alias, ...setup]);
+  // --alias, since a new console on Windows (and some Linux terminals) doesn't get our environment.
+  runInTerminal([py || "python3", ...PY_FLAGS, path.join(ROOT, "ui", "frame_connect.py"), "--alias", name]);
 }
 
 function buildMenu() {
@@ -343,8 +361,15 @@ function buildMenu() {
     {
       label: "Frame",
       submenu: [
-        { label: "Set Up Connection…", click: setUpConnection },
-        { label: IS_MAC ? "Open SSH in Terminal" : "Open SSH in a Terminal", click: () => runInTerminal(["ssh", FRAME]) },
+        { label: "Set Up Connection…", click: () => setUpConnection() },
+        { label: IS_MAC ? "Open SSH in Terminal" : "Open SSH in a Terminal", click: () => runInTerminal(["ssh", activeAlias()]) },
+        { type: "separator" },
+        ...(devices.length > 1 ? [{
+          label: "Headset",
+          submenu: devices.map(d => ({ label: d.name, type: "radio", checked: d.active,
+                                       click: () => { if (win) win.webContents.send("use-device", d.id); } })),
+        }] : []),
+        { label: "Devices…", accelerator: "CmdOrCtrl+5", click: showDevices },
         { type: "separator" },
         { label: "Open in Browser", click: () => url && shell.openExternal(url) },
         { label: "Restart Server", click: () => win ? restartServer() : createWindow() },

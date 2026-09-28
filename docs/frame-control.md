@@ -17,13 +17,16 @@ python3 ui/server.py         # anywhere: then open http://127.0.0.1:47810
 
 ## Features
 
-The window has four tabs: **Home** (headset view, status, screenshots),
+The window has five tabs: **Home** (headset view, status, screenshots),
 **Games** (installed games, sideloaded titles, getting games), **Android** (apps,
-the catalogue, display settings, reports) and **Tools** (sending files and text,
-Flatpaks, remote and power). Keys 1–4 switch between them. Files can be dropped
-anywhere in the window. When the Frame can't be reached, one banner says why in
-plain words and the app retries every few seconds, filling everything in once it
-answers. Flatpak and Android installs run in the background; the bottom bar
+the catalogue, display settings, reports), **Tools** (sending files and text,
+Flatpaks, remote and power) and **Devices** (your headsets and their addresses).
+Keys 1–5 switch between them. Files can be dropped anywhere in the window. A
+connection pill in the header always shows which headset, which network this
+computer is on, the address in use or being tried, and each step of connecting
+as it happens; click it for the whole timeline. When the Frame can't be
+reached, a banner says why in plain words, what was tried, and counts down to
+the next try, filling everything in once it answers. Flatpak and Android installs run in the background; the bottom bar
 counts them while they run.
 
 - **Headset view**: what the lenses show, as SteamVR composites it (the room,
@@ -72,6 +75,11 @@ counts them while they run.
   Frame clipboard.
 - **Flatpaks**: install and remove them (quick picks: Moonlight, Firefox, VLC,
   Remmina).
+- **Devices**: several headsets, each with several addresses (LAN IPs per
+  network, its `.local` mDNS name, its Tailscale IP or MagicDNS name). The app
+  tries them all at once and learns which worked on which network. Add, edit,
+  reorder and test addresses, find a headset on Tailscale or on this network,
+  name your networks, and switch headsets. See [devices.md](devices.md).
 - **One-click tools**: SSH or SFTP in a terminal window, Steam Link, and remote
   desktop (Windows App on macOS, Remote Desktop on Windows, Remmina or FreeRDP on
   Linux). Sleep, restart and shut down open a terminal window because SteamOS
@@ -92,7 +100,9 @@ trusts root certificates already in the Windows store.
 The server is Python stdlib only and listens on 127.0.0.1. It rejects requests
 with a non-local `Host` header, and any `/api/` request without a custom
 header, so other websites can't drive it or read captures. Everything reaches
-the headset through the `frame` SSH alias. On macOS and Linux it keeps one
+the headset through its SSH alias (`frame` for the first one), pointed at the
+address that answered with `-o HostName=` (`ui/frame_link.py`, described in
+[devices.md](devices.md)). On macOS and Linux it keeps one
 multiplexed SSH connection open, so status and each capture take about 0.3 s.
 Windows' OpenSSH can't share a connection, so there each request connects on
 its own and the app is a little slower. What differs between the three

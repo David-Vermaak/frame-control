@@ -3,7 +3,8 @@
 
 Stdlib only; runs on macOS, Linux and Windows (differences live in frame_host.py).
 Listens on 127.0.0.1 and talks to the headset through the `frame` SSH alias set
-up by scripts/connect.sh or ui/frame_connect.py.
+up by scripts/connect.sh or ui/frame_connect.py, or another headset picked on the
+Devices tab: frame_link.py finds it at one of its addresses (frame_devices.py).
 
 Usage: ui/server.py [--port 47810] [--exit-on-eof]   (normally started by the app)
 Env:   FRAME_ALIAS (default frame)
@@ -39,7 +40,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import frame_android  # noqa: E402
 import frame_apk_versions  # noqa: E402
 import frame_catalog  # noqa: E402
+import frame_devices  # noqa: E402
 import frame_host  # noqa: E402
+import frame_link  # noqa: E402
 import frame_store  # noqa: E402
 import frame_titles  # noqa: E402
 import frame_webinstall  # noqa: E402
@@ -56,17 +59,37 @@ if LOCAL:
 UI_KEY = os.environ.get("FRAME_UI_KEY") or "1"
 DEVICE = os.environ.get("FRAME_DEVICE") or "phone"
 FRAME = os.environ.get("FRAME_ALIAS", "frame")
+FRAME_FROM_ENV = "FRAME_ALIAS" in os.environ
 if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", FRAME):
     sys.exit(f"FRAME_ALIAS must be a plain host alias, not {FRAME!r}")
 # Reuse one SSH connection for the frequent status/screenshot calls, where ssh
 # supports it (not on Windows: there every command connects on its own).
 CONTROL = None if LOCAL else frame_host.control_path()
 MUX = ["ssh", "-o", "BatchMode=yes", *(["-o", f"ControlPath={CONTROL}"] if CONTROL else [])]
+MUX_BASE = list(MUX)
 # Commands use the master when it's up and connect directly when it isn't.
-SSH = [*MUX, *(["-o", "ControlMaster=no"] if CONTROL else []), "-o", "ConnectTimeout=5"]
+SSH_TAIL = [*(["-o", "ControlMaster=no"] if CONTROL else []), "-o", "ConnectTimeout=5"]
+SSH = [*MUX, *SSH_TAIL]
+# The address the connector picked (-o HostName=... and friends), in every ssh command.
+HOST_OPTS = []
 
 # Android helpers share the multiplexed connection when it's up.
 frame_android.SSH_OPTS = SSH[1:]
+
+
+def route(alias, host_opts):
+    """Point every ssh, scp and rsync at `alias` with `host_opts` (frame_link calls this
+    when it picks a headset and an address). The lists change in place, so code holding
+    them follows; frame_titles reads frame_android.SSH_OPTS at call time."""
+    global FRAME, HOST_OPTS
+    FRAME = frame_android.FRAME = alias
+    HOST_OPTS = list(host_opts)
+    MUX[:] = [*MUX_BASE, *HOST_OPTS]
+    SSH[:] = [*MUX, *SSH_TAIL]
+    frame_android.SSH_OPTS = SSH[1:]
+
+
+LINK = None  # the connector (frame_link.Link); None on the Frame itself
 
 APPID = re.compile(r"^\d{1,10}$")
 FLATPAK_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*(\.[A-Za-z0-9_-]+){2,}$")
@@ -181,39 +204,10 @@ def job_status(query):
     return snapshot
 
 
-_master_lock = threading.Lock()
-_master = None
-
-
 def ensure_master():
-    """Start the shared SSH connection if it isn't up (one attempt at a time).
-
-    No ConnectTimeout here: with it, OpenSSH's master takes ~5s to open its socket.
-    """
-    global _master
-    if not CONTROL:
-        return
-
-    def up():
-        try:
-            return subprocess.run([*MUX, "-O", "check", FRAME], capture_output=True, stdin=subprocess.DEVNULL,
-                                  timeout=5).returncode == 0
-        except subprocess.TimeoutExpired:
-            return False
-
-    with _master_lock:
-        if up() or (_master and _master.poll() is None):
-            return
-        # Keepalives make a dead link (Frame asleep, off Wi-Fi) exit within ~10s,
-        # so the next request starts a fresh master.
-        _master = subprocess.Popen([*MUX, "-o", "ControlMaster=yes", "-o", "ServerAliveInterval=5",
-                                    "-o", "ServerAliveCountMax=2", "-N", FRAME],
-                                   stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                                   stderr=subprocess.DEVNULL, **frame_host.DETACHED)
-        for _ in range(60):
-            if up() or _master.poll() is not None:
-                return
-            time.sleep(0.05)
+    """Make sure the connection to the headset is up, or being tried (frame_link.Link.ensure)."""
+    if LINK:
+        LINK.ensure()
 
 
 def ssh(remote, *, stdin=None, timeout=30, text=True):
@@ -228,6 +222,8 @@ def ssh(remote, *, stdin=None, timeout=30, text=True):
         raise Failure(f"Timed out talking to {FRAME}")
     if r.returncode != 0:
         err = (r.stderr or r.stdout) if text else (r.stderr or r.stdout).decode(errors="replace")
+        if r.returncode == 255 and LINK and unreachable(err):
+            LINK.lost(err)  # ssh itself failed: the connector reconnects
         failure = Failure(strip_ansi(err).strip() or f"ssh exited {r.returncode}")
         failure.stdout = r.stdout if text else r.stdout.decode(errors="replace")
         raise failure
@@ -813,7 +809,7 @@ class AdbTunnel:
         fwd = [a for p, lp in self.local.items() for a in ("-L", f"127.0.0.1:{lp}:127.0.0.1:{p}")]
         # Its own connection (ControlPath=none), so killing it drops the forwards.
         self.proc = _proc = subprocess.Popen(
-            ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8", "-o", "ControlPath=none",
+            ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8", "-o", "ControlPath=none", *HOST_OPTS,
              "-o", "ExitOnForwardFailure=yes", "-o", "ServerAliveInterval=5", "-N", *fwd, FRAME],
             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
         _live_tunnels.add(_proc)
@@ -1230,7 +1226,48 @@ def _sweep_one(prefix, d):
 POST = {"/api/android/display": android_display, "/api/android": android, "/api/titles": titles, "/api/launch": launch, "/api/steam": steam, "/api/volume": set_volume, "/api/clipboard": clipboard,
         "/api/flatpak": flatpak, "/api/open": open_thing, "/api/shots/save": save_shots,
         "/api/webinstall/check": webinstall_check, "/api/webinstall/start": webinstall_start,
-        "/api/webinstall/cancel": webinstall_cancel}
+        "/api/webinstall/cancel": webinstall_cancel, "/api/devices": lambda body: devices_post(body)}
+
+
+# ---- headsets and the connection (frame_devices.py, frame_link.py) ----------
+
+def open_setup(alias, host=None):
+    """Set Up Connection for `alias` in a terminal window, as the app's menu does."""
+    if frame_host.MAC:
+        argv = ["env", f"FRAME_ALIAS={alias}", "zsh", str(HERE.parent / "scripts" / "connect.sh")]
+    else:
+        argv = [sys.executable, str(HERE / "frame_connect.py"), "--alias", alias]
+    return terminal(argv + ([host] if host else []))
+
+
+def devices_post(body):
+    if not LINK:
+        raise Failure("Headsets are managed from the computer app", 400)
+    try:
+        return frame_link.devices_action(LINK, body, open_setup)
+    except frame_devices.DeviceError as e:
+        raise Failure(str(e), 400)
+
+
+def devices_get(path, query):
+    if not LINK:
+        raise Failure("Headsets are managed from the computer app", 400)
+    q = parse_qs(query)
+    device = (q.get("id") or [None])[0]
+    try:
+        if path == "/api/devices":
+            return dict(frame_link.devices_view(LINK), nextAlias=frame_link.next_alias(LINK))
+        if path == "/api/devices/tailscale":
+            return frame_link.tailscale_find(LINK, device)
+        return frame_link.mdns_find(LINK, device)
+    except frame_devices.DeviceError as e:
+        raise Failure(str(e), 400)
+
+
+def connection_state():
+    if not LINK:  # on the Frame itself there's nothing to find
+        return {"local": True, "phase": "connected", "version": 0}
+    return LINK.snapshot()
 
 
 # ---- HTTP ------------------------------------------------------------------
@@ -1335,6 +1372,12 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json({"os": "SteamOS", "fileManager": None, "computer": DEVICE, "mobile": True} if LOCAL else
                                {"os": frame_host.NAME, "fileManager": frame_host.FILE_MANAGER,
                                 "computer": "Mac" if frame_host.MAC else "PC"})
+            elif path == "/api/connection":
+                self.send_json(connection_state())
+            elif path == "/api/connection/events":
+                self.connection_events()
+            elif path in ("/api/devices", "/api/devices/tailscale", "/api/devices/mdns"):
+                self.send_json(devices_get(path, url.query))
             elif path == "/api/apk-versions":
                 self.send_json(apk_versions(url.query))
             elif path == "/api/android":
@@ -1409,6 +1452,30 @@ class Handler(BaseHTTPRequestHandler):
             self.send_error_json(str(e), 502)
         except Exception as e:
             self.send_json({"error": f"{type(e).__name__}: {e}"}, 500)
+
+    def connection_events(self):
+        """Server-sent events: the connection state each time it changes, until the page goes.
+        (The page reads it with fetch, which can send the X-Frame-UI header; EventSource can't.)"""
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Frame-Options", "DENY")
+        self.end_headers()
+        self.close_connection = True
+        version = -1
+        try:
+            while True:
+                snap = connection_state() if version < 0 else (LINK.wait(version, 15) if LINK else None)
+                if snap is None:
+                    if not LINK and version >= 0:
+                        time.sleep(15)
+                    self.wfile.write(b": still here\n\n")  # keeps proxies and the page's watchdog happy
+                else:
+                    version = max(snap["version"], 0)
+                    self.wfile.write(b"data: " + json.dumps(snap).encode() + b"\n\n")
+                self.wfile.flush()
+        except OSError:
+            pass  # the page went away
 
     def stream_video(self, query):
         """Raw H.264 of the headset view until the page disconnects (see stream_command)."""
@@ -1536,6 +1603,11 @@ def main():
     args = ap.parse_args()
     httpd = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
     sweep_tmp()
+    global LINK
+    if not LOCAL:
+        LINK = frame_link.Link(frame_devices.Registry(), env_alias=FRAME if FRAME_FROM_ENV else None,
+                               mux_base=MUX_BASE, control=CONTROL, apply=route, explain=unreachable)
+        LINK.start()
     if not frame_host.WINDOWS:
         signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(KeyboardInterrupt))
     if args.exit_on_eof:
@@ -1556,10 +1628,8 @@ def main():
             signal.signal(signal.SIGTERM, signal.SIG_IGN)
         webinstall_shutdown()
         # The master was started with -N, so it stays up until told to exit.
-        if CONTROL:
-            subprocess.run([*MUX, "-O", "exit", FRAME], capture_output=True, stdin=subprocess.DEVNULL)
-        if _master and _master.poll() is None:
-            _master.terminate()
+        if LINK:
+            LINK.stop()
         for proc in list(_live_tunnels):  # ADB forwards and video streams cut off mid-way
             if proc.poll() is None:
                 proc.terminate()
