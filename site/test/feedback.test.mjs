@@ -19,9 +19,9 @@ test("accepts a normal report and trims it", () => {
   assert.equal(value.kind, "bug");
 });
 
-test("flags the honeypot and too-fast submissions as spam", () => {
+test("flags the honeypot as spam and asks fast senders to retry", () => {
   assert.deepEqual(validate(form({ website: "http://spam" })), { spam: true });
-  assert.deepEqual(validate(form({ elapsed: 500 })), { spam: true });
+  assert.match(validate(form({ elapsed: 500 })).error, /again/);
   assert.deepEqual(validate(form({ elapsed: undefined })), { spam: true });
 });
 
@@ -43,7 +43,8 @@ test("builds a labelled issue that credits a GitHub user", () => {
   assert.equal(issue.title, "Bug report: Live view freezes");
   assert.deepEqual(issue.labels, ["feedback", "bug"]);
   assert.match(issue.body, /\| Frame Control version \| 0\.3\.1 \|/);
-  assert.match(issue.body, /by @octocat\.$/);
+  assert.match(issue.body, /^> Sent from the website feedback form by @octocat\./);
+  assert.ok(issue.body.endsWith(value.message));
 });
 
 test("anonymous feedback says replies won't reach the sender", () => {
@@ -57,6 +58,7 @@ test("breaks mentions, issue refs and table cells in user text", () => {
   assert.equal(defang("email me@example.com"), "email me@\u200bexample.com");
   assert.equal(defang("see valve/steam#7 and GH-8"), "see valve/steam#\u200b7 and GH\u200b-8");
   assert.equal(defang("&commat;valve &#64;valve &num;3"), "&amp;commat;valve &amp;#\u200b64;valve &amp;num;3");
+  assert.equal(defang("end <!--"), "end &lt;!--");
   assert.equal(defang("https://github.com/a/b/issues/1"), "https://github\u200b.com/a/b/issues/1");
   const issue = buildIssue(validate(form({ os: "a | b" })).value);
   assert.match(issue.body, /\| a \\\| b \|/);

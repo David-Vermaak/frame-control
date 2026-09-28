@@ -20,11 +20,13 @@ const oneLine = (value, max) => String(value ?? "").replace(/\s+/g, " ").trim().
 // Mentions in someone else's text would ping strangers, and issue references
 // (#1, owner/repo#1, GH-1, github.com links) would add backlinks to other
 // people's issues, so break them all with a zero-width space. Escaping & first
-// stops &commat; and &num; from turning back into @ and # when GitHub renders.
+// stops &commat; and &num; from turning back into @ and # when GitHub renders,
+// and escaping < keeps out raw HTML such as an unclosed <!-- comment.
 const ZWSP = "\u200b";
 export function defang(text) {
   return text
     .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
     .replace(/@(?=[A-Za-z0-9])/g, `@${ZWSP}`)
     .replace(/#(?=\d)/g, `#${ZWSP}`)
     .replace(/\b(GH)-(?=\d)/gi, `$1${ZWSP}-`)
@@ -37,7 +39,9 @@ export function validate(input) {
   if (oneLine(input.website, 200)) return { spam: true };
   // Measured in the browser with a monotonic clock, so clock skew doesn't matter.
   const elapsed = Number(input.elapsed);
-  if (!Number.isFinite(elapsed) || elapsed < MIN_FILL_MS) return { spam: true };
+  if (!Number.isFinite(elapsed)) return { spam: true };
+  // The page waits this long before sending, so only scripts get here; say so anyway.
+  if (elapsed < MIN_FILL_MS) return { error: "That was quick. Send it again in a moment." };
 
   const kind = Object.hasOwn(KINDS, input.kind) ? input.kind : "other";
   const title = oneLine(input.title, LIMITS.title[1]);
@@ -70,16 +74,17 @@ export function buildIssue(value) {
     ["SteamOS build", value.steamos],
   ].filter(([, v]) => v);
 
-  const lines = [defang(value.message), ""];
+  // Our own lines go first, so nothing in the sender's text can hide them.
+  const lines = [
+    value.github
+      ? `> Sent from the website feedback form by @${value.github}.`
+      : "> Sent from the website feedback form. The sender left no GitHub username, so they won't see replies here.",
+    "",
+  ];
   if (details.length) {
     lines.push("| | |", "|---|---|", ...details.map(([k, v]) => `| ${k} | ${defang(v).replace(/\|/g, "\\|")} |`), "");
   }
-  lines.push(
-    "---",
-    value.github
-      ? `Sent from the website feedback form by @${value.github}.`
-      : "Sent from the website feedback form. The sender left no GitHub username, so they won't see replies here.",
-  );
+  lines.push(defang(value.message));
 
   return {
     title: `${kind.title}: ${value.title}`,

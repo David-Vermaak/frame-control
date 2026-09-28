@@ -9,9 +9,12 @@ on:
 
 jobs:
   approve:
-    # Only comments that might approve someone join the queue, and they run one
-    # at a time so two lgtm replies can't race on APPROVED_CONTRIBUTORS.
-    if: contains(github.event.comment.body, 'lgtm')  # contains() ignores case
+    # Only maintainers' comments that might approve someone join the queue, and
+    # they run one at a time so two lgtm replies can't race on APPROVED_CONTRIBUTORS.
+    # (The script below still checks for write access.)
+    if: >-
+      contains(github.event.comment.body, 'lgtm') &&
+      contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)
     concurrency:
       group: approve-contributor
       cancel-in-progress: false

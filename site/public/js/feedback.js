@@ -50,7 +50,6 @@ form.addEventListener("submit", async (e) => {
   e.preventDefault();
   errorBox.hidden = true;
   const data = Object.fromEntries(new FormData(form));
-  data.elapsed = Math.round(performance.now() - started);
 
   if (data.title.trim().length < 5) {
     form.elements.title.focus();
@@ -64,10 +63,13 @@ form.addEventListener("submit", async (e) => {
   send.disabled = true;
   send.textContent = "Sending…";
   try {
+    // The server treats anything sent sooner as a script (site/lib/feedback.js MIN_FILL_MS).
+    const wait = 3100 - (performance.now() - started);
+    if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
     const res = await fetch("/api/feedback", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(data),
+      body: JSON.stringify({ ...data, elapsed: Math.round(performance.now() - started) }),
     });
     const reply = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(reply.error || "Something went wrong sending that.");
