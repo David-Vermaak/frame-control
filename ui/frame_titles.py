@@ -740,7 +740,7 @@ def _install(plan, step, artwork=None):
 def _library_shortcut(gid, directory):
     """The Steam shortcut of title gid, only ever one that is provably this title's.
 
-    Steam's app overviews don't expose devkit_gameid (checked 2026-09-28, build 20260922.6101926),
+    Steam's app overviews don't expose devkit_gameid (checked 2026-09-28, build 20260925.6191901),
     so after the saved id this matches the shortcut's executable or start folder inside directory.
     Never by display name: another non-Steam shortcut could share it and would be renamed or deleted.
     """
