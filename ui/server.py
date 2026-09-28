@@ -655,7 +655,8 @@ class InputAgent:
 
     def discard(self, folder):
         """Remove a copy no agent will take over (best effort; agents tidy up old ones too)."""
-        if folder and not LOCAL:
+        folder = folder.removeprefix("~/")
+        if folder.startswith(f"{KDECONNECT_HOME}/incoming/") and not LOCAL:
             try:
                 ssh(f"rm -rf {folder}", timeout=20)
             except Failure:
@@ -675,18 +676,18 @@ class InputAgent:
             with self.lock:
                 if self.generation == generation:
                     self.status = {"state": "installing", "message": message}
-        errors = tempfile.TemporaryFile()
+        errors, folder = tempfile.TemporaryFile(), ""
         try:
             ensure_master()
             folder = self.deliver(report, force)
             with self.lock:
                 stopped = self.generation != generation
-            if stopped:  # turned off while copying: no agent will take the copy over
-                self.discard(folder.removeprefix("~/"))
+            if stopped:  # turned off while copying
                 raise Failure("stopped")
             proc = subprocess.Popen([*SSH, FRAME, self.command(folder)], stdin=subprocess.PIPE,
                                     stdout=subprocess.PIPE, stderr=errors)
         except (Failure, OSError) as e:
+            self.discard(folder)  # no agent will take the copy over
             message = str(e)
             friendly = unreachable(message)
             with self.lock:
@@ -705,7 +706,11 @@ class InputAgent:
                 self.proc = proc
         if stale:  # turned off meanwhile
             proc.terminate()
-        if self._watch(proc, errors, retry=not force) and not force:
+        wanted, heard = self._watch(proc, errors, retry=not force)
+        if not heard:
+            # The agent never started (or was stopped first), so it can't tidy the copy up.
+            self.discard(folder)
+        if wanted and not force:
             # It needed the packages after all (another device changed what's
             # installed after we looked): copy them and start once more.
             with self.lock:
@@ -716,15 +721,17 @@ class InputAgent:
             self._launch(generation, force=True)
 
     def _watch(self, proc, errors, retry=False):
-        """Follow the agent's status until it exits. True if it asked for the packages
-        (`retry`: the caller will send them, so that isn't an error yet)."""
-        wanted = False
+        """Follow the agent's status until it exits. Returns whether it asked for the
+        packages (`retry`: the caller will send them, so that isn't an error yet), and
+        whether it said anything at all (then it holds its copy and tidies it up)."""
+        wanted = heard = False
         for line in proc.stdout:
             try:
                 status = json.loads(line)
             except ValueError:
                 continue
             if isinstance(status, dict) and isinstance(status.get("state"), str):
+                heard = True
                 if status["state"] == "need-packages":
                     wanted = True
                     continue
@@ -742,7 +749,7 @@ class InputAgent:
                     message = "KDE Connect didn't reach the Frame"
                 friendly = unreachable(message)
                 self.status = {"state": "error", "message": friendly or message, **({"offline": True} if friendly else {})}
-        return wanted
+        return wanted, heard
 
     def send(self, events):
         """Forward events if the agent is ready; start it if it isn't running.

@@ -217,7 +217,7 @@ class Bundled(unittest.TestCase):
             @property
             def stdout(self):
                 yield from self.lines
-                if b"need-packages" not in self.lines[-1]:
+                if self.lines and b"need-packages" not in self.lines[-1]:
                     while not (done.is_set() or self.ended.is_set()):
                         self.ended.wait(0.02)
                 self.ended.set()
@@ -298,11 +298,11 @@ class Bundled(unittest.TestCase):
         watch, launch, deliver = agent._watch, agent._launch, agent.deliver
 
         def racing_watch(proc, errors, retry=False):
-            wanted = watch(proc, errors, retry)
+            wanted, heard = watch(proc, errors, retry)
             if wanted and not first:
                 first.append(threading.current_thread())
                 agent.start()  # lands between the agent exiting and the retry
-            return wanted
+            return wanted, heard
 
         def held_deliver(report, force=False):
             if force:
@@ -319,8 +319,9 @@ class Bundled(unittest.TestCase):
                     decided.set()  # the retry declined
         agent._watch, agent._launch, agent.deliver = racing_watch, first_launch, held_deliver
         agent.start()
+        # Both have decided once the new start has launched its agent (it always does).
+        self.wait_for(lambda: decided.is_set() and launches.count("") == 2 and len(procs) == len(launches))
         self.wait_for(lambda: agent.status == {"state": "ready"})
-        time.sleep(0.1)
         self.assertEqual(sum(not p.ended.is_set() for p in procs), 1, launches)
         agent.stop()
         self.wait_for(lambda: all(p.ended.is_set() for p in procs))
@@ -331,12 +332,36 @@ class Bundled(unittest.TestCase):
         removed = []
         agent.discard = removed.append
         agent.deliver = lambda report, force=False: (entered.set(), gate.wait(5), "~/incoming/x")[2]
+        self.addCleanup(lambda: self.assertEqual(removed, ["~/incoming/x"]))
         agent.start()
         self.assertTrue(entered.wait(5))
         agent.stop()
         gate.set()
-        self.wait_for(lambda: removed == ["incoming/x"])
+        self.wait_for(lambda: removed == ["~/incoming/x"])
         self.assertEqual(procs, [])  # no agent started for it
+
+    def test_a_copy_whose_agent_never_starts_is_removed(self):
+        agent, launches, procs = self.lifecycle([[]])  # the agent dies before saying anything
+        removed = []
+        agent.discard = removed.append
+        agent.deliver = lambda report, force=False: "~/incoming/y"
+        agent.start()
+        self.wait_for(lambda: removed == ["~/incoming/y"])
+
+    def test_discard_only_touches_copies(self):
+        calls = []
+        old = self.server.ssh, self.server.LOCAL
+        self.server.ssh, self.server.LOCAL = (lambda remote, **k: calls.append(remote)), False
+        try:
+            agent = self.server.InputAgent(packages=[])
+            agent.discard("")
+            agent.discard("~/.local/share/frame-control/kdeconnect")
+            agent.discard("~/.local/share/frame-control/kdeconnect/incoming/ab12")
+            self.server.LOCAL = True
+            agent.discard("~/.local/share/frame-control/kdeconnect/incoming/ab12")
+        finally:
+            self.server.ssh, self.server.LOCAL = old
+        self.assertEqual(calls, ["rm -rf .local/share/frame-control/kdeconnect/incoming/ab12"])
 
     def test_copies_go_to_a_folder_of_their_own(self):
         first, _, _ = self.deliver(frame_has=False)
