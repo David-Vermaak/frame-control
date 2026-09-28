@@ -169,6 +169,9 @@ class Connecting(unittest.TestCase):
         self.assertIn(f"Port={self.port}", opts)
         master = [c for c in self.calls() if "ControlMaster=yes" in c][-1]
         self.assertIn("StrictHostKeyChecking=accept-new", master)  # first connection: nothing pinned yet
+        # ssh takes an option's first value: accept-new must come before the commands' own "yes".
+        self.assertLess(master.index("StrictHostKeyChecking=accept-new"), master.index("StrictHostKeyChecking=yes"))
+        self.assertIn("StrictHostKeyChecking=yes", opts)  # every other command checks the pinned key
         self.assertTrue(fd.known_hosts(d["id"]).parent.is_dir())  # where ssh saves the key it accepts
         # It learned: 127.0.0.1 works on this network.
         learned = {a["host"]: a for a in self.reg.get(d["id"])["addresses"]}
@@ -262,6 +265,12 @@ class Connecting(unittest.TestCase):
         fl.devices_action(self.link, {"action": "use", "id": "alias-frame-bare"}, None)
         self.assertEqual(self.link.active_device()["alias"], "frame-bare")
         self.assertEqual(self.routes[-1], ("frame-bare", []))
+
+    def test_removing_the_headset_frame_alias_named_doesnt_bring_it_back_bare(self):
+        d = self.device("localhost")
+        self.link.override = self.link.session_alias = "frame-t"
+        fl.devices_action(self.link, {"action": "remove", "id": d["id"], "config": True}, None)
+        self.assertNotIn("alias-frame-t", [x["id"] for x in fl.devices_view(self.link)["devices"]])
 
     def test_setup_changing_the_login_waits_for_installs(self):
         d = self.device("localhost")

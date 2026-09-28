@@ -182,6 +182,7 @@ class Link:
         self.gen = 0                    # bumped when the headset or its login changes: older attempts are void
         self.route_lock = threading.Lock()
         self.routed = None              # the device id every ssh command points at
+        self.routed_device = None
 
     # ---- publishing ----
     def publish(self, **fields):
@@ -352,7 +353,9 @@ class Link:
             return []
         if not host:  # a headset with no addresses: reach nothing, not whatever ~/.ssh/config says
             return ["-o", "HostName=no-address.invalid"]
-        return ["-o", f"HostName={frame_devices.ssh_host(host)}",
+        # StrictHostKeyChecking=yes: whatever ~/.ssh/config says for Host *, every command
+        # checks the headset's pinned key (only the connector's first handshake may save one).
+        return ["-o", "StrictHostKeyChecking=yes", "-o", f"HostName={frame_devices.ssh_host(host)}",
                 "-o", f"HostKeyAlias={frame_devices.host_key_alias(device['id'])}",
                 "-o", f"UserKnownHostsFile={frame_devices.known_hosts_opt(device['id'])}", "-o", "HashKnownHosts=no",
                 "-o", f"User={device['user']}", "-o", f"Port={device['port']}"]
@@ -439,11 +442,12 @@ class Link:
         with self.work_lock, self.route_lock:
             gen = self.attempt_gen = self.gen
             device = self.active_device()
-            if self.routed and self.routed[0] == device["id"] and self.route_key(device) != self.routed \
-                    and self.work():
-                # Its login changed in ~/.ssh/config while an install runs: reconnect with the
-                # one it started with; the change applies once it's done (see watch_config).
-                device = dict(device, user=self.routed[1], port=self.routed[2])
+            if self.routed and self.routed_device and device["alias"] == self.routed_device["alias"] \
+                    and self.route_key(device) != self.routed and self.work():
+                # Set Up Connection changed this headset in ~/.ssh/config (its login, or a bare
+                # alias became a set-up headset) while an install runs: reconnect as it
+                # started; the change applies once it's done (see watch_config).
+                device = self.routed_device
                 self.deferred = True
             if self.route_key(device) != self.routed:
                 # Another headset, or a new user or port: nothing may go on using the old
@@ -451,6 +455,7 @@ class Link:
                 self.alias, self.opts = device["alias"], self.first_route(device)
                 self.apply(self.alias, self.opts)
                 self.routed = self.route_key(device)
+                self.routed_device = device
         with self.cond:
             self.state.update(phase="connecting", reason=why, device=self.public_device(device), via=None,
                               error=None, retry_at=None, attempt=self.state["attempt"] + 1, started=now(),
@@ -736,10 +741,11 @@ class Link:
                 pins.mkdir(**({} if frame_host.WINDOWS else {"mode": 0o700}), parents=True, exist_ok=True)
         if self.control:
             # No ConnectTimeout: with it, OpenSSH's master takes ~5s to open its socket.
-            argv = [*self.mux_base, *opts, *extra, "-v", "-o", "ControlMaster=yes", "-o", "ServerAliveInterval=5",
+            # `extra` first: ssh takes the first value of an option, and it may say accept-new.
+            argv = [*self.mux_base, *extra, *opts, "-v", "-o", "ControlMaster=yes", "-o", "ServerAliveInterval=5",
                     "-o", "ServerAliveCountMax=2", "-N", alias]
         else:
-            argv = [*self.mux_base, *opts, *extra, "-v", "-o", "ConnectTimeout=10", alias, "true"]
+            argv = [*self.mux_base, *extra, *opts, "-v", "-o", "ConnectTimeout=10", alias, "true"]
         try:
             proc = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                                     stderr=subprocess.PIPE, **frame_host.DETACHED)
@@ -977,6 +983,8 @@ def devices_action(link, body, open_setup, busy=lambda: 0):
             raise frame_devices.DeviceError("This is your only headset. To remove it completely, also remove its "
                                             "entry from ~/.ssh/config (the box below)")
         d = reg.remove_device(did)
+        if d["alias"] == link.session_alias:
+            link.session_alias = None  # removed on purpose: not back as a bare alias
         if is_active:
             link.override = None
             link.invalidate()
