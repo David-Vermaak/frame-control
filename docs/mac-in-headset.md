@@ -196,6 +196,21 @@ Baseline on 2026-09-28 (**verified**, home Wi-Fi, Tailscale, Balanced,
 | scroll (1920×1290) | 14.7 | – | 50.4 | encode 6.7, decode 6.4 (software), 9.4 Mbit/s, 16% late |
 | type (1920×1290) | 16.7 | 51.2 / 73.2 | – | most of the input time is the Mac app reacting |
 
+After this work, with the controller on (**verified**, same setup,
+`bench/results/2026-09-28-9e4dcdd-final.json`; ms p50/p95). Content is
+now measured from the earlier of display time and delivery, which adds
+about 5 ms to scroll compared with the baseline's way of measuring:
+
+| Scenario | Content | Input to drawn | fps drawn | Grades |
+|---|---|---|---|---|
+| test | 10.5 / 16.7 | 29.6 / 36.3 | 60 | all within target |
+| scroll | 19.8 / 27.4 | – | 55.9 | fps, late frames (4.8%) and worst gap (222 ms) only "acceptable": Wi-Fi stalls and ScreenCaptureKit's 46–53 fps from virtual displays |
+| type | 15.0 / 21.4 | 43.0 / 60.5 | – | all within target |
+
+Of the targets, click to photon is met without the Frame's compositor (the
+headset has to be worn to measure its share), and so is content latency.
+The frame-rate and no-stall targets aren't yet met while scrolling.
+
 What was learned (all **verified**, unless marked):
 
 - The biggest costs are encoding (4–7 ms), network (4–6 ms), and decoding

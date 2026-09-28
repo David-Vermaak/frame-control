@@ -153,12 +153,30 @@ class Relay:
             w.close()
 
     async def _plain(self, reader, writer):  # Frame -> agent: delay only
+        if not self.delay:
+            while data := await reader.read(65536):
+                writer.write(data)
+                await writer.drain()
+            writer.close()
+            return
+        # Each chunk leaves `delay` after it arrived, while reading goes on:
+        # a delay line, not a pause (which would add up behind a busy stream).
+        queue = asyncio.Queue()
+
+        async def send():
+            while (item := await queue.get())[1] is not None:
+                wait = item[0] - self.loop.time()
+                if wait > 0:
+                    await asyncio.sleep(wait)
+                writer.write(item[1])
+                await writer.drain()
+            writer.close()
+
+        sender = asyncio.ensure_future(send())
         while data := await reader.read(65536):
-            if self.delay:
-                await asyncio.sleep(self.delay)
-            writer.write(data)
-            await writer.drain()
-        writer.close()
+            await queue.put((self.loop.time() + self.delay, data))
+        await queue.put((0, None))
+        await sender
 
     async def _shaped(self, reader, writer):  # agent -> Frame
         queue = asyncio.Queue()
