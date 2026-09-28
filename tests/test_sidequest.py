@@ -26,8 +26,7 @@ class SideQuestTests(unittest.TestCase):
         self.assertEqual(entry['images']['screenshots'], [])
         with self.assertRaisesRegex(SourceError, 'page-only'):
             sidequest.download(source, '123')
-        with self.assertRaisesRegex(SourceError, 'page-only'):
-            sidequest.search(source, 'open saber')
+        self.assertEqual(sidequest.search(source, 'open saber'), [])
         self.assertEqual(sidequest.search(source, 'open saber', 0), [])
 
     def test_invalid_ids(self):

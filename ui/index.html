@@ -1995,18 +1995,24 @@ function renderStore() {
   $("searchGrid").innerHTML=`<button class="store-hero" data-app="${apps.indexOf(featured)}" aria-label="Explore ${esc(featured.name)}">${storeArt(o,"",true)}<span class="hero-copy"><span class="store-eyebrow">Step into something new</span><strong>${esc(featured.name)}</strong><span>${esc(storeText(featured.summary))}</span><span class="hero-cta">Explore ${esc(featured.name)} <span aria-hidden="true">&nbsp; ↗</span></span></span></button>` + storeRow(apps.some(a=>a.offers[0].popularity) ? "Popular apps" : "Explore apps","More ways to make your Frame yours",popular) + storeRow(tested.length ? "VR that works on the Frame" : "Step into VR",tested.length ? "Experiences checked on a Frame" : "A new perspective, a whole new playground",vr) + storeRow("Recently updated","Fresh from their creators",recent);
 }
 function storeChips() { $("searchFilters").querySelectorAll("button").forEach(b=>b.setAttribute("aria-pressed",b.dataset.filter==='all' ? sourceState.vr===null && !sourceState.installable : b.dataset.filter==='installable' ? sourceState.installable : sourceState.vr===(b.dataset.filter==='vr'))); }
-async function searchSources() {
+async function searchSources(quiet) {
   const request=++sourceState.request;
   $("searchGrid").setAttribute("aria-busy","true");
-  $("searchGrid").innerHTML=`<div class="store-grid" role="status" aria-label="Finding apps">${Array.from({length:8},()=>'<div class="store-skeleton" aria-hidden="true"></div>').join("")}</div>`;
+  if(!quiet)$("searchGrid").innerHTML=`<div class="store-grid" role="status" aria-label="Finding apps">${Array.from({length:8},()=>'<div class="store-skeleton" aria-hidden="true"></div>').join("")}</div>`;
   const params=new URLSearchParams({q:$("sourceQ").value,source:sourceState.source,installable:String(sourceState.installable)});
   if(sourceState.vr!==null)params.set("vr",String(sourceState.vr));
   try {
     const result=await api("/api/search?"+params);if(request!==sourceState.request)return;
     sourceState.apps=result.apps;
     const unavailable=result.sources.filter(s=>s.status==='error'||s.status==='timed out').map(s=>storeName(s.name));
-    $("sourceStatus").textContent=unavailable.length ? `${unavailable.join(" and ")} ${unavailable.length===1 ? "isn't" : "aren't"} responding right now. You can still explore the other sources.` : "";
-    $("sourceStatus").hidden=!unavailable.length;
+    const loading=result.sources.filter(s=>s.status==='loading').map(s=>storeName(s.name));
+    const notes=[];
+    if(loading.length)notes.push(`Still fetching ${loading.join(" and ")}; more results will appear in a moment.`);
+    if(unavailable.length)notes.push(`${unavailable.join(" and ")} ${unavailable.length===1 ? "isn't" : "aren't"} responding right now. You can still explore the other sources.`);
+    $("sourceStatus").innerHTML=notes.map(esc).join(" ")+(result.elsewhere||[]).map(x=>` <a href="${esc(x.url)}" target="_blank" rel="noopener">Browse ${esc(storeName(x.name))} ↗</a>`).join("");
+    $("sourceStatus").hidden=!notes.length && !(result.elsewhere||[]).length;
+    clearTimeout(sourceState.retry);
+    if(loading.length)sourceState.retry=setTimeout(()=>{ if(request===sourceState.request)searchSources(true); },6000);
     renderStore();await loadSources();
   } catch(e) { if(request===sourceState.request) { $("searchGrid").innerHTML=storeEmpty();$("sourceStatus").hidden=false;$("sourceStatus").textContent="We couldn't reach the app shelves. Try again in a moment."; } }
   finally { if(request===sourceState.request)$("searchGrid").setAttribute("aria-busy","false"); }
@@ -2075,7 +2081,7 @@ $("addSource").onsubmit=e=>{e.preventDefault();const f=new FormData(e.target);ch
 document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>$(b.dataset.close).close());
 $('appDetail').addEventListener('close',()=>{sourceState.detailRequest++;});
 document.querySelectorAll('[data-store-tab]').forEach(b=>b.onclick=()=>{const browse=b.dataset.storeTab==='browse';$('appStore').hidden=!browse;$('androidLibrary').hidden=browse;$('repNew').hidden=browse;$('sourcesOpen').hidden=!browse;document.querySelectorAll('[data-store-tab]').forEach(t=>{t.classList.toggle('on',t===b);t.setAttribute('aria-pressed',t===b);});if(!browse)loadAndroid();});
-loadSources().then(searchSources);
+loadSources().then(()=>searchSources());
 
 // ---- Android apps (own Lepton instance each) + catalogue ----
 const VLABEL = { works: "Works on Frame", likely: "Should work", maybe: "Might work", unlikely: "Probably crashes", no: "Won't work" };

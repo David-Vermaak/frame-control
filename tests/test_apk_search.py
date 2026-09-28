@@ -71,7 +71,7 @@ class SearchTests(SettingsTest):
                 result = search.search(timeout=.03)
                 self.assertLess(time.monotonic() - started, .3)
                 self.assertTrue(result['apps'])
-                self.assertEqual([s['status'] for s in result['sources']], ['ok', 'timed out', 'error'])
+                self.assertEqual([s['status'] for s in result['sources']], ['ok', 'loading', 'error'])
                 search.search('other', timeout=.03)
                 self.assertEqual(calls, [''])
         finally:

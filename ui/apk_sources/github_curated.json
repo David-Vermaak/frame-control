@@ -36,7 +36,7 @@
   {
     "repo": "SgtBilko76/SuperTux-3D",
     "name": "SuperTux 3D",
-    "summary": "Run and jump through Tux’s platform adventure on a layered 3D screen in VR.",
+    "summary": "Run and jump through Tux\u2019s platform adventure on a layered 3D screen in VR.",
     "license": "GPL-3.0",
     "vr": true,
     "asset_pattern": "*Quest*.apk",
@@ -49,5 +49,24 @@
       ]
     },
     "icon": "https://raw.githubusercontent.com/SgtBilko76/SuperTux-3D/1955493ee6f1000e048c58db40d4904df827210e/data/images/engine/icons/supertux-256x256.png"
+  },
+  {
+    "repo": "arpruss/OpenSaberPlus",
+    "name": "Open Saber Plus",
+    "summary": "Slash glowing blocks to the beat with two lightsabers, with songs from BeatSaver.",
+    "license": "MIT",
+    "vr": true,
+    "asset_pattern": "OpenSaberPlus.apk",
+    "allow_prerelease": false,
+    "images": {
+      "icon": "https://raw.githubusercontent.com/arpruss/OpenSaberPlus/8c5295cdaadf02ea7418b0c6cbea20240ba913af/icon.png",
+      "banner": "https://opengraph.githubassets.com/1/arpruss/OpenSaberPlus",
+      "screenshots": [
+        "https://raw.githubusercontent.com/arpruss/OpenSaberPlus/8c5295cdaadf02ea7418b0c6cbea20240ba913af/doc/images/OS0.4.0_1.gif",
+        "https://raw.githubusercontent.com/arpruss/OpenSaberPlus/8c5295cdaadf02ea7418b0c6cbea20240ba913af/doc/images/OS0.4.0_2.gif",
+        "https://raw.githubusercontent.com/arpruss/OpenSaberPlus/8c5295cdaadf02ea7418b0c6cbea20240ba913af/doc/images/OS0.4.0_3.gif"
+      ]
+    },
+    "icon": "https://raw.githubusercontent.com/arpruss/OpenSaberPlus/8c5295cdaadf02ea7418b0c6cbea20240ba913af/icon.png"
   }
 ]

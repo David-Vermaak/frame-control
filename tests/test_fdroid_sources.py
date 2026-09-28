@@ -127,6 +127,8 @@ class Repositories(unittest.TestCase):
                 fdroid._url(url)
         with self.assertRaisesRegex(SourceError, 'conflicting'):
             fdroid._url(URL + '?fingerprint=' + PIN, '0' * 64)
+        self.assertEqual(fdroid._child(URL, '/app/en-US/phoneScreenshots/#0 a.png'),
+                         URL + 'app/en-US/phoneScreenshots/%230%20a.png')  # real F-Droid screenshot name
         for name in ['../x.apk', '%2e%2e/x.apk', 'https://evil.org/a.apk', '//evil.org/../x', 'x?token=y', 'x\\y']:
             with self.subTest(name=name), self.assertRaises(SourceError):
                 fdroid._child(URL, name)

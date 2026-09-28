@@ -63,7 +63,12 @@ def read(url, hosts, headers=None, ttl=3600):
         return data
     except urllib.error.HTTPError as e:
         if e.code in (403, 429):
-            raise SourceError('Source refused access or reached its rate limit; try later (GitHub accepts FRAME_GITHUB_TOKEN)') from e
+            if os.path.isfile(path):  # throttled: an older copy beats no results
+                with open(path, 'rb') as f:
+                    return f.read()
+            host = urllib.parse.urlsplit(url).hostname or 'The source'
+            hint = ' (set FRAME_GITHUB_TOKEN to raise the limit)' if host.endswith('github.com') else ''
+            raise SourceError(host + ' is limiting requests right now; try again later' + hint) from e
         raise SourceError('Source HTTP error: ' + str(e.code)) from e
     except (OSError, ValueError) as e:
         raise SourceError('Could not read source: ' + str(e)) from e

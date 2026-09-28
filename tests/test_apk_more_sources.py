@@ -26,7 +26,7 @@ class PublisherSources(unittest.TestCase):
     def test_curated_artwork_has_recorded_image_evidence(self):
         evidence = {r['url']: r for r in json.loads((FIX / 'artwork-check.json').read_text())}
         entries = github.search(github.sources()[0], '')
-        self.assertEqual(len(entries), 3)
+        self.assertEqual(len(entries), 4)
         for entry in entries:
             self.assertTrue(entry['summary'])
             images = entry['images']
@@ -138,8 +138,10 @@ class PublisherSources(unittest.TestCase):
             self.assertEqual(_web.read('https://itch.io/test', ('itch.io',)), b'index')
             self.assertEqual(op.call_count, 1)
         error = urllib.error.HTTPError('https://api.github.com/x', 403, 'limited', {}, None)
-        with patch.object(_web, 'open_url', side_effect=error), self.assertRaisesRegex(SourceError, 'rate limit'):
+        with patch.object(_web, 'open_url', side_effect=error), self.assertRaisesRegex(SourceError, 'FRAME_GITHUB_TOKEN'):
             _web.read('https://api.github.com/x', ('api.github.com',))
+        with patch.object(_web, 'open_url', side_effect=error), patch.object(_web.time, 'time', return_value=1e12):
+            self.assertEqual(_web.read('https://itch.io/test', ('itch.io',)), b'index')  # throttled: stale copy
         with patch.object(_web, 'read', return_value=b'<html>'), self.assertRaises(SourceError):
             github._api('/x')
 

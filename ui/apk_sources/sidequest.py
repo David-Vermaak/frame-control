@@ -18,9 +18,7 @@ def sources():
 
 def search(source, query, limit=50):
     # Do not invent catalogue results or interpret a query as a verified free app.
-    if limit <= 0:
-        return []
-    raise SourceError(REASON + ' ' + URL + '/apps')
+    return []
 
 
 def details(source, entry_id):

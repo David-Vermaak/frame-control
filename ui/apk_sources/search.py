@@ -189,9 +189,19 @@ def group(entries, query='', vr=None, installable=False):
         result.append({'name': best.get('name'), 'package': best.get('package'),
                        'summary': best.get('summary'), 'offers': offers})
     q = normalise(query)
+
+    def browse(a):  # a headset store: VR first, then apps with artwork, newest first
+        o = a['offers'][0]
+        art = o.get('images') or {}
+        return (o.get('vr') is not True, not art.get('banner'), not art.get('screenshots'),
+                ''.join(chr(0x10ffff - ord(c)) for c in str(o.get('updated') or '')))
+    if not q:
+        result.sort(key=lambda a: (not any(o['fit']['installable'] is True for o in a['offers']),) + browse(a))
+        return result
     result.sort(key=lambda a: (not any(normalise(o.get('name')) == q for o in a['offers']),
                                not any(o['fit']['installable'] is True for o in a['offers']),
                                not any(normalise(o.get('name')).startswith(q) for o in a['offers']),
+                               a['offers'][0].get('vr') is not True,
                                normalise(a['name'])))
     return result
 
@@ -220,13 +230,16 @@ def search(query='', vr=None, source=None, installable=False, timeout=TIMEOUT, l
     items, errors = registry()
     if source and source not in [s['id'] for _, s in items]:
         raise SourceError('Unknown source')
-    tasks = [(s, _launch(m, s, query, limit)) for m, s in items
-             if s['enabled'] and (not source or s['id'] == source)]
+    chosen = [(m, s) for m, s in items if s['enabled'] and (not source or s['id'] == source)]
+    # Page-only sources (SideQuest) can't be searched; offer a link to browse them instead.
+    elsewhere = [{'name': s['name'], 'url': s['url']} for m, s in chosen if s.get('page_only')]
+    tasks = [(s, _launch(m, s, query, limit)) for m, s in chosen if not s.get('page_only')]
     entries, statuses = [], list(errors)
     for s, task in tasks:
         status = {'id': s['id'], 'name': s['name']}
         if task is None or not task['event'].wait(max(0, task['started'] + timeout - time.monotonic())):
-            status.update(status='timed out')
+            # Still working (e.g. first download of a large index); it keeps going and fills the cache.
+            status.update(status='loading')
         elif 'error' in task:
             status.update(status='error', error=task['error'])
         else:
@@ -235,7 +248,15 @@ def search(query='', vr=None, source=None, installable=False, timeout=TIMEOUT, l
         statuses.append(status)
         with _lock:
             _status[s['id']] = {k: v for k, v in status.items() if k not in ('id', 'name')}
-    return {'apps': group(entries, query, vr, installable), 'sources': statuses}
+    return {'apps': group(entries, query, vr, installable), 'sources': statuses, 'elsewhere': elsewhere}
+
+
+def warm():
+    """Start every enabled source's index download in the background (server start, new repo)."""
+    items, _ = registry()
+    for m, s in items:
+        if s['enabled'] and not s.get('page_only'):
+            _launch(m, s, '', 1)
 
 
 def install(source_id, entry_id, version_code=None, progress=None):

@@ -1623,6 +1623,7 @@ def main():
     args = ap.parse_args()
     httpd = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
     sweep_tmp()
+    threading.Thread(target=apk_search.warm, daemon=True).start()  # big indexes download before the first search
     if not frame_host.WINDOWS:
         signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(KeyboardInterrupt))
     if args.exit_on_eof:

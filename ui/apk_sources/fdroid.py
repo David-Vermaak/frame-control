@@ -68,7 +68,9 @@ def _child(base, name):
     decoded = urllib.parse.unquote(name)
     if not name or '\\' in decoded or any(x in ('.', '..') for x in decoded.split('/')):
         raise SourceError('unsafe repository file name')
-    url = urllib.parse.urljoin(base, name)
+    if '?' in decoded or urllib.parse.urlsplit(decoded).scheme:
+        raise SourceError('repository file is outside its repository')
+    url = urllib.parse.urljoin(base, urllib.parse.quote(decoded, safe='/'))  # names may contain '#' or spaces
     if not url.startswith(base) or urllib.parse.urlsplit(url).query or urllib.parse.urlsplit(url).fragment:
         raise SourceError('repository file is outside its repository')
     return url
@@ -246,7 +248,8 @@ def sources():
                 ('izzyondroid', 'IzzyOnDroid', 'https://apt.izzysoft.de/fdroid/repo/', IZZY_PIN)]
     settings = _read()
     return [dict(id=i, kind=KIND, name=n, url=u, fingerprint=p, builtin=True,
-                 enabled=settings['enabled'].get(i, True), trust='community')
+                 # The archive only holds superseded versions; it clutters search unless asked for.
+                 enabled=settings['enabled'].get(i, i != 'fdroid-archive'), trust='community')
             for i, n, u, p in builtins] + settings['repos']
 
 
@@ -288,7 +291,10 @@ def _summary(value):
 def _images(meta, base):
     def url(file):
         name = file.get('name') if isinstance(file, dict) else file
-        return _child(base, name) if isinstance(name, str) and name else None
+        try:
+            return _child(base, name) if isinstance(name, str) and name else None
+        except SourceError:
+            return None  # one odd image name mustn't hide the app
 
     icon = url(_text(meta.get('icon')))
     banner = url(_text(meta.get('featureGraphic')))
