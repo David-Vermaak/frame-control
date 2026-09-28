@@ -150,4 +150,10 @@ launches of user games, power operations or keep-awake changes were performed.
 binding/expiry/replay/concurrency, file-change rejection, and a real local HTTP
 endpoint for opt-in, text/image payloads and redirect refusal. Fake-Frame
 regressions are in `tests/e2e/test_agents.py`; local Docker execution was blocked
-because the Docker daemon was unavailable. CI runs those regressions.
+because the Docker daemon was unavailable. The ARM64 fake-Frame CI job passed
+on this branch (run 36421345682).
+
+**Verified on the same Frame/build:** both Ctrl-C and SIGTERM close the dedicated
+browser profile and SSH tunnel and remove the profile and panel log.
+
+![Assistant in Frame Chromium, after an opted-in request to the local test endpoint](img/assistant-panel.png)

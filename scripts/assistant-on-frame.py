@@ -9,10 +9,10 @@ import os
 from pathlib import Path
 import re
 import shlex
+import signal
 import shutil
 import subprocess
 import sys
-import time
 import uuid
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -32,6 +32,8 @@ def main():
     from frame_mcp import Client
     Client('http://127.0.0.1:' + str(args.port), os.environ.get('FRAME_UI_KEY', '1')).request('/api/host')
     profile = '/tmp/frame-control-assistant-' + uuid.uuid4().hex
+    log_path = ''
+    signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(KeyboardInterrupt))
     tunnel = subprocess.Popen(['ssh', '-N', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=8',
                                '-o', 'ExitOnForwardFailure=yes', '-o', 'ServerAliveInterval=15',
                                '-o', 'ServerAliveCountMax=2', '-R',
@@ -44,10 +46,14 @@ def main():
                                stdout=subprocess.DEVNULL, timeout=30)
         if probe.returncode or tunnel.poll() is not None:
             raise RuntimeError('Could not forward Frame Control to the Frame')
-        subprocess.run(['zsh', str(ROOT / 'scripts/panel-on-frame.sh'), '--name', 'Frame Control Assistant',
+        launched = subprocess.run(['zsh', str(ROOT / 'scripts/panel-on-frame.sh'), '--name', 'Frame Control Assistant',
                         'org.chromium.Chromium', '--user-data-dir=' + profile, '--no-first-run',
                         '--disable-background-networking', '--disable-sync',
-                        f'--app=http://127.0.0.1:{args.frame_port}/assistant'], check=True, timeout=45)
+                        f'--app=http://127.0.0.1:{args.frame_port}/assistant'], check=True, timeout=45, stdout=subprocess.PIPE, text=True)
+        print(launched.stdout, end='', flush=True)
+        match = re.search(r'log (/tmp/panel-on-frame\.[A-Za-z0-9]+)', launched.stdout)
+        if match:
+            log_path = match.group(1)
         print('Assistant panel open. Ctrl-C closes this panel and its tunnel.', flush=True)
         tunnel.wait()
         raise RuntimeError('SSH tunnel ended')
@@ -77,9 +83,11 @@ for sig in (signal.SIGTERM, signal.SIGKILL):
         except ProcessLookupError: pass
     time.sleep(.3)
 shutil.rmtree(profile, ignore_errors=True)
+if sys.argv[2]:
+    pathlib.Path(sys.argv[2]).unlink(missing_ok=True)
 '''
         result = subprocess.run(['ssh', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=8', alias,
-                                 'python3 - ' + shlex.quote(profile)], input=cleanup, text=True, timeout=20)
+                                 'python3 - ' + shlex.quote(profile) + ' ' + shlex.quote(log_path)], input=cleanup, text=True, timeout=20)
         if result.returncode:
             print('Cleanup failed; close the assistant panel and remove ' + profile + ' on the Frame.', file=sys.stderr)
 

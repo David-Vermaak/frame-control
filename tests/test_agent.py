@@ -2,6 +2,7 @@
 import io
 import json
 import os
+import shutil
 from pathlib import Path
 import subprocess
 import sys
@@ -147,6 +148,15 @@ class Assistant(unittest.TestCase):
             capture = mock.Mock()
             with self.assertRaises(ValueError): assistant.chat({**self.body, 'endpoint': url, 'screenshot': True}, capture)
             capture.assert_not_called()
+
+
+class AssistantPage(unittest.TestCase):
+    @unittest.skipUnless(shutil.which('node'), 'Node is required for the page script regression')
+    def test_approval_navigation_races(self):
+        root = Path(__file__).resolve().parents[1]
+        result = subprocess.run(['node', str(root / 'tests/assistant_ui.cjs'), str(root / 'ui/assistant.html')],
+                                capture_output=True, text=True, timeout=10)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
 
 class Protocol(unittest.TestCase):
