@@ -204,6 +204,7 @@ Frame's software fits together, all checked against a real headset and labelled
 | [SSH](docs/ssh.md) · [Streaming](docs/streaming.md) · [Files](docs/file-transfer.md) · [Panels](docs/panels.md) · [Tailscale](docs/tailscale.md) | Topic notes |
 | [Frame Control for iPhone](docs/iphone.md) | The iPhone and iPad app, how it runs the server on the Frame, pairing |
 | [Recovery and OS images](docs/recovery-and-images.md) | Where to download the Frame's OS, what's inside, testing without the headset |
+| [AI agents and assistant](docs/agents.md) | Key-free MCP tools, human approvals, and an opt-in assistant panel |
 | [Testing](docs/testing.md) | Unit tests, end-to-end tests against a fake Frame in Docker, and the headset smoke test |
 | [Open questions](docs/open-questions.md) | What's still unchecked |
 
