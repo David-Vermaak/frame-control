@@ -37,7 +37,7 @@ class PublisherSources(unittest.TestCase):
             self.assertTrue(entry['summary'])
             images = entry['images']
             self.assertEqual(entry['icon'], images['icon'])
-            for url in [images['icon'], images['banner']] + images['screenshots']:
+            for url in [u for u in [images['icon'], images['banner']] if u] + images['screenshots']:
                 self.assertTrue(url.startswith('https://'))
                 self.assertEqual(evidence[url]['status'], 200)
                 self.assertTrue(evidence[url]['image'])
@@ -53,8 +53,7 @@ class PublisherSources(unittest.TestCase):
         self.assertEqual(entry['images'], curated['images'])
         unknown = github.details(github.sources()[0], 'unknown/project')
         self.assertEqual(unknown['icon'], 'https://github.com/unknown.png')
-        self.assertEqual(unknown['images']['banner'],
-                         'https://opengraph.githubassets.com/1/unknown/project')
+        self.assertIsNone(unknown['images']['banner'])
 
     def test_real_releases(self):
         for key, repo in [('khronos', 'KhronosGroup/OpenXR-SDK-Source'),
@@ -79,8 +78,7 @@ class PublisherSources(unittest.TestCase):
         for entry, repo in zip(entries, data['items']):
             self.assertEqual(entry['icon'], repo['owner']['avatar_url'])
             self.assertEqual(entry['images']['icon'], entry['icon'])
-            self.assertEqual(entry['images']['banner'],
-                             'https://opengraph.githubassets.com/1/' + repo['full_name'])
+            self.assertIsNone(entry['images']['banner'])
             self.assertEqual(entry['images']['screenshots'], [])
         self.assertFalse(github.details(github.sources()[0], 'unknown/project')['downloadable'])
         with self.assertRaises(SourceError):

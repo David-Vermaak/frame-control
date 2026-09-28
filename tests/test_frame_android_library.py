@@ -244,6 +244,10 @@ class ArtworkTests(unittest.TestCase):
         data = (FIXTURES / 'icon.jpg').read_bytes()
         self.assertEqual(art.image_type(data), 'jpg')
         self.assertEqual(art.image_type(data + b'\0' * 64), 'jpg')  # trailing padding after EOI
+        gif = b'GIF89a' + struct.pack('<HH', 640, 360) + b'\0' * 20  # gameplay GIFs: first frame drawn
+        self.assertEqual(art.image_type(gif), 'gif')
+        with self.assertRaises(ValueError):
+            art.image_type(b'GIF89a' + struct.pack('<HH', 0, 360) + b'\0' * 20)
         with self.assertRaises(ValueError):
             art.image_type(data[:30])
 

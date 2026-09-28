@@ -34,6 +34,12 @@ def image_type(data):
     if data.startswith(PNG):
         png_size(data)
         return 'png'
+    if data[:6] in (b'GIF87a', b'GIF89a') and len(data) >= 10:
+        # Gameplay GIFs are common source screenshots; the Frame's Chromium draws their first frame.
+        w, h = struct.unpack_from('<HH', data, 6)
+        if w and h and w * h <= MAX_PIXELS and max(w, h) <= 8192:
+            return 'gif'
+        raise ValueError('artwork GIF has unsupported dimensions')
     if data.startswith(b'\xff\xd8'):
         # Check JPEG SOF dimensions without depending on an image library; trailing padding is fine.
         pos = 2
@@ -52,7 +58,7 @@ def image_type(data):
                     return 'jpg'
                 break
             pos += size
-    raise ValueError('artwork must be a supported PNG or JPEG')
+    raise ValueError('artwork must be a supported PNG, JPEG or GIF')
 
 
 def fetch(value, deadline=None):

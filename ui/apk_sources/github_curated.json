@@ -9,7 +9,7 @@
     "allow_prerelease": false,
     "images": {
       "icon": "https://raw.githubusercontent.com/KhronosGroup/OpenXR-SDK-Source/3ed64d0f9bb680f24b80a085091e5c8fab38f7b7/src/tests/hello_xr/android_resources/vulkan/mipmap-xxxhdpi/ic_helloxr_launcher.png",
-      "banner": "https://opengraph.githubassets.com/1/KhronosGroup/OpenXR-SDK-Source",
+      "banner": null,
       "screenshots": []
     },
     "icon": "https://raw.githubusercontent.com/KhronosGroup/OpenXR-SDK-Source/3ed64d0f9bb680f24b80a085091e5c8fab38f7b7/src/tests/hello_xr/android_resources/vulkan/mipmap-xxxhdpi/ic_helloxr_launcher.png"
@@ -60,7 +60,7 @@
     "allow_prerelease": false,
     "images": {
       "icon": "https://raw.githubusercontent.com/arpruss/OpenSaberPlus/8c5295cdaadf02ea7418b0c6cbea20240ba913af/icon.png",
-      "banner": "https://opengraph.githubassets.com/1/arpruss/OpenSaberPlus",
+      "banner": "https://raw.githubusercontent.com/arpruss/OpenSaberPlus/8c5295cdaadf02ea7418b0c6cbea20240ba913af/doc/images/OS0.4.0_1.gif",
       "screenshots": [
         "https://raw.githubusercontent.com/arpruss/OpenSaberPlus/8c5295cdaadf02ea7418b0c6cbea20240ba913af/doc/images/OS0.4.0_1.gif",
         "https://raw.githubusercontent.com/arpruss/OpenSaberPlus/8c5295cdaadf02ea7418b0c6cbea20240ba913af/doc/images/OS0.4.0_2.gif",
