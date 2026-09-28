@@ -24,29 +24,127 @@ _env = {}
 
 
 _index_lock = threading.Lock()
+_indexes = {}
 
 
-def load_index(repo):
-    """Share the catalogue's index files; installed apps use its writable cache."""
+class _IndexReader:
+    """Decode one object member at a time; never retain the whole raw index."""
+    def __init__(self, stream):
+        self.stream, self.buffer = stream, ''
+        self.decoder = json.JSONDecoder()
+
+    def fill(self):
+        chunk = self.stream.read(1 << 16)
+        if not chunk:
+            raise ValueError('incomplete F-Droid index')
+        self.buffer += chunk
+
+    def peek(self):
+        self.buffer = self.buffer.lstrip()
+        while not self.buffer:
+            self.fill()
+            self.buffer = self.buffer.lstrip()
+        return self.buffer[0]
+
+    def expect(self, char):
+        if self.peek() != char:
+            raise ValueError('invalid F-Droid index')
+        self.buffer = self.buffer[1:]
+
+    def value(self):
+        self.peek()
+        while True:
+            try:
+                value, end = self.decoder.raw_decode(self.buffer)
+                self.buffer = self.buffer[end:]
+                return value
+            except json.JSONDecodeError:
+                self.fill()
+
+    def members(self):
+        self.expect('{')
+        if self.peek() != '}':
+            while True:
+                key = self.value()
+                if not isinstance(key, str):
+                    raise ValueError('invalid F-Droid index key')
+                self.expect(':')
+                yield key
+                if self.peek() == '}':
+                    break
+                self.expect(',')
+        self.expect('}')
+
+
+def _reduce_index(path):
+    from pick import installable
+    packages = {}
+    found = False
+    with open(path, encoding='utf-8') as f:
+        reader = _IndexReader(f)
+        for key in reader.members():
+            if key != 'packages':
+                reader.value()
+                continue
+            found = True
+            for package in reader.members():
+                records = []
+                for v in reader.value().get('versions', {}).values():
+                    if not installable(v):
+                        continue
+                    m, file = v['manifest'], v['file']
+                    records.append({'version': m.get('versionName', ''),
+                                    'version_code': m.get('versionCode', 0),
+                                    'min_sdk': m.get('usesSdk', {}).get('minSdkVersion', 1),
+                                    'abis': m.get('nativecode') or [],
+                                    'name': file['name'], 'sha256': file.get('sha256')})
+                if records:
+                    packages[package] = records
+        if reader.buffer.strip() or f.read().strip():
+            raise ValueError('trailing data in F-Droid index')
+    if not found:
+        raise ValueError('invalid F-Droid index')
+    return packages
+
+
+def load_index(repo, cached_only=False):
+    """Compact installable records by package, cached on disk and by mtime in memory."""
     if repo not in APK_HOSTS:
         raise ValueError('unexpected index URL')
     directory = CACHE if os.environ.get('FRAME_CONTROL_APP') or '.app/Contents/Resources' in CATALOG else os.path.join(CATALOG, 'data')
     filename = 'index-v2.json' if repo == APK_HOSTS[0] else 'index-v2.archive.json'
-    path = os.path.join(directory, filename)
+    raw = os.path.join(directory, filename)
+    path = raw + '.installable-v1'
     with _index_lock:
-        if os.path.exists(path) and time.time() - os.path.getmtime(path) < 86400:
-            with open(path) as f:
-                return json.load(f)
+        mtime = os.stat(path).st_mtime_ns if os.path.exists(path) else None
+        if mtime is not None and (cached_only or time.time() - mtime / 1e9 < 86400):
+            cached = _indexes.get(path)
+            if cached is None or cached[0] != mtime:
+                with open(path) as f:
+                    cached = (mtime, json.load(f))
+                _indexes[path] = cached
+            return cached[1]
+        if cached_only:
+            return {}
         os.makedirs(directory, exist_ok=True)
         fd, tmp = tempfile.mkstemp(prefix=filename, suffix='.part', dir=directory)
+        os.close(fd)
         try:
-            with os.fdopen(fd, 'wb') as f, urllib.request.urlopen(repo + 'index-v2.json', timeout=30) as r:
-                shutil.copyfileobj(r, f, 1 << 20)
-            with open(tmp) as f:
-                index = json.load(f)
-            if not isinstance(index.get('packages'), dict):
-                raise ValueError('invalid F-Droid index')
+            if os.path.exists(raw) and time.time() - os.path.getmtime(raw) < 86400:
+                index = _reduce_index(raw)
+                refreshed = os.stat(raw).st_mtime_ns
+            else:
+                with open(tmp, 'wb') as f, urllib.request.urlopen(repo + 'index-v2.json', timeout=30) as r:
+                    shutil.copyfileobj(r, f, 1 << 20)
+                index = _reduce_index(tmp)
+                refreshed = time.time_ns()
+            with open(tmp, 'w') as f:
+                json.dump(index, f, separators=(',', ':'))
+            os.utime(tmp, ns=(refreshed, refreshed))
             os.replace(tmp, path)
+            _indexes[path] = (os.stat(path).st_mtime_ns, index)
+            if os.path.exists(raw):
+                os.remove(raw)
             return index
         finally:
             if os.path.exists(tmp):

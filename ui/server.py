@@ -81,10 +81,10 @@ exit 1
 
 
 class Failure(Exception):
-    def __init__(self, message, status=502, alternatives=None):
+    def __init__(self, message, status=502, apk=None):
         super().__init__(message)
         self.status = status
-        self.alternatives = alternatives
+        self.apk = apk
 
 
 _master_lock = threading.Lock()
@@ -443,6 +443,16 @@ def open_thing(body):
     except frame_host.HostError as e:
         raise Failure(str(e), 500)
     raise Failure("unknown target", 400)
+
+
+def apk_versions(query):
+    args = parse_qs(query, keep_blank_values=True)
+    packages, codes = args.get('package', []), args.get('code', [])
+    if len(packages) != 1 or not re.fullmatch(r'[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)+', packages[0]):
+        raise Failure('invalid Android package id', 400)
+    if codes and (len(codes) != 1 or not re.fullmatch(r'[0-9]{1,19}', codes[0])):
+        raise Failure('invalid version code', 400)
+    return frame_apk_versions.alternatives(packages[0], int(codes[0]) if codes else None)
 
 
 def android(body):
@@ -1170,6 +1180,8 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/api/host":
                 self.send_json({"os": frame_host.NAME, "fileManager": frame_host.FILE_MANAGER,
                                 "computer": "Mac" if frame_host.MAC else "PC"})
+            elif path == "/api/apk-versions":
+                self.send_json(apk_versions(url.query))
             elif path == "/api/android":
                 ensure_master()
                 self.send_json({"apps": frame_android.list_apps()})
@@ -1207,7 +1219,7 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 self.send_json({"error": "not found"}, 404)
         except Failure as e:
-            self.send_json({"error": str(e), **({"alternatives": e.alternatives} if e.alternatives is not None else {})}, e.status)
+            self.send_json({"error": str(e), **({"apk": e.apk} if e.apk is not None else {})}, e.status)
         except frame_android.FrameError as e:
             self.send_json({"error": str(e)}, 502)
         except Exception as e:
@@ -1233,7 +1245,7 @@ class Handler(BaseHTTPRequestHandler):
                 raise Failure("request body must be a JSON object", 400)
             self.send_json(handler(body))
         except Failure as e:
-            self.send_json({"error": str(e), **({"alternatives": e.alternatives} if e.alternatives is not None else {})}, e.status)
+            self.send_json({"error": str(e), **({"apk": e.apk} if e.apk is not None else {})}, e.status)
         except (ValueError, TypeError) as e:
             self.send_json({"error": f"bad request: {e}"}, 400)
         except frame_android.FrameError as e:
@@ -1333,7 +1345,6 @@ class Handler(BaseHTTPRequestHandler):
                     info["blocker"] = None
                 except frame_android.FrameError as e:
                     info["blocker"] = str(e)
-                    info["alternatives"] = frame_apk_versions.alternatives(info["package"], info.get("version_code"))
                 return {"message": f"Read {info['label']} {info['version']}", "apk": info}
             if mode == "title":
                 keep = True  # stage_title owns tmp now, and removes it on failure
@@ -1346,7 +1357,7 @@ class Handler(BaseHTTPRequestHandler):
                 try:
                     frame_android.check_installable(info)
                 except frame_android.FrameError as e:
-                    raise Failure(str(e), 400, frame_apk_versions.alternatives(info["package"], info.get("version_code")))
+                    raise Failure(str(e), 400, {"package": info["package"], "version_code": info.get("version_code"), "blocker": str(e)})
                 ensure_master()
                 try:
                     m = frame_android.install(str(dest), source=name)

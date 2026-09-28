@@ -50,6 +50,10 @@ needs to be confirmed or started in the headset.
 
 Lepton is Android 11 (API 30), with arm64-v8a only. If Frame Control refuses
 an APK, it shows compatible versions from F-Droid's main and archive repos.
+The refusal appears immediately; a separate request checks F-Droid while the
+dialog shows “Checking F-Droid for older versions…”. It shows at most eight
+distinct version names, newest first, preferring an arm64-only build when
+available. The count includes all compatible builds before release deduplication.
 Choose **Install** to download a listed version, verify its SHA-256 against
 the index, and install it as its own app.
 
@@ -320,3 +324,51 @@ because gamescope scales Lepton's surface to fit the same panel. Also unverified
 whether the settings survive the app or its Lepton instance relaunching.
 Lepton Development rebuilds its Android data on exit, so there they probably
 don't.
+
+## Version lookup performance
+
+Measured on 2026-09-28 with Python 3.9.6 against live f-droid.org, using an
+empty temporary cache. Both repositories download sequentially under one lock.
+The reducer decodes one package at a time with the standard library; the
+`.installable-v1` files contain only compatible build records grouped by package.
+Raw downloads are removed after reduction. The compact files refresh after one
+day and are retained in memory by file mtime. Install uses the cached records
+without refreshing the indexes or rerunning release selection.
+
+- Cold lookup: 33.304 s (process wall time 33.97 s).
+- Maximum RSS: 105,906,176 bytes (101 MiB).
+- Warm F-Droid lookup: 0.252 ms mean over 1,000 calls.
+- Warm Termux lookup: 0.227 ms.
+- Combined reduced cache: 16,460,680 bytes (15.7 MiB).
+- F-Droid: 8 of 250 compatible builds, newest 2.0.0 (code 2000050).
+- Termux: 8 of 71 compatible builds, newest 0.119.0-beta.3 (code 1022).
+- Both repository lookups returned no errors.
+
+Full results and `/usr/bin/time -l` output: [measurement](apk-versions-measurement.txt).
+Network timings depend on the connection and repository state. Reproduce with:
+
+```sh
+/usr/bin/time -l python3 -c '
+import json, sys, tempfile, time
+sys.path.insert(0, "ui")
+import frame_catalog as c, frame_apk_versions as v
+with tempfile.TemporaryDirectory() as directory:
+    c.CATALOG = directory
+    start = time.perf_counter()
+    print(json.dumps(v.alternatives("org.fdroid.fdroid")))
+    print("cold_seconds", time.perf_counter() - start)
+    print(json.dumps(v.alternatives("com.termux")))
+    start = time.perf_counter()
+    for _ in range(1000):
+        v.alternatives("org.fdroid.fdroid")
+    print("warm_mean_seconds", (time.perf_counter() - start) / 1000)
+'
+```
+
+Verification: `python3 -m unittest discover -s tests` passed 138 tests;
+`python3 -m py_compile ui/*.py`, inline JavaScript `node --check`, and
+`git diff --check` passed. Tests include concurrent cache use, failed refresh,
+mtime invalidation, streaming boundaries, cap/deduplication, endpoint validation,
+nonblocking refusal, and cached installation identity checks. No browser visual
+verification or physical headset installation was performed. Independent model
+review was omitted to honor the task's explicit no-delegation instruction.

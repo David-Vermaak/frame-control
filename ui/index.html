@@ -1154,16 +1154,33 @@ function upload(file, mode) {
     xhr.onload = () => {
       $("prog").style.display = "none";
       let data; try { data = JSON.parse(xhr.responseText); } catch { data = { error: `HTTP ${xhr.status}` }; }
-      if (data.alternatives) showApkAlternatives(data.error, data.alternatives);
+      if (data.apk?.blocker && xhr.status >= 300) checkApkAlternatives(data.apk);
       xhr.status < 300 ? resolve(data) : reject(new Error(data.error));
     };
     xhr.onerror = () => { $("prog").style.display = "none"; reject(new Error("network error")); };
     xhr.send(file);
   });
 }
+let apkLookup = 0;
+async function checkApkAlternatives(apk) {
+  const lookup = ++apkLookup;
+  $("apkAltReason").textContent = apk.blocker;
+  $("apkAltVersions").textContent = "Checking F-Droid for older versions…";
+  $("apkAltVersions").onclick = null;
+  for (const id of ["apkAltNote", "apkAltErrors", "apkAltLinks"]) $(id).textContent = "";
+  if (!$("apkAltDlg").open) $("apkAltDlg").showModal();
+  const query = new URLSearchParams({package: apk.package});
+  if (apk.version_code != null) query.set("code", apk.version_code);
+  try {
+    const result = await api(`/api/apk-versions?${query}`);
+    if (lookup === apkLookup && $("apkAltDlg").open) showApkAlternatives(apk.blocker, result);
+  } catch (e) {
+    if (lookup === apkLookup) $("apkAltVersions").textContent = e.message;
+  }
+}
 function showApkAlternatives(reason, result) {
   $("apkAltReason").textContent = reason;
-  $("apkAltNote").textContent = result.note;
+  $("apkAltNote").textContent = `${result.versions.length} of ${result.total} compatible versions. ${result.note}`;
   $("apkAltErrors").textContent = result.errors.join(" · ");
   $("apkAltLinks").innerHTML = result.links.map(l => `<a href="${esc(l.url)}" target="_blank" rel="noopener noreferrer">${esc(l.source)}</a>`).join(" · ");
   $("apkAltVersions").innerHTML = result.versions.length ? result.versions.map((v, i) =>
@@ -1740,7 +1757,7 @@ $("repFile").onchange = async () => {
     const { apk } = await upload(file, "apkinfo");
     $("repPkg").value = apk.package; $("repVer").value = apk.version; $("repLabel").value = apk.label;
     if (!$("repSrc").value) $("repSrc").value = file.name;
-    if (apk.alternatives) showApkAlternatives(apk.blocker, apk.alternatives);
+    if (apk.blocker) checkApkAlternatives(apk);
     $("repFileNote").textContent = apk.blocker ? `Note: ${apk.blocker}` : `${apk.package} ${apk.version}`;
   } catch (e) { $("repFileNote").textContent = e.message; }
   $("repFile").value = "";
