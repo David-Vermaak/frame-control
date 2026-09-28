@@ -386,6 +386,7 @@ _stream_proc = None
 
 
 def stream_command(query):
+    """The ffmpeg that streams H.264: the headset view, or one panel's own window (src=panel)."""
     q = parse_qs(query)
     try:
         height = int((q.get("h") or ["720"])[0])
@@ -395,6 +396,16 @@ def stream_command(query):
     if height not in STREAM_HEIGHTS or fps not in STREAM_FPS:
         raise Failure(f"h must be one of {STREAM_HEIGHTS} and fps one of {STREAM_FPS}", 400)
     rate = 3 if height == 720 else 6  # Mbit/s
+    if q.get("src") == ["panel"]:
+        # The panel's own pixels (x11grab of its window: gamescope keeps them), fitted
+        # to the height asked for. It stays still however the wearer moves their head.
+        window, display = panel_target(q)
+        return (f"DISPLAY={display} ffmpeg -hide_banner -loglevel error -nostdin -f x11grab -framerate {fps} "
+                f"-window_id {window} -i {display} "
+                f"-vf \"scale=-2:'trunc(min({height},ih)/2)*2',format=yuv420p\" -c:v libx264 -preset ultrafast "
+                f"-tune zerolatency -g {fps * 2} -bf 0 -b:v {rate}M -maxrate {rate}M -bufsize {rate // 2 or 1}M "
+                f"-x264-params aud=1:repeat-headers=1 -f h264 - & p=$!; "
+                f"exec >&-; cat >/dev/null; kill $p 2>/dev/null; wait $p")
     return (f"[ -e {STREAM_DEVICE} ] || {{ echo 'No headset view device ({STREAM_DEVICE}). Is SteamVR running?' >&2; exit 3; }}; "
             f"ffmpeg -hide_banner -loglevel error -nostdin -f v4l2 -video_size 1920x1080 -i {STREAM_DEVICE} "
             f"-vf fps={fps},scale=-2:{height},format=yuv420p -c:v libx264 -preset ultrafast -tune zerolatency "
@@ -817,6 +828,109 @@ def remote_input(body):
     if not isinstance(events, list) or len(events) > INPUT_BATCH_LIMIT:
         raise Failure(f"events must be a list of at most {INPUT_BATCH_LIMIT}", 400)
     return _input.send([input_event(e) for e in events])
+
+
+# ---- touch: the headset's panels, through gamescope's own input (frame_touch.py) ----
+
+PANEL_WINDOW = re.compile(r"^\d{1,10}$")
+PANEL_DISPLAY = re.compile(r"^:\d{1,2}$")
+TOUCH_BUTTONS = ("left", "right", "middle")
+
+
+def panels():
+    """The headset's app panels (window, display, name, size) and which has focus."""
+    return json.loads(ssh("python3 - panels", stdin=(HERE / "frame_touch.py").read_text(), timeout=20))
+
+
+def panel_target(q):
+    window, display = (q.get("window") or [""])[0], (q.get("display") or [""])[0]
+    if not PANEL_WINDOW.match(window) or not PANEL_DISPLAY.match(display):
+        raise Failure("window must be a window id and display an X display such as :1", 400)
+    return window, display
+
+
+def panel_capture(query):
+    """One frame of a panel's own window, as PNG (its pixels, without the room around it)."""
+    window, display = panel_target(parse_qs(query))
+    return ssh(f"DISPLAY={display} timeout 10 ffmpeg -hide_banner -loglevel error -nostdin -f x11grab "
+               f"-window_id {window} -i {display} -frames:v 1 -f image2pipe -c:v png -", timeout=20, text=False)
+
+
+def touch_event(event):
+    """A frame_touch.py event with only the fields it knows, in range."""
+    if not isinstance(event, dict):
+        raise Failure("each touch event must be an object", 400)
+
+    def num(name, limit):
+        value = event.get(name)
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or value != value:
+            raise Failure(f"{name} must be a number", 400)
+        return max(-limit, min(limit, round(float(value), 4)))
+    out = {}
+    if "fx" in event or "fy" in event:
+        out.update(fx=num("fx", 1), fy=num("fy", 1))
+        window = event.get("window")
+        if isinstance(window, bool) or not isinstance(window, int) or window <= 0:
+            raise Failure("window must be the panel's window id", 400)
+        out["window"] = window
+    for name in ("dx", "dy"):
+        if name in event:
+            out[name] = num(name, INPUT_MOVE_LIMIT)
+    if "button" in event:
+        if event["button"] not in TOUCH_BUTTONS:
+            raise Failure(f"button must be one of {', '.join(TOUCH_BUTTONS)}", 400)
+        out["button"], out["down"] = event["button"], event.get("down") is not False
+    if "scroll" in event:
+        sc = event["scroll"]
+        if not isinstance(sc, list) or len(sc) != 2:
+            raise Failure("scroll must be [dx, dy]", 400)
+        out["scroll"] = [num_value(v, 5000) for v in sc]
+    if "key" in event:
+        key = event["key"]
+        if isinstance(key, bool) or not isinstance(key, int) or not 0 < key < 768:
+            raise Failure("key must be a Linux key code", 400)
+        out["key"], out["down"] = key, event.get("down") is not False
+    if "text" in event:
+        text = event["text"]
+        if not isinstance(text, str) or not 0 < len(text) <= INPUT_TEXT_LIMIT:
+            raise Failure(f"text must be 1 to {INPUT_TEXT_LIMIT} characters", 400)
+        out["text"] = text
+    if not out:
+        raise Failure("touch event has nothing to do", 400)
+    return out
+
+
+def num_value(value, limit):
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or value != value:
+        raise Failure("scroll values must be numbers", 400)
+    return max(-limit, min(limit, round(float(value), 2)))
+
+
+class TouchAgent(InputAgent):
+    """frame_touch.py on the Frame, fed events over one long-lived ssh. Nothing to install:
+    it uses gamescope's own input socket and the libei that's on the image."""
+
+    def __init__(self):
+        super().__init__(source=HERE / "frame_touch.py", packages=[])
+
+    def deliver(self, report, force=False):
+        return ""
+
+    def command(self, folder=""):
+        code = base64.b64encode(self.source.read_bytes()).decode()
+        return "python3 -u -c " + shlex.quote(
+            f"import base64;exec(compile(base64.b64decode('{code}'),'frame_touch','exec'))")
+
+
+_touch = TouchAgent()
+
+
+def remote_touch(body):
+    """{"events": [...]} points, clicks, scrolls and types into the focused panel."""
+    events = body.get("events", [])
+    if not isinstance(events, list) or len(events) > INPUT_BATCH_LIMIT:
+        raise Failure(f"events must be a list of at most {INPUT_BATCH_LIMIT}", 400)
+    return _touch.send([touch_event(e) for e in events])
 
 
 def flatpak(body):
@@ -1548,7 +1662,7 @@ def _sweep_one(prefix, d):
 
 
 POST = {"/api/android/display": android_display, "/api/android": android, "/api/titles": titles, "/api/launch": launch, "/api/steam": steam, "/api/volume": set_volume, "/api/clipboard": clipboard,
-        "/api/input": remote_input,
+        "/api/input": remote_input, "/api/touch": remote_touch,
         "/api/flatpak": flatpak, "/api/open": open_thing, "/api/shots/save": save_shots,
         "/api/webinstall/check": webinstall_check, "/api/webinstall/start": webinstall_start,
         "/api/webinstall/cancel": webinstall_cancel}
@@ -1668,6 +1782,10 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(title_job(url.query))
             elif path == "/api/licenses":
                 self.send_json({"notices": licenses()})
+            elif path == "/api/panels":
+                self.send_json(panels())
+            elif path == "/api/touch":
+                self.send_json(_touch.send([]) if parse_qs(url.query).get("start") == ["1"] else dict(_touch.status))
             elif path == "/api/input":
                 self.send_json(_input.send([]) if parse_qs(url.query).get("start") == ["1"] else dict(_input.status))
             elif path == "/api/job":
@@ -1693,6 +1811,8 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_bytes(*shot_image(url.query))
             elif path == "/api/stream":
                 self.stream_video(url.query)
+            elif path == "/api/screenshot" and parse_qs(url.query).get("view") == ["panel"]:
+                self.send_bytes(panel_capture(url.query), "image/png", headers=[("X-Capture-Source", "panel")])
             elif path == "/api/screenshot" and parse_qs(url.query).get("view") == ["headset"]:
                 self.send_bytes(headset_view(), "image/png", headers=[("X-Capture-Source", "steamvr")])
             elif path == "/api/screenshot":
@@ -1761,7 +1881,7 @@ class Handler(BaseHTTPRequestHandler):
                 proc.wait()
                 errors.seek(0)
                 err = strip_ansi(errors.read().decode(errors="replace")).strip()
-                raise Failure(err or "The headset view sent no video for 20 s")
+                raise Failure(err or "The Frame sent no video for 20 s")
             chunk = first
             try:
                 self.send_response(200)
