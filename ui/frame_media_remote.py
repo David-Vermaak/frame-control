@@ -63,9 +63,11 @@ def run(body):
     if action == 'status':
         return status()
     if action == 'stop':
-        # --collect unloads the unit after it exits; stopping it then is a no-op, not an error.
-        if active():
-            subprocess.run(['systemctl', '--user', 'stop', UNIT], check=True, timeout=15)
+        # --collect unloads the unit after it exits; systemctl then exits 5
+        # ("not loaded", verified on the Frame). That's a finished player, not an error.
+        stopped = subprocess.run(['systemctl', '--user', 'stop', UNIT], capture_output=True, text=True, timeout=15)
+        if stopped.returncode not in (0, 5):
+            raise RuntimeError('Could not stop the media player: ' + (stopped.stderr.strip() or 'exit %s' % stopped.returncode))
         return {'message': 'Media player stopped', **status()}
     if action != 'play':
         raise ValueError('Media action must be list, status, play or stop')

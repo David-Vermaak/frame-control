@@ -1262,7 +1262,7 @@ for name, source in json.load(sys.stdin).items():
         ssh("python3 -c " + shlex.quote(installer), stdin=json.dumps(sources))
         try:
             out = ssh("python3 ~/.local/share/frame-control/media/frame_media_remote.py",
-                      stdin=json.dumps(body), timeout=60)
+                      stdin=json.dumps(body), timeout=75)  # remote worst case: ffprobe 30 + reset-failed 10 + systemd-run 15 s
         except Failure as e:
             for line in reversed(getattr(e, "stdout", "").splitlines()):
                 try:
@@ -1290,7 +1290,7 @@ def push_media(path):
     except Exception:
         try:
             ssh("rm -rf ~/" + dest)
-        except Failure:
+        except Exception:
             pass  # keep the copy error; an empty folder isn't listed as media
         raise
     return {"message": "Media sent. Choose its layout and press Play.",

@@ -83,15 +83,28 @@ class Media(unittest.TestCase):
             ssh.assert_not_called()
 
     def test_fake_frame_stop_only_owns_our_unit(self):
-        with patch.object(remote.subprocess, 'run') as run, patch.object(remote, 'status', return_value={}), \
-                patch.object(remote, 'active', return_value=True):
-            remote.run({'action': 'stop'})
-            self.assertEqual(run.call_args.args[0], ['systemctl', '--user', 'stop', 'frame-control-media.service'])
-        # A finished player is already collected; Stop is then a no-op, not an error.
-        with patch.object(remote.subprocess, 'run') as run, patch.object(remote, 'status', return_value={}), \
-                patch.object(remote, 'active', return_value=False):
-            remote.run({'action': 'stop'})
-            run.assert_not_called()
+        for rc in (0, 5):  # 5: already collected ("not loaded"), a no-op
+            with patch.object(remote.subprocess, 'run') as run, patch.object(remote, 'status', return_value={'state': 'ended'}):
+                run.return_value.returncode = rc
+                self.assertEqual(remote.run({'action': 'stop'})['state'], 'ended')
+                self.assertEqual(run.call_args.args[0], ['systemctl', '--user', 'stop', 'frame-control-media.service'])
+        with patch.object(remote.subprocess, 'run') as run, patch.object(remote, 'status', return_value={}):
+            run.return_value.returncode, run.return_value.stderr = 1, 'Access denied'
+            with self.assertRaisesRegex(RuntimeError, 'Access denied'):
+                remote.run({'action': 'stop'})
+
+    def test_start_failure_reports_systemd_error(self):
+        with tempfile.TemporaryDirectory() as d, patch.object(remote, 'ROOT', Path(d)), \
+                patch.object(remote, 'STATUS', Path(d)/'status.json'), \
+                patch.object(remote, 'active', return_value=False), \
+                patch.object(remote.subprocess, 'run') as run:
+            identity = 'b'*32+'/still_SBS.png'
+            (Path(d)/identity).parent.mkdir()
+            (Path(d)/identity).write_bytes(b'x')
+            run.return_value.returncode, run.return_value.stderr = 1, 'Unit already exists'
+            with patch.object(remote, 'probe', return_value=({}, False)), \
+                    self.assertRaisesRegex(RuntimeError, 'Unit already exists'):
+                remote.run({'action': 'play', 'id': identity})
 
     def test_upload_rejects_unplayable_names_and_keeps_copy_error(self):
         with patch.object(server, 'ssh') as ssh, patch.object(server, 'push_file') as push:
