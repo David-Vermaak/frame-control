@@ -379,6 +379,21 @@ class Bundled(unittest.TestCase):
         agent.start()
         self.wait_for(lambda: agent.status == {"state": "ready"})
 
+    def test_any_unexpected_error_still_reports_and_allows_a_retry(self):
+        agent, launches, procs = self.lifecycle([])
+        old = self.server.tempfile.TemporaryFile
+        self.server.tempfile.TemporaryFile = lambda: (_ for _ in ()).throw(OSError(24, "Too many open files"))
+        try:
+            agent.start()
+            self.wait_for(lambda: agent.status.get("state") == "error")
+        finally:
+            self.server.tempfile.TemporaryFile = old
+        self.assertIsNone(agent.launching)
+        agent.deliver = lambda report, force=False: (_ for _ in ()).throw(ValueError("something odd"))
+        agent.start()
+        self.wait_for(lambda: "something odd" in agent.status.get("message", ""))
+        self.assertIsNone(agent.launching)
+
     def test_copies_go_to_a_folder_of_their_own(self):
         first, _, _ = self.deliver(frame_has=False)
         second, _, _ = self.deliver(frame_has=False)

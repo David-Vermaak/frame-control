@@ -672,12 +672,23 @@ class InputAgent:
         threading.Thread(target=self._launch, args=(generation,), daemon=True).start()
 
     def _launch(self, generation, force=False):
+        try:
+            self._launch_once(generation, force)
+        except Exception as e:  # whatever went wrong, never leave it stuck "starting"
+            with self.lock:
+                if self.launching == generation:
+                    self.launching = None
+                if self.generation == generation and self.status.get("state") in ("starting", "installing"):
+                    self.status = {"state": "error", "message": f"Couldn't start the keyboard and trackpad: {e}"}
+
+    def _launch_once(self, generation, force):
         def report(message):
             with self.lock:
                 if self.generation == generation:
                     self.status = {"state": "installing", "message": message}
-        errors, folder = tempfile.TemporaryFile(), ""
+        folder = ""
         try:
+            errors = tempfile.TemporaryFile()
             ensure_master()
             folder = self.deliver(report, force)
             with self.lock:
@@ -740,8 +751,11 @@ class InputAgent:
                         self.status = status
         proc.wait()
         _live_tunnels.discard(proc)
-        errors.seek(0)
-        detail = strip_ansi(errors.read().decode(errors="replace")).strip()
+        try:
+            errors.seek(0)
+            detail = strip_ansi(errors.read().decode(errors="replace")).strip()
+        except OSError:
+            detail = ""
         with self.lock:
             if self.proc is proc and self.status.get("state") != "error" and not (wanted and retry):
                 message = detail.splitlines()[-1] if detail else "The connection to the Frame ended"
