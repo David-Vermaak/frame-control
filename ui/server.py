@@ -37,6 +37,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import frame_android  # noqa: E402
+import frame_apk_versions  # noqa: E402
 import frame_catalog  # noqa: E402
 import frame_host  # noqa: E402
 import frame_store  # noqa: E402
@@ -91,9 +92,10 @@ exit 1
 
 
 class Failure(Exception):
-    def __init__(self, message, status=502):
+    def __init__(self, message, status=502, apk=None):
         super().__init__(message)
         self.status = status
+        self.apk = apk
 
 
 # What ssh prints when it never reached the Frame, and what to tell the user
@@ -561,16 +563,28 @@ def open_thing(body):
     raise Failure("unknown target", 400)
 
 
+def apk_versions(query):
+    args = parse_qs(query, keep_blank_values=True)
+    packages, codes = args.get('package', []), args.get('code', [])
+    if len(packages) != 1 or not frame_android.PKG_RE.match(packages[0]):
+        raise Failure('invalid Android package id', 400)
+    if codes and (len(codes) != 1 or not re.fullmatch(r'[0-9]{1,19}', codes[0])):
+        raise Failure('invalid version code', 400)
+    return frame_apk_versions.alternatives(packages[0], int(codes[0]) if codes else None)
+
+
 def android(body):
     """Android apps, each in its own persistent Lepton instance (frame_android.py)."""
     action, pkg = body.get("action"), str(body.get("package", ""))
     ensure_master()
     try:
         if action == "install":
-            frame_catalog.app(pkg)  # an unknown package fails now, not in the background
+            url = body.get("url")
+            if not url:
+                frame_catalog.app(pkg)  # an unknown package fails now, not in the background
 
             def work():
-                m = frame_catalog.install(pkg)
+                m = frame_apk_versions.install(pkg, url) if url else frame_catalog.install(pkg)
                 return {"message": f"Installed {m['label']}. It's in the Steam library; launching it opens its own panel.",
                         "app": m}
             return start_job(f"Install {pkg}", work)
@@ -1303,8 +1317,10 @@ class Handler(BaseHTTPRequestHandler):
     def send_json(self, obj, status=200):
         self.send_bytes(json.dumps(obj).encode(), "application/json", status)
 
-    def send_error_json(self, message, status):
+    def send_error_json(self, message, status, apk=None):
         body, offline_status = error_body(message)
+        if apk is not None:
+            body["apk"] = apk
         self.send_json(body, offline_status or status)
 
     def do_GET(self):
@@ -1319,6 +1335,8 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json({"os": "SteamOS", "fileManager": None, "computer": DEVICE, "mobile": True} if LOCAL else
                                {"os": frame_host.NAME, "fileManager": frame_host.FILE_MANAGER,
                                 "computer": "Mac" if frame_host.MAC else "PC"})
+            elif path == "/api/apk-versions":
+                self.send_json(apk_versions(url.query))
             elif path == "/api/android":
                 ensure_master()
                 self.send_json({"apps": frame_android.list_apps()})
@@ -1358,7 +1376,7 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 self.send_json({"error": "not found"}, 404)
         except Failure as e:
-            self.send_error_json(str(e), e.status)
+            self.send_error_json(str(e), e.status, e.apk)
         except frame_android.FrameError as e:
             self.send_error_json(str(e), 502)
         except Exception as e:
@@ -1384,7 +1402,7 @@ class Handler(BaseHTTPRequestHandler):
                 raise Failure("request body must be a JSON object", 400)
             self.send_json(handler(body))
         except Failure as e:
-            self.send_error_json(str(e), e.status)
+            self.send_error_json(str(e), e.status, e.apk)
         except (ValueError, TypeError) as e:
             self.send_json({"error": f"bad request: {e}"}, 400)
         except frame_android.FrameError as e:
@@ -1489,6 +1507,14 @@ class Handler(BaseHTTPRequestHandler):
                 keep = True  # stage_title owns tmp now, and removes it on failure
                 return stage_title(str(dest), temp_dir=str(tmp))
             if mode == "apk":
+                try:
+                    info = frame_android.apk_info(str(dest))
+                except frame_android.FrameError as e:
+                    raise Failure(str(e), 400)
+                try:
+                    frame_android.check_installable(info)
+                except frame_android.FrameError as e:
+                    raise Failure(str(e), 400, {"package": info["package"], "version_code": info.get("version_code"), "blocker": str(e)})
                 ensure_master()
                 try:
                     m = frame_android.install(str(dest), source=name)
