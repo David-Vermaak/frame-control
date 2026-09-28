@@ -1,0 +1,2 @@
+# Preserve upstream headers byte-for-byte, including their existing whitespace.
+vendor/** -whitespace
