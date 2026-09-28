@@ -67,6 +67,9 @@ Drag files onto the window to send them. Drop a game's .zip, folder or .exe to a
 **📸 Screenshots**<br>
 Browse the shots you take in the headset and save them to your Pictures folder.
 
+**⌨️ Keyboard and trackpad**<br>
+Type and point in the Frame's apps from your computer or phone, through KDE Connect on the Frame. Nothing to install on the device in your hand.
+
 </td>
 </tr>
 <tr>

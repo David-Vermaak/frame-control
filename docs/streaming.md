@@ -66,18 +66,67 @@ capture it.
 
 ## Input: type and point in the Frame from the Mac or iPhone
 
-**Verified 2026-09-27** on the headset: `steamos` is in the `input` group and
-`/dev/uinput` is `crw-rw-r-- root input`, so **our own code can create a
-virtual keyboard and mouse without sudo**. The Frame has no `python-evdev`,
-`ydotool`, `wtype` or KDE Connect; `kwin_wayland` and `plasmashell` run only
-while the desktop panel is open in the headset.
+**Built: Home → Keyboard and trackpad**, in every version of Frame Control
+(Mac, Windows, Linux, iPhone and iPad), with nothing to install on the device
+you're holding. On a phone the panel is a trackpad (drag to move, tap to click,
+two fingers to scroll, two-finger tap to right-click) plus a text field that
+types on the Frame. On a computer, clicking the pad passes your mouse and
+keyboard through to the Frame until you press Esc (⌘ is sent as Ctrl on a Mac).
 
-| Option | Mac | iPhone | Notes |
+It goes through **KDE Connect**, the first-party route (KDE makes the Frame's
+desktop): Frame Control's server runs [`ui/frame_input_agent.py`](../ui/frame_input_agent.py)
+on the Frame, which talks KDE Connect's own LAN protocol to the Frame's
+`kdeconnectd` as if it were a phone. KDE Connect does the typing and clicking.
+
+**Verified 2026-09-28** (SteamOS 0.4.1, build 20260925.6191901):
+
+- KDE Connect isn't installed, but **Valve's package repository for the Frame
+  has it** (`kdeconnect` 24.02.2 in `extra`). The Frame lacks only `kpeople`,
+  `libfakekey`, `modemmanager-qt` and `pulseaudio-qt`. The agent fetches them
+  with `pacman -Sp` + `curl` into `~/.local/share/frame-control/kdeconnect`
+  (8 MB download, 82 MB unpacked, about 11 s), with no root and nothing on the
+  read-only system, so SteamOS updates leave it alone.
+- It pairs by itself: the agent asks to pair and accepts on KDE Connect's side
+  over D-Bus (`qdbus6 … acceptPairing`). It keeps its identity in
+  `…/kdeconnect/bridge`, so later connections are already paired. (A pair
+  request to a device that's already paired makes KDE Connect unpair it, so
+  the agent only asks when it isn't paired.)
+- Protocol version 7: whoever opens the TCP connection sends its identity line
+  in plain text, then acts as the **TLS server** (KDE Connect's
+  `lanlinkprovider.cpp`). Remote input is `kdeconnect.mousepad.request` with
+  `dx`/`dy`, `singleclick`, `rightclick`, `singlehold`/`singlerelease`,
+  `scroll`, `key` (any text) or `specialKey` (1 Backspace … 14 Escape,
+  21–32 F1–F12) and modifier flags.
+- **KDE Connect runs only while something uses the keyboard and trackpad.**
+  Each device gets its own KDE Connect identity (KDE Connect keeps one
+  connection per device, so a shared one would make a phone and a computer
+  knock each other off). The last one to disconnect stops KDE Connect, so it
+  isn't left running, or discoverable on your network, afterwards.
+- KDE Connect 24.02 **hangs or crashes when asked to unpair a device that's
+  offline** (seen twice: once spinning at 100% CPU with D-Bus unresponsive,
+  once exiting). Frame Control never unpairs. If its copy stops answering, the
+  agent restarts it once (tested by freezing it with `kill -STOP`).
+- Moves from the iPhone app (Simulator) and the Mac's server moved the Frame's
+  X pointer by exactly the amount sent.
+- gamescope runs **two Xwayland displays**. `:0` holds Steam's VR bar and menus
+  and ignores injected pointer motion; `:1` holds apps such as Chromium and
+  takes it. KDE Connect runs on `:1`, so it reaches apps, not Steam's own menus.
+  There's also a `gamescope-0-ei` (libei) socket.
+- **Not yet tested:** typing and clicking as seen in the headset, and whether
+  it reaches the KDE desktop panel (Plasma is its own session).
+- **Known limit:** keys and clicks typed while the link is reconnecting wait
+  and are sent once it's back, but anything sent in the moment the Wi-Fi
+  drops, before SSH notices, can be lost. Confirming every event would add a
+  round trip to each pointer move.
+
+Our own `uinput` keyboard and mouse would also work (`steamos` is in the
+`input` group and `/dev/uinput` is group-writable, verified 2026-09-27), and
+remains the fallback if KDE Connect ever can't be fetched.
+
+| Other option | Mac | iPhone | Why not |
 |---|---|---|---|
-| **A uinput keyboard and mouse in Frame Control's server** | ✓ | ✓ | **Recommended.** The server opens `/dev/uinput` with `ctypes` (standard library only) and the page sends key and pointer events through the tunnel it already has. On the phone: a trackpad area (drag to move, tap to click, two fingers to scroll) and the iOS keyboard for typing. On the Mac: a "control the Frame" mode that captures the keyboard and pointer (Esc to release). Uinput devices look like real hardware to the kernel, so libinput, KWin and gamescope should take them; [frame-voice](https://github.com/DeeJanuz/frame-voice) already types into a Frame through a uinput keyboard. **Untested**: which surfaces in VR (desktop panel, SteamVR dashboard, games, Android apps in Lepton) accept the pointer. About a day or two of work |
-| **Bluetooth keyboard and mouse** | – | – | Real hardware paired in SteamOS settings. The iPhone can't pretend to be a Bluetooth keyboard: iOS won't advertise the HID service ([Apple forums](https://developer.apple.com/forums/thread/733916)) |
+| **Bluetooth keyboard and mouse** | – | – | Needs real hardware, paired in SteamOS settings. The iPhone can't pretend to be a Bluetooth keyboard: iOS won't advertise the HID service ([Apple forums](https://developer.apple.com/forums/thread/733916)) |
 | **Deskflow** (formerly Input Leap / Barrier) | ✓ | – | Moves the Mac's own mouse and keyboard onto the Frame's screen edge. Flathub has an aarch64 build ([Flathub](https://flathub.org/apps/org.deskflow.deskflow)); on Wayland it needs the InputCapture/libei portal, and only works while Plasma is running. No iPhone client |
-| **KDE Connect** | ~ | ✓ | Its iOS app has a remote touchpad and keyboard, but the Frame would need KDE Connect installed (not on Flathub; `pacman` on a read-only root). More moving parts than the uinput route |
 | **Remmina / Steam Link / RDP** | ✓ | – | Input only reaches the streamed session, not the headset's own apps |
 
 Other ways to get text in:

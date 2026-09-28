@@ -244,6 +244,7 @@ function fromUi(e) {
 
 ipcMain.handle("clipboard:read", (e) => fromUi(e) ? clipboard.readText() : "");
 ipcMain.handle("connection:setup", (e) => { if (fromUi(e)) setUpConnection(); });
+ipcMain.on("keys:capture", (e, on) => { if (fromUi(e)) win.webContents.setIgnoreMenuShortcuts(on === true); });
 
 // frame-control://install links from websites (docs/web-install.md). They can
 // arrive before the window or server exists (macOS open-url on a cold launch),

@@ -10,6 +10,7 @@ Env:   FRAME_ALIAS (default frame)
        FRAME_LOCAL=1   run on the Frame itself (the iPhone app starts it there over SSH)
        FRAME_UI_KEY    required X-Frame-UI value (the iPhone app passes a fresh one)
        FRAME_DEVICE    what to call the device the page runs on (e.g. iPhone)
+       FRAME_CLIENT    a stable id for that device (keyboard-and-trackpad pairing is kept per id)
 """
 import argparse
 import base64
@@ -54,6 +55,8 @@ if LOCAL:
     os.environ["PATH"] = f"{HERE / 'local-bin'}{os.pathsep}{os.environ.get('PATH', '')}"
 UI_KEY = os.environ.get("FRAME_UI_KEY") or "1"
 DEVICE = os.environ.get("FRAME_DEVICE") or "phone"
+# What the Frame's KDE Connect calls this device (keyboard and trackpad).
+INPUT_NAME = DEVICE if LOCAL else socket.gethostname().split(".")[0]
 FRAME = os.environ.get("FRAME_ALIAS", "frame")
 if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", FRAME):
     sys.exit(f"FRAME_ALIAS must be a plain host alias, not {FRAME!r}")
@@ -495,6 +498,161 @@ def clipboard(body):
         if not isinstance(text, str) or not text:
             raise Failure("nothing to send", 400)
     return {"message": ssh(PASTE_CMD, stdin=text, timeout=30).strip()}
+
+
+# ---- keyboard and pointer (KDE Connect on the Frame, see frame_input_agent.py) ----
+
+INPUT_FLAGS = ("singleclick", "doubleclick", "middleclick", "rightclick", "singlehold", "singlerelease",
+               "scroll", "ctrl", "alt", "shift", "super")
+INPUT_MOVE_LIMIT = 2000  # pixels per event
+INPUT_TEXT_LIMIT = 500  # characters per event
+INPUT_BATCH_LIMIT = 200  # events per request
+
+
+def input_event(event):
+    """A KDE Connect remote-input body with only the fields it knows, in range."""
+    if not isinstance(event, dict):
+        raise Failure("each input event must be an object", 400)
+    out = {}
+    for name in ("dx", "dy"):
+        value = event.get(name)
+        if value is None:
+            continue
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or value != value:
+            raise Failure(f"{name} must be a number", 400)
+        out[name] = max(-INPUT_MOVE_LIMIT, min(INPUT_MOVE_LIMIT, round(float(value), 2)))
+    for name in INPUT_FLAGS:
+        if event.get(name) is True:
+            out[name] = True
+    key = event.get("key")
+    if key is not None:
+        if not isinstance(key, str) or not 0 < len(key) <= INPUT_TEXT_LIMIT:
+            raise Failure(f"key must be text of 1 to {INPUT_TEXT_LIMIT} characters", 400)
+        out["key"] = key
+    special = event.get("specialKey")
+    if special is not None:
+        # KDE Connect's numbering: 1 Backspace … 14 Escape, 21-32 F1-F12.
+        if isinstance(special, bool) or not isinstance(special, int) or not 1 <= special <= 32:
+            raise Failure("specialKey must be a whole number from 1 to 32", 400)
+        out["specialKey"] = special
+    if not set(out) - {"ctrl", "alt", "shift", "super"}:
+        raise Failure("input event has nothing to do", 400)
+    return out
+
+
+def input_client():
+    """A stable id for this device, so KDE Connect on the Frame keeps its pairing apart.
+
+    The iPhone app passes one (FRAME_CLIENT). A computer makes one the first time
+    and keeps it: host names alone can clash (desk.home and desk.office).
+    """
+    if os.environ.get("FRAME_CLIENT"):
+        return os.environ["FRAME_CLIENT"]
+    if LOCAL:
+        return DEVICE
+    path = frame_host.data_dir("input-client-id")
+    try:
+        saved = path.read_text().strip()
+        if re.fullmatch(r"[A-Za-z0-9_-]{4,64}", saved):
+            return saved
+    except OSError:
+        pass
+    made = (re.sub(r"[^A-Za-z0-9-]", "", INPUT_NAME)[:24] or "computer") + "-" + secrets.token_hex(4)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(made)
+    except OSError:
+        pass  # still works this time; it pairs again next time
+    return made
+
+
+class InputAgent:
+    """frame_input_agent.py running on the Frame, fed events over one long-lived ssh.
+
+    It sets up KDE Connect there if needed, pairs, and reports its state
+    ({"state": "off" | "installing" | "starting" | "pairing" | "ready" | "error"}).
+    """
+
+    def __init__(self, source=HERE / "frame_input_agent.py"):
+        self.source, self.proc, self.lock = source, None, threading.Lock()
+        self.status = {"state": "off"}
+
+    def command(self):
+        code = base64.b64encode(self.source.read_bytes()).decode()
+        client = input_client()
+        return ("python3 -u -c " + shlex.quote(
+            f"import base64;exec(compile(base64.b64decode('{code}'),'frame_input_agent','exec'))")
+            + f" {shlex.quote(client)} {shlex.quote(INPUT_NAME)}")
+
+    def start(self):
+        with self.lock:
+            if self.proc and self.proc.poll() is None:
+                return
+            ensure_master()
+            self.status = {"state": "starting"}
+            errors = tempfile.TemporaryFile()
+            self.proc = proc = subprocess.Popen([*SSH, FRAME, self.command()], stdin=subprocess.PIPE,
+                                                stdout=subprocess.PIPE, stderr=errors)
+            _live_tunnels.add(proc)
+        threading.Thread(target=self._watch, args=(proc, errors), daemon=True).start()
+
+    def _watch(self, proc, errors):
+        for line in proc.stdout:
+            try:
+                status = json.loads(line)
+            except ValueError:
+                continue
+            if isinstance(status, dict) and isinstance(status.get("state"), str):
+                with self.lock:
+                    if self.proc is proc:
+                        self.status = status
+        proc.wait()
+        _live_tunnels.discard(proc)
+        errors.seek(0)
+        detail = strip_ansi(errors.read().decode(errors="replace")).strip()
+        with self.lock:
+            if self.proc is proc and self.status.get("state") != "error":
+                message = detail.splitlines()[-1] if detail else "The connection to the Frame ended"
+                friendly = unreachable(message)
+                self.status = {"state": "error", "message": friendly or message, **({"offline": True} if friendly else {})}
+
+    def send(self, events):
+        """Forward events if the agent is ready; start it if it isn't running.
+
+        Returns the state, with "sent" saying whether the events went; if not,
+        the page keeps them and sends them again once the state is "ready".
+        """
+        with self.lock:
+            proc, ready = self.proc, self.status.get("state") == "ready"
+        sent = False
+        if not (proc and proc.poll() is None):
+            self.start()
+        elif ready and events:
+            try:
+                proc.stdin.write((json.dumps(events) + "\n").encode())
+                proc.stdin.flush()
+                sent = True
+            except (BrokenPipeError, OSError, ValueError):
+                pass  # _watch reports how it ended
+        with self.lock:
+            return {**self.status, "sent": sent}
+
+    def stop(self):
+        with self.lock:
+            proc, self.proc, self.status = self.proc, None, {"state": "off"}
+        if proc and proc.poll() is None:
+            proc.terminate()
+
+
+_input = InputAgent()
+
+
+def remote_input(body):
+    """{"events": [...]} sends keyboard and pointer events; {} (or none yet) just starts the agent."""
+    events = body.get("events", [])
+    if not isinstance(events, list) or len(events) > INPUT_BATCH_LIMIT:
+        raise Failure(f"events must be a list of at most {INPUT_BATCH_LIMIT}", 400)
+    return _input.send([input_event(e) for e in events])
 
 
 def flatpak(body):
@@ -1214,6 +1372,7 @@ def _sweep_one(prefix, d):
 
 
 POST = {"/api/android/display": android_display, "/api/android": android, "/api/titles": titles, "/api/launch": launch, "/api/steam": steam, "/api/volume": set_volume, "/api/clipboard": clipboard,
+        "/api/input": remote_input,
         "/api/flatpak": flatpak, "/api/open": open_thing, "/api/shots/save": save_shots,
         "/api/webinstall/check": webinstall_check, "/api/webinstall/start": webinstall_start,
         "/api/webinstall/cancel": webinstall_cancel}
@@ -1327,6 +1486,8 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json({"titles": frame_titles.list_titles()})
             elif path == "/api/titles/job":
                 self.send_json(title_job(url.query))
+            elif path == "/api/input":
+                self.send_json(_input.send([]) if parse_qs(url.query).get("start") == ["1"] else dict(_input.status))
             elif path == "/api/job":
                 self.send_json(job_status(url.query))
             elif path == "/api/android/displays":
