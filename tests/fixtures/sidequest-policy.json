@@ -1,0 +1,18 @@
+{
+  "recorded": "2026-09-28",
+  "robots": {
+    "url": "https://sidequestvr.com/robots.txt",
+    "user_agent": "*",
+    "crawl_delay": 3,
+    "disallow": ["/search/", "/user/*", "/sideload/*"],
+    "sitemap": "https://sidequestvr.com/sitemap_index.xml"
+  },
+  "api_robots": {"url": "https://api.sidequestvr.com/robots.txt", "status": 403},
+  "terms": {
+    "url": "https://sidequestvr.com/terms",
+    "bundle": "https://sidequestvr.com/main-4MMXZRXL.js",
+    "prohibited_activities_i": "copy, distribute, or disclose any part of the Service in any medium, including without limitation by any automated or non-automated scraping",
+    "prohibited_activities_xi": "access any content on the Service through any technology or means other than those provided or authorized by the Service"
+  },
+  "note": "Policy evidence, not a fabricated API response. No app metadata or download fixture was collected after discovering the restriction."
+}
