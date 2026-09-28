@@ -43,6 +43,7 @@ class Helpers(unittest.TestCase):
         self.assertAlmostEqual(w / h, 0.5, places=2)
 
     @unittest.skipUnless(shutil.which("bash"), "needs bash")
+    @unittest.skipIf(os.name == "nt", "Windows' bash.exe is WSL's launcher, and runners have no distribution")
     def test_launch_script_parses(self):
         r = subprocess.run(["bash", "-n"], input=frame_macview.LAUNCH, text=True, capture_output=True)
         self.assertEqual(r.returncode, 0, r.stderr)

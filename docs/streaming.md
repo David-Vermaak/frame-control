@@ -5,6 +5,8 @@ This covers three directions, plus input:
 - **A. Frame → Mac**: see and control the headset from the Mac.
 - **B. Mac → Frame**: use the Mac's desktop inside the headset.
 - **C. iPhone → Frame**: mirror the phone inside the headset.
+- **PC VR from Linux**: [feasibility and options](linux-vr-streaming.md),
+  including Valve's streaming and USB support. No Linux host tested yet.
 - **Input**: type and point in the Frame from the Mac or iPhone.
 
 The confidence labels are the same as in [ssh.md](ssh.md).
@@ -24,11 +26,13 @@ Mac with keyboard, mouse, and clipboard.
 
 ## B. Show the Mac's desktop inside the Frame
 
-The Frame's streaming features are built around a **Windows PC running
-SteamVR** plus the USB Wi-Fi 6E dongle. Even Linux hosts had VR-streaming
-problems at launch
+The Frame's VR streaming uses **SteamVR** on the host. Linux hosts had
+VR-streaming problems at launch
 ([Steam discussion](https://steamcommunity.com/app/4165890/discussions/0/528765047224280796/),
 [gbl08ma](https://gbl08ma.com/posts/steam-frame-a-linux-machine-doesnt-support-linux/)).
+Valve's later 2.17.8 notes explicitly describe Steam Link fixes on Linux and
+initial USB streaming support (**documented**, not tested from a Linux host
+here). See [the current comparison](linux-vr-streaming.md#a-valves-own-path--recommended-first).
 **macOS isn't a supported SteamVR host**, so for the Mac we're only looking at
 flat 2D desktop streaming into a window on the Frame's Linux desktop.
 
