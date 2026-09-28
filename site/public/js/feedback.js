@@ -2,7 +2,7 @@
 const form = document.getElementById("feedback");
 const errorBox = document.getElementById("error");
 const send = document.getElementById("send");
-const started = Date.now();
+const started = performance.now();
 
 const HINTS = {
   bug: "What you tried, what happened, and what you expected.",
@@ -50,7 +50,7 @@ form.addEventListener("submit", async (e) => {
   e.preventDefault();
   errorBox.hidden = true;
   const data = Object.fromEntries(new FormData(form));
-  data.started = started;
+  data.elapsed = Math.round(performance.now() - started);
 
   if (data.title.trim().length < 5) {
     form.elements.title.focus();

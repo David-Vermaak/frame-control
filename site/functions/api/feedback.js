@@ -45,7 +45,9 @@ export async function onRequestPost({ request, env }) {
   if (checked.spam) return json(200, { ok: true });
   if (checked.error) return json(400, { error: checked.error });
 
-  if (env.FEEDBACK_RL) {
+  // Best effort: KV is eventually consistent, so bursts can slip past, and a
+  // storage error lets the feedback through rather than losing it.
+  if (env.FEEDBACK_RL) try {
     const ip = request.headers.get("cf-connecting-ip") || "unknown";
     const hour = Math.floor(Date.now() / 3600e3);
     const day = Math.floor(Date.now() / 86400e3);
@@ -57,6 +59,8 @@ export async function onRequestPost({ request, env }) {
     if (await overLimit(env.FEEDBACK_RL, `day:${day}`, TOTAL_PER_DAY, 90000)) {
       return json(429, { error: "The form has had a busy day. Try again tomorrow, or use GitHub." });
     }
+  } catch (err) {
+    console.log(`Rate limit check failed: ${err}`);
   }
 
   const res = await fetch(`https://api.github.com/repos/${env.GITHUB_REPO}/issues`, {

@@ -17,18 +17,25 @@ const GITHUB_LOGIN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/;
 
 const oneLine = (value, max) => String(value ?? "").replace(/\s+/g, " ").trim().slice(0, max);
 
-// Mentions in someone else's text would ping strangers, and issue refs would
-// cross-link, so break both with a zero-width space.
+// Mentions in someone else's text would ping strangers, and issue references
+// (#1, owner/repo#1, GH-1, github.com links) would add backlinks to other
+// people's issues, so break them all with a zero-width space.
+const ZWSP = "\u200b";
 export function defang(text) {
-  return text.replace(/@(?=[A-Za-z0-9])/g, "@​").replace(/(^|\s)#(?=\d)/g, "$1#​");
+  return text
+    .replace(/@(?=[A-Za-z0-9])/g, `@${ZWSP}`)
+    .replace(/#(?=\d)/g, `#${ZWSP}`)
+    .replace(/\b(GH)-(?=\d)/gi, `$1${ZWSP}-`)
+    .replace(/\b(github)\.com/gi, `$1${ZWSP}.com`);
 }
 
 // Returns { error } or { value } with every field trimmed and bounded.
-export function validate(input, now = Date.now()) {
+export function validate(input) {
   if (!input || typeof input !== "object") return { error: "Send the form as JSON." };
   if (oneLine(input.website, 200)) return { spam: true };
-  const started = Number(input.started);
-  if (!Number.isFinite(started) || now - started < MIN_FILL_MS) return { spam: true };
+  // Measured in the browser with a monotonic clock, so clock skew doesn't matter.
+  const elapsed = Number(input.elapsed);
+  if (!Number.isFinite(elapsed) || elapsed < MIN_FILL_MS) return { spam: true };
 
   const kind = Object.hasOwn(KINDS, input.kind) ? input.kind : "other";
   const title = oneLine(input.title, LIMITS.title[1]);
