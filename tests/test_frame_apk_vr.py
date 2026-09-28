@@ -21,11 +21,11 @@ from test_frame_apk import pool
 DEFAULT = 'android.intent.category.DEFAULT'
 
 
-def manifest(utf8=False, launcher=False, category=None, samsung=False, split=False, alias=False):
+def manifest(utf8=False, launcher=False, category=None, samsung=False, split=False, alias=False, splash=False):
     strings = ['manifest', 'package', 'org.test.vr', 'application', 'activity', 'intent-filter',
                'action', 'category', 'name', vr.MAIN, category or next(iter(sorted(vr.VR))),
                vr.LAUNCHER, 'http://schemas.android.com/apk/res/android', 'meta-data', 'value',
-               'com.samsung.android.vr.application.mode', 'vr_only', 'activity-alias', DEFAULT, next(iter(sorted(vr.VR)))]
+               'com.samsung.android.vr.application.mode', 'vr_only', 'activity-alias', DEFAULT, next(iter(sorted(vr.VR))), 'targetActivity', '.Splash', '.Game']
     def start(tag, attrs=()):
         body = struct.pack('<IIHHHHHH', 0xffffffff, strings.index(tag), 20, 20, len(attrs), 0, 0, 0)
         for name, value in attrs:
@@ -39,7 +39,10 @@ def manifest(utf8=False, launcher=False, category=None, samsung=False, split=Fal
     b = pool(strings, utf8) + start('manifest', [('package', 'org.test.vr')]) + start('application')
     if samsung:
         b += leaf('meta-data', [('name', strings[15]), ('value', 'vr_only')])
-    b += start('activity') + start('intent-filter') + leaf('action', [('name', vr.MAIN)])
+    if splash:  # a helper activity with its own MAIN filter, ahead of the game's
+        b += start('activity', [('name', '.Splash')]) + start('intent-filter') + leaf('action', [('name', vr.MAIN)])
+        b += leaf('category', [('name', DEFAULT)]) + end('intent-filter') + end('activity')
+    b += start('activity', [('name', '.Game')] if splash else []) + start('intent-filter') + leaf('action', [('name', vr.MAIN)])
     b += leaf('category', [('name', strings[10])])
     if split:
         b += end('intent-filter') + start('intent-filter')
@@ -47,7 +50,7 @@ def manifest(utf8=False, launcher=False, category=None, samsung=False, split=Fal
         b += leaf('category', [('name', vr.LAUNCHER)])
     b += end('intent-filter') + end('activity')
     if alias:  # Godot 4: LAUNCHER only on an alias of the activity ('vr' or 'flat')
-        b += start('activity-alias') + start('intent-filter') + leaf('action', [('name', vr.MAIN)])
+        b += start('activity-alias', [('targetActivity', '.Game')] if splash else []) + start('intent-filter') + leaf('action', [('name', vr.MAIN)])
         if alias == 'vr':
             b += leaf('category', [('name', next(iter(sorted(vr.VR))))])
         b += leaf('category', [('name', vr.LAUNCHER)])
@@ -100,6 +103,19 @@ class VRTests(unittest.TestCase):
             self.assertTrue(info['launchable'])
             self.assertFalse(info['repairable'])
             self.assertEqual(info['vr'], is_vr)
+
+    def test_alias_target_activity_is_patched(self):
+        original = manifest(alias='flat', category=DEFAULT, splash=True)
+        info, filters = vr.inspect(original)
+        self.assertTrue(info['repairable'])
+        self.assertEqual(filters[0]['activity'], 'org.test.vr.Game')
+        owner, launchers = None, []
+        for tag, attrs in frame_apk.manifest_elements(vr.add_launcher_category(original)):
+            if tag in ('activity', 'activity-alias'):
+                owner = (tag, attrs.get('name', (0, 0, None))[2])
+            if tag == 'category' and attrs['name'][2] == vr.LAUNCHER:
+                launchers.append(owner)
+        self.assertEqual(launchers, [('activity', '.Game'), ('activity-alias', None)])
 
     def test_alias_with_launchable_activity_is_left_alone(self):
         original = manifest(launcher=True, alias='vr')

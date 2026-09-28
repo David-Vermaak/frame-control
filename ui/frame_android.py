@@ -322,7 +322,7 @@ def patch(src, dst, add=None):
             original = frame_apk._read(z, 'AndroidManifest.xml', frame_apk.MAX_MANIFEST)
         manifest = add_launcher_category(original) if info['repairable'] else original
         if not info['launchable'] and not info['repairable']:
-            raise FrameError('APK has no MAIN/LAUNCHER or patchable VR activity')
+            raise FrameError('APK has no MAIN/LAUNCHER activity that Frame Control can patch')
         repack(src, dst, replace={'AndroidManifest.xml': manifest}, add=add)
         result = apk_info(dst)
         result.pop('icon_png', None)

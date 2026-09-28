@@ -10,7 +10,8 @@ import zipfile
 
 # android: attribute resource ids; names can be stripped by shrinkers, ids can't.
 ATTR = {0x01010001: 'label', 0x01010002: 'icon', 0x01010003: 'name',
-        0x01010024: 'value', 0x0101021b: 'versionCode', 0x0101021c: 'versionName', 0x0101020c: 'minSdkVersion'}
+        0x01010024: 'value', 0x0101021b: 'versionCode', 0x0101021c: 'versionName', 0x0101020c: 'minSdkVersion',
+        0x01010202: 'targetActivity'}
 T_REF, T_STRING, T_INT_DEC, T_INT_HEX = 0x01, 0x03, 0x10, 0x11
 # APKs can come from websites (install links), so nothing read from one may be
 # unbounded. zipfile stops at a member's declared size, so checking it is enough.

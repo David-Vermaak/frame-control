@@ -10,13 +10,18 @@ VR = {'com.oculus.intent.category.VR', 'org.khronos.openxr.intent.category.IMMER
 def inspect(data):
     elements = iter(frame_apk.manifest_elements(data))
     stack, filters, samsung = [], [], False
-    current = None
+    current, owner, package = None, None, ''
     for kind, hs, off, size in frame_apk._chunks(data, 8, len(data)):
         if kind == 0x0102:
             tag, attrs = next(elements)
             value = attrs.get('name', (None, None, None))[2]
+            if tag == 'manifest':
+                package = attrs.get('package', (None, None, None))[2] or ''
+            if tag in ('activity', 'activity-alias'):
+                owner = attrs.get('targetActivity', (None, None, None))[2] if tag == 'activity-alias' else value
+                owner = package + owner if owner and owner.startswith('.') else owner
             if tag == 'intent-filter' and stack and stack[-1] in ('activity', 'activity-alias'):
-                current = {'actions': set(), 'categories': set(), 'templates': [], 'alias': stack[-1] == 'activity-alias'}
+                current = {'actions': set(), 'categories': set(), 'templates': [], 'alias': stack[-1] == 'activity-alias', 'activity': owner}
             if current is not None and stack and stack[-1] == 'intent-filter':
                 if tag == 'action':
                     current['actions'].add(value)
@@ -38,7 +43,9 @@ def inspect(data):
     real = [f for f in mains if not f['alias']]
     targets = [f for f in real if VR & f['categories']]
     if not targets and any(LAUNCHER in f['categories'] or VR & f['categories'] for f in mains if f['alias']):
+        aimed = {f['activity'] for f in mains if f['alias'] and (LAUNCHER in f['categories'] or VR & f['categories'])}
         targets = [f for f in real if f['templates']]  # the patch copies an existing <category>
+        targets = [f for f in targets if f['activity'] in aimed] or targets
     launchable = any(LAUNCHER in f['categories'] for f in real)
     return {'launchable': launchable, 'repairable': not launchable and bool(targets),
             'vr_activity': bool(vr_filters), 'vr': bool(vr_filters) or samsung}, targets

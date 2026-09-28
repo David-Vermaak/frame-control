@@ -100,8 +100,11 @@ VR apps default to immersive mode without the flatscreen marker. The upload
 selector or CLI `--flat` / `--vr` overrides that choice. Compatibility notes
 identify legacy VrApi, Meta platform SDK and OpenXR libraries.
 
-If a VR MAIN intent filter lacks LAUNCHER, Frame Control inserts it, repacks
-and v2-signs the APK locally before copying it; `meta.json` records
+Lepton only starts an `<activity>` whose MAIN intent filter has LAUNCHER; it
+ignores `<activity-alias>`, which is where Godot 4 exports put LAUNCHER. When no
+real activity qualifies, Frame Control adds LAUNCHER to the VR activity's MAIN
+filter, or to the activity the launcher alias targets, then repacks and v2-signs
+the APK locally before copying it; `meta.json` records
 `"patched": ["launcher"]`. Unchanged ZIP members retain their compressed
 bytes; stored libraries are aligned to 16 KiB. The RSA signing identity lives
 in Frame Control's per-user app-data directory as `apk-signing-key.json`
