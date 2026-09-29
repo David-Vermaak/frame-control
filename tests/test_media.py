@@ -1,5 +1,6 @@
 """Owned media planning, eye isolation, decoder choice and fake-Frame ownership."""
 import json
+import os
 from pathlib import Path
 import struct
 import sys
@@ -109,7 +110,8 @@ class Media(unittest.TestCase):
 
     def test_upload_rejects_unplayable_names_and_keeps_copy_error(self):
         with patch.object(server, 'ssh') as ssh, patch.object(server, 'push_file') as push:
-            for name in ('.hidden.mp4', 'a\\b_SBS.mp4'):
+            # On Windows a backslash is a separator, so such a name can't reach here.
+            for name in ('.hidden.mp4',) + (('a\\b_SBS.mp4',) if os.sep == '/' else ()):
                 with self.assertRaises(server.Failure):
                     server.push_media(Path('/tmp')/name)
             ssh.assert_not_called()
