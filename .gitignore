@@ -6,3 +6,6 @@ compat-db/.env.lakebed.server
 compat-db/.lakebed/
 tests/smoke/results/
 mac/bin/
+
+# Downloaded at build time (frame/kdeconnect/fetch.py, app/build/fetch-deps.js)
+frame/kdeconnect/packages/

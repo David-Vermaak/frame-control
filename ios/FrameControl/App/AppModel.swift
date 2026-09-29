@@ -1,4 +1,5 @@
 import Citadel
+import CryptoKit
 import Foundation
 import SwiftUI
 import UIKit
@@ -33,6 +34,11 @@ final class AppModel: ObservableObject {
     }
 
     var deviceName: String { UIDevice.current.userInterfaceIdiom == .pad ? "iPad" : "iPhone" }
+    /// Stable per install: a hash of this device's SSH key, which is made once and kept in the Keychain.
+    var clientID: String {
+        let digest = SHA256.hash(data: Data(authorizedKeysLine.utf8))
+        return deviceName.lowercased() + "-" + digest.prefix(6).map { String(format: "%02x", $0) }.joined()
+    }
     private var hostKey: String? { UserDefaults.standard.string(forKey: Self.hostKeyKey) }
 
     // MARK: pairing
@@ -167,7 +173,7 @@ final class AppModel: ObservableObject {
             guard current() else { throw CancellationError() }
             step("Starting Frame Control on the headset")
             let key = Self.randomKey()
-            let server = try await HeadsetServer.start(in: dir, over: l, key: key, device: deviceName)
+            let server = try await HeadsetServer.start(in: dir, over: l, key: key, device: deviceName, client: clientID)
             guard current() else { throw CancellationError() }
             let f = try await PortForwarder.start(over: l, to: server.port)
             forwarder = f

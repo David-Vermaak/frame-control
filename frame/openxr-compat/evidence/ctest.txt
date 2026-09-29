@@ -1,0 +1,9 @@
+Test project /Users/saphid/projects/steam-frame-xrlayer/frame/openxr-compat/build-host
+    Start 1: compat_logic
+1/2 Test #1: compat_logic .....................   Passed    0.01 sec
+    Start 2: layer_dispatch
+2/2 Test #2: layer_dispatch ...................   Passed    0.42 sec
+
+100% tests passed out of 2
+
+Total Test time (real) =   0.43 sec

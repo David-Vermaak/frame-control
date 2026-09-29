@@ -87,6 +87,7 @@
   .wait::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--dim); flex: none; }
 
   /* ---- drop anywhere ---- */
+  #media select { min-width: 0; max-width: 100%; flex: 1; }
   .dropzone { position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; pointer-events: none;
               background: rgba(14,20,27,.82); backdrop-filter: blur(3px); }
   .dropzone > div { padding: 42px 60px; border: 2px dashed var(--blue); border-radius: 8px; text-align: center;
@@ -146,6 +147,18 @@
   .viewer .badge { position: absolute; left: 12px; top: 12px; font-size: 11px; letter-spacing: 1.2px; text-transform: uppercase;
                    background: rgba(0,0,0,.6); color: var(--text); padding: 4px 9px; border-radius: 2px; }
   .viewer .badge.live { left: auto; right: 12px; background: var(--bad); color: #fff; font-weight: 700; }
+  .view-actions { display: flex; gap: 10px; }
+  .ctrl-status { margin-top: 10px; font-size: 13px; color: var(--blue); }
+  .ctrl-status::before { content: "● "; }
+  .ctrl-status.warn { color: var(--warn); }
+  /* Control: the view takes taps, clicks, drags and keys, and none of them zoom or pan it. */
+  .viewer.control { outline: 1px solid var(--blue); }
+  .viewer.control canvas { cursor: crosshair; touch-action: none; }
+  .viewer.control.rel canvas { cursor: move; }
+  .viewer.immersive { position: fixed; z-index: 40; inset: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left);
+                      max-height: none; aspect-ratio: auto; border-radius: 0; }
+  .ctrl-keys { margin-top: 10px; }
+  #panelPick { max-width: 240px; height: 30px; }
   .viewer .stamp { position: absolute; right: 12px; bottom: 12px; font-size: 11px; color: #c7d5e0;
                    background: rgba(0,0,0,.6); padding: 3px 8px; border-radius: 2px; }
   .viewer .asleep { position: absolute; inset: auto 0 0 0; padding: 14px 18px; text-align: center; color: var(--text);
@@ -226,6 +239,17 @@
   .actions { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
   .actions button { justify-content: flex-start; height: 40px; }
   .actions svg { width: 16px; height: 16px; flex: none; opacity: .85; }
+  .notice { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; padding: 12px 16px; border-radius: 4px;
+            background: rgba(26,159,255,.12); border-left: 3px solid var(--blue); font-size: 13.5px; line-height: 1.5; }
+  .notice .grow { flex: 1; min-width: 260px; }
+  .notice .progress { width: 160px; margin-top: 0; display: block; }
+  .popt { display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; align-items: start; margin: 0 0 14px; cursor: pointer; }
+  .popt input { margin: 3px 0 0; width: 16px; height: 16px; accent-color: var(--blue); }
+  .popt b { font-weight: 600; color: var(--text); }
+  .popt .sub { grid-column: 2; line-height: 1.45; }
+  .sentlog { max-height: 260px; overflow: auto; background: rgba(0,0,0,.3); border-radius: 3px; padding: 10px;
+             font: 11.5px ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; word-break: break-all; margin: 8px 0 0; }
+  details summary { cursor: pointer; color: var(--link); font-size: 13px; margin-top: 12px; }
   .links { margin-top: 16px; padding-top: 14px; border-top: 1px solid rgba(255,255,255,.06); font-size: 13px; color: var(--muted); }
   .links a { color: var(--link); text-decoration: none; } .links a:hover { color: #fff; }
   .links div { margin: 5px 0; }
@@ -254,10 +278,21 @@
   .and-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 22px; align-items: start; }
   .and-col { display: grid; gap: 22px; align-content: start; }
   .rep-item .s { white-space: normal; }
-  #repDlg, #titleDlg, #wiDlg, #pwDlg, #apkAltDlg { background: #1e2329; color: var(--text); border: 1px solid rgba(255,255,255,.1); border-radius: 4px;
+  #bugDlg, #repDlg, #titleDlg, #wiDlg, #pwDlg, #apkAltDlg, #aboutDlg { background: #1e2329; color: var(--text); border: 1px solid rgba(255,255,255,.1); border-radius: 4px;
             padding: 22px; width: min(560px, 92vw); box-shadow: 0 20px 60px rgba(0,0,0,.6); }
-  #repDlg::backdrop, #titleDlg::backdrop, #wiDlg::backdrop, #pwDlg::backdrop, #apkAltDlg::backdrop { background: rgba(0,0,0,.55); }
-  #repDlg h2, #titleDlg h2, #wiDlg h2, #pwDlg h2, #apkAltDlg h2 { margin: 0 0 14px; font-size: 15px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--bright); }
+  #bugDlg::backdrop, #repDlg::backdrop, #titleDlg::backdrop, #wiDlg::backdrop, #pwDlg::backdrop, #apkAltDlg::backdrop, #aboutDlg::backdrop { background: rgba(0,0,0,.55); }
+  #bugDlg { width: min(640px, calc(100vw - 40px)); }
+  #bugForm label.field { display: block; font-size: 12.5px; color: var(--muted); margin-top: 10px; }
+  #bugForm label.field input, #bugForm label.field textarea, #bugForm select { margin-top: 5px; }
+  #bugForm select { width: 100%; background: rgba(0,0,0,.28); color: var(--text); border: 1px solid transparent;
+                    border-radius: 3px; padding: 8px 10px; font: inherit; }
+  #bugForm .popt { margin: 14px 0 0; }
+  #bugForm .sentlog { max-height: 200px; }
+  #bugWarn { color: var(--muted); font-size: 12.5px; line-height: 1.45; margin: 12px 0 0; }
+  #bugDlg h2, #repDlg h2, #titleDlg h2, #wiDlg h2, #pwDlg h2, #apkAltDlg h2, #aboutDlg h2 { margin: 0 0 14px; font-size: 15px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--bright); }
+  .about-text { max-height: 55vh; overflow: auto; }
+  .about-text pre { white-space: pre-wrap; font-size: 12px; color: var(--muted); }
+  .about-text summary { cursor: pointer; margin: 8px 0; }
   #repForm label, #titleForm label { display: block; font-size: 12.5px; color: var(--muted); margin-top: 10px; }
   #repForm label input[type=text], #repForm textarea, #titleForm label input, #titleForm label select { margin-top: 5px; }
   #titleForm select { width: 100%; background: rgba(0,0,0,.28); color: var(--text); border: 1px solid transparent;
@@ -329,6 +364,19 @@
                              border-radius: 3px; height: 32px; padding: 0 8px; font: inherit; font-size: 13px; }
   /* Touch screens can't hover: keep the library's name and Play button showing. */
   @media (hover: none) { .capsule .over { opacity: 1; } .capsule:hover { transform: none; } }
+  /* ---- keyboard and trackpad ---- */
+  .pad-area { position: relative; height: 190px; margin: 12px 0; border-radius: 4px; background: rgba(0,0,0,.28);
+              border: 1px dashed rgba(255,255,255,.14); display: grid; place-items: center; cursor: pointer;
+              touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; outline: none; }
+  .pad-area:focus-visible, .pad-area.captured { border: 1px solid var(--blue); box-shadow: 0 0 0 1px var(--blue) inset; }
+  .pad-area.off { cursor: default; opacity: .55; }
+  .pad-hint { max-width: 420px; padding: 0 16px; text-align: center; color: var(--muted); font-size: 13px; pointer-events: none; }
+  .pad-keys { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .pad-keys input { flex: 1 1 220px; min-width: 0; height: 32px; padding: 0 10px; border-radius: 3px; border: 1px solid transparent;
+                    background: rgba(0,0,0,.28); color: var(--text); font: inherit; }
+  .pad-keys input:focus { outline: none; border-color: var(--blue); }
+  #pad .hint { margin-top: 10px; }
+
   /* ---- phones, upright or on their side: tabs move to a bottom bar, as in iOS apps. Every edge keeps clear of
      the safe area (notch or Dynamic Island, rounded corners, home indicator); env() is zero on desktops. ---- */
   @media (max-width: 640px), (max-height: 500px) and (hover: none) {
@@ -354,6 +402,9 @@
     .grid-top, .grid-3, .and-grid, .and-col { gap: 14px; }
     .toolbar { gap: 8px; }
     .toolbar .spacer { display: none; }
+    .view-actions { flex: 1 1 100%; display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+    .view-actions button { justify-content: center; padding: 0 4px; }
+    #panelPick { flex: 1 1 100%; max-width: none; }
     .shelf-head { flex-wrap: wrap; row-gap: 8px; }
     .shelf { grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 10px; }
     .cat-grid { grid-template-columns: 1fr; }
@@ -365,6 +416,10 @@
     button.small { height: 32px; }
     .actions button { height: 46px; }
     .cat-tools select { max-width: none; flex: 1 1 100%; }
+    .pad-area { height: 240px; }
+    .pad-keys .seg { flex: 1 1 100%; display: grid; grid-template-columns: repeat(4, 1fr); }
+    .pad-keys .pad-clicks { grid-template-columns: repeat(2, 1fr); }
+    .pad-keys .seg button { padding: 0 4px; justify-content: center; text-align: center; }
     /* The on-screen keyboard covers the bottom of the screen; the tab bar would ride on top of it. */
     body.typing nav { display: none; }
   }
@@ -390,12 +445,31 @@
   <div class="spacer"></div>
   <span class="chip" id="conn" role="status"><span class="dot"></span><span>Connecting…</span></span>
   <span class="chip" id="battChip" title="Battery">—</span>
+  <button id="reportBtn" data-report title="Report a problem, with diagnostics" aria-label="Report a problem">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M12 3l10 18H2z"/><path d="M12 10v5M12 18v.5"/></svg>
+  </button>
   <button id="refreshAll" title="Refresh (R)" aria-label="Refresh">
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
   </button>
 </header>
 
 <main>
+  <div class="notice" id="updateBar" hidden>
+    <div class="grow" id="updateText"></div>
+    <div class="progress" id="updateProg" hidden><i></i></div>
+    <button class="small" id="updateNotes">What's new</button>
+    <button class="action small" id="updateGo">Update and restart</button>
+    <button class="small" id="updateLater">Later</button>
+  </div>
+  <div class="notice" id="privacyNotice" hidden>
+    <div class="grow">Frame Control sends anonymous usage statistics: that it was installed and opened, its version,
+      your operating system, which tabs you use, and whether installs on the Frame worked. Never file names, paths,
+      addresses or anything you've typed, and it isn't linked to you. You can also share whether Android apps
+      worked and the details of errors, which helps fix problems faster.</div>
+    <button class="small" id="noticeSettings">Privacy settings</button>
+    <button class="small" id="noticeMore" title="Also share compatibility results and error details (you can turn either off later)">Share more to help fix problems</button>
+    <button class="action small" id="noticeOk">OK</button>
+  </div>
   <div class="banner" id="offline" role="alert" hidden>
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M2 8.5a15 15 0 0 1 20 0M5.5 12a10 10 0 0 1 13 0M9 15.5a5 5 0 0 1 6 0"/><circle cx="12" cy="19" r="1.2" fill="currentColor"/><path d="M3 3l18 18"/></svg>
     <div class="grow"><div class="t" id="offMsg">Can't reach the Frame</div>
@@ -410,16 +484,20 @@
       <div class="toolbar">
         <div class="seg" aria-label="What to capture">
           <button data-view="headset" class="on" title="What the headset shows, via the SteamVR compositor">Headset view</button>
-          <button data-view="flat" title="gamescope's 2D layer: the desktop panel and Steam's flat UI">Desktop panel</button>
+          <button data-view="flat" title="The app panel in use, flat: it stays still however the wearer looks around">Desktop</button>
         </div>
+        <select id="panelPick" class="small" hidden aria-label="Which panel to show"></select>
         <div class="seg" id="eyeSeg" aria-label="Crop">
           <button data-eye="left" class="on" title="One eye, like pointing a camera into one lens">Left eye</button>
           <button data-eye="both" title="Both eyes side by side">Both eyes</button>
         </div>
         <div class="spacer"></div>
-        <button class="action" id="shotBtn">Capture</button>
-        <button id="liveBtn" title="Keep updating: video of the headset view, or repeated captures of the desktop panel">Live</button>
-        <button id="saveBtn" disabled>Save</button>
+        <span class="view-actions">
+          <button class="action" id="shotBtn">Capture</button>
+          <button id="liveBtn" title="Keep updating, as video">Live</button>
+          <button id="ctrlBtn" title="Control the Frame by tapping or clicking on the view (C)">Control</button>
+          <button id="saveBtn" disabled>Save</button>
+        </span>
       </div>
       <div class="viewer" id="viewer">
         <div class="empty" id="viewerEmpty">
@@ -440,6 +518,25 @@
         </div>
         <div class="asleep" id="asleep" hidden>The headset is showing a blank frame. It's probably asleep or not being worn. Put it on and capture again.</div>
         <div class="loading"><div class="spinner"></div></div>
+      </div>
+      <div class="ctrl-status" id="ctrlBadge" role="status" hidden></div>
+      <div class="pad-keys ctrl-keys" id="ctrlKeys" hidden aria-label="Keys and clicks for the Frame">
+        <input id="ctrlType" type="text" placeholder="Type here to type on the Frame" autocomplete="off" autocapitalize="off"
+               autocorrect="off" spellcheck="false" enterkeyhint="send">
+        <span class="seg pad-clicks">
+          <button data-ctrl-click="left" title="Left click where the pointer is">Click</button>
+          <button data-ctrl-click="right" title="Right click where the pointer is">Right-click</button>
+        </span>
+        <span class="seg pad-special">
+          <button data-ctrl-key="1" title="Escape">Esc</button>
+          <button data-ctrl-key="15" title="Tab">Tab</button>
+          <button data-ctrl-key="105" title="Left arrow" aria-label="Left arrow">←</button>
+          <button data-ctrl-key="103" title="Up arrow" aria-label="Up arrow">↑</button>
+          <button data-ctrl-key="108" title="Down arrow" aria-label="Down arrow">↓</button>
+          <button data-ctrl-key="106" title="Right arrow" aria-label="Right arrow">→</button>
+          <button data-ctrl-key="14" title="Backspace" aria-label="Backspace">⌫</button>
+          <button data-ctrl-key="28" title="Enter">Enter</button>
+        </span>
       </div>
       <div class="hint" id="viewHint"></div>
     </section>
@@ -477,6 +574,37 @@
       </div>
     </section>
   </div>
+
+  <section class="panel" id="pad">
+    <div class="shelf-head"><h2>Keyboard and trackpad</h2><span class="sub" id="padState"></span><span class="spacer"></span>
+      <button class="small" id="padOn">Turn on</button>
+    </div>
+    <div class="pad-area" id="padArea" tabindex="0" role="application" aria-label="Trackpad for the Frame">
+      <div class="pad-hint" id="padHint"></div>
+    </div>
+    <div class="pad-keys" aria-label="Keys and clicks">
+      <input id="padType" type="text" placeholder="Type here to type on the Frame" autocomplete="off" autocapitalize="off"
+             autocorrect="off" spellcheck="false" enterkeyhint="send">
+      <span class="seg pad-clicks">
+        <button data-pad-click="singleclick" title="Left click">Click</button>
+        <button data-pad-click="rightclick" title="Right click">Right-click</button>
+      </span>
+      <span class="seg pad-special">
+        <button data-pad-key="14" title="Escape">Esc</button>
+        <button data-pad-key="2" title="Tab">Tab</button>
+        <button data-pad-key="4" title="Left arrow" aria-label="Left arrow">←</button>
+        <button data-pad-key="5" title="Up arrow" aria-label="Up arrow">↑</button>
+        <button data-pad-key="7" title="Down arrow" aria-label="Down arrow">↓</button>
+        <button data-pad-key="6" title="Right arrow" aria-label="Right arrow">→</button>
+        <button data-pad-key="1" title="Backspace" aria-label="Backspace">⌫</button>
+        <button data-pad-key="12" title="Enter">Enter</button>
+      </span>
+    </div>
+    <div class="hint">Types and points in apps on the Frame, such as Chromium or the desktop's Linux apps; Steam's own VR menus
+      don't take it. It works through KDE Connect, which comes with Frame Control: the first time, it copies Valve's build
+      for the Frame (3.6 MB, 18 MB unpacked) into your home folder there and pairs with it. No internet needed, and nothing
+      else to install. <a href="#" data-about>Licences</a></div>
+  </section>
 
   <section id="shots">
     <div class="shelf-head"><h2>Screenshots</h2><span class="count" id="shotCount"></span><span class="spacer"></span>
@@ -598,6 +726,7 @@
   </div>
 
   <div class="page" data-page="tools">
+  <section class="panel"><h2>Assistant and AI agents</h2><p>Use your own model endpoint, or review a proposed MCP action. Nothing is sent to a model until you opt in.</p><a href="/assistant">Open assistant</a></section>
   <div class="grid-3">
     <section class="panel" id="transfer">
       <div class="shelf-head"><h2>Send to Frame</h2></div>
@@ -608,6 +737,12 @@
         <span class="desk-only">You can also drop files anywhere in this window.</span>
         <input type="file" id="fileInput" multiple hidden>
       </div>
+      <label class="sub" for="apkDisplay">Android display</label>
+      <select id="apkDisplay" aria-label="Android app display mode">
+        <option value="auto">Automatic (detect VR)</option>
+        <option value="flat">Flat screen</option>
+        <option value="vr">VR app</option>
+      </select>
       <div class="progress" id="prog"><i></i></div>
       <div class="shelf-head" style="margin-top:18px"><h2>Clipboard</h2></div>
       <textarea id="clipText" placeholder="Text to put on the Frame's clipboard…"></textarea>
@@ -616,6 +751,31 @@
         <button class="small" id="clipMac">Send this computer's clipboard</button>
       </div>
       <div class="hint">Clipboard needs the desktop panel open in the headset.</div>
+    </section>
+
+    <section class="panel" id="media">
+      <div class="shelf-head"><h2>Media in the headset</h2><span class="count">Preview</span></div>
+      <p class="sub">Play your movies and stereo photos with Frame Control's own player.</p>
+      <div class="row"><button class="small" id="mediaChoose">Send media…</button>
+        <button class="small" id="mediaRefresh">Refresh</button></div>
+      <input type="file" id="mediaInput" accept=".mp4,.mkv,.mov,.m4v,.webm,.png,.jpg,.jpeg,.splat" hidden>
+      <div class="row" style="margin-top:12px"><label for="mediaFile">On the Frame</label>
+        <select id="mediaFile"><option value="">Refresh to load your media</option></select></div>
+      <div class="row" style="margin-top:8px"><label for="mediaLayout">Layout</label>
+        <select id="mediaLayout">
+          <option value="auto">Detect from name or metadata</option><option value="mono">2D</option>
+          <option value="sbs">Half SBS · left / right</option><option value="ou">Half OU · top / bottom</option>
+          <option value="full-sbs">Full SBS · left / right</option><option value="full-ou">Full OU · top / bottom</option>
+        </select></div>
+      <div class="row" style="margin-top:8px"><label><input type="checkbox" id="mediaTheatre" checked>
+        Theatre · bigger screen, dark surround</label></div>
+      <div class="row" style="margin-top:12px"><button class="action small" id="mediaPlay">Play</button>
+        <button class="small" id="mediaStop">Stop</button></div>
+      <p class="sub" id="mediaState" role="status" aria-live="polite">Choose a file to begin.</p>
+      <div class="hint">H.264/H.265 video; SBS/OU PNG or JPEG photos. Screens follow your head.
+        Small .splat files show a stationary stereo preview (up to 20,000 Gaussians).
+        Native HEIC/MPO photos, large splat scenes, seeking and subtitles aren't supported yet.
+        Stop works from here; playback also ends after four hours.</div>
     </section>
 
     <section class="panel" id="apps">
@@ -643,6 +803,7 @@
       <div class="hint desk-only">Sleep, Restart and Shut down open a terminal window for the Developer Mode password.</div>
       <div class="hint mobile-only">Sleep, Restart and Shut down ask for the Developer Mode password. SSH, SFTP, Steam Link and remote desktop open in the app that handles them.</div>
       <div class="row mobile-only" style="margin-top:14px"><button class="small" id="changeHeadset">Change headset…</button></div>
+      <div class="row" style="margin-top:14px"><button class="small" data-about>About and licences</button></div>
       <div class="links desk-only">
         <div><a href="https://store.steampowered.com/remoteplay" target="_blank">Steam Link</a>: Valve's remote view of the headset</div>
         <div><a href="https://streamframe.app/" target="_blank">Stream Frame</a>: third-party recorder (macOS 14+)</div>
@@ -679,6 +840,24 @@
       <div class="hint">Each window or screen becomes its own panel in the headset. Place it with the SteamVR dashboard
         (Float in World, Move, Size). Point and click with the laser, scroll with the thumbstick, and type on the Mac's keyboard.</div>
     </section>
+
+    <section class="panel" id="privacy">
+      <div class="shelf-head"><h2>Privacy &amp; updates</h2><span class="spacer"></span><span class="sub" id="appVersion"></span></div>
+      <label class="popt"><input type="checkbox" id="tUsage"><b>Anonymous usage statistics</b>
+        <span class="sub">Installs, opens, version, operating system, tabs used, and whether installs on the Frame
+          worked (with an error category, never the message). F-Droid package names only.</span></label>
+      <label class="popt"><input type="checkbox" id="tCompat"><b>Share compatibility results</b>
+        <span class="sub">Your APK reports and tests (package, version, result, your notes) go to the shared
+          compatibility database, so the verdicts get better for everyone.</span></label>
+      <label class="popt"><input type="checkbox" id="tDiag"><b>Send error details</b>
+        <span class="sub">Error messages and where in Frame Control they happened, with your home
+          folder, user name, addresses and keys removed.</span></label>
+      <div class="hint" id="tStatus"></div>
+      <details id="tSentBox"><summary>Show what's been sent</summary><div class="sentlog" id="tSent"></div></details>
+      <div class="row" style="margin-top:14px"><button class="small action" data-report>Report a problem</button>
+        <button class="small" id="updateCheck" hidden>Check for updates</button>
+        <a class="sub" href="https://github.com/saphid/frame-control/blob/main/docs/privacy.md" target="_blank">What's collected, exactly</a></div>
+    </section>
   </div>
   </div>
 </main>
@@ -701,6 +880,14 @@
   <div id="apkAltLinks"></div>
   <p class="sub" id="apkAltErrors"></p>
   <div class="actions"><button id="apkAltClose">Close</button></div>
+</dialog>
+
+<dialog id="aboutDlg" aria-labelledby="aboutTitle">
+  <h2 id="aboutTitle">About and licences</h2>
+  <p>Frame Control is MIT-licensed. It ships other people's software, each under its own licence: the notices and
+    licence texts follow, with where to get the source.</p>
+  <div id="aboutText" class="about-text">Loading…</div>
+  <div class="actions"><button id="aboutClose">Close</button></div>
 </dialog>
 
 <dialog id="repDlg" aria-labelledby="repTitle">
@@ -730,6 +917,29 @@
     <div class="row rep-actions"><span class="sub" id="repMsg"></span><span class="spacer"></span>
       <button type="button" class="small" id="repCancel">Cancel</button>
       <button type="submit" class="action small" id="repSave">Save report</button></div>
+  </form>
+</dialog>
+<dialog id="bugDlg" aria-labelledby="bugTitle">
+  <form method="dialog" id="bugForm">
+    <h2 id="bugTitle">Report a problem</h2>
+    <label class="field">What kind of report?<select id="bugKind">
+      <option value="bug">Something's broken</option><option value="idea">An idea</option>
+      <option value="question">A question</option><option value="other">Something else</option></select></label>
+    <label class="field">Title<input type="text" id="bugTitleIn" maxlength="120" required minlength="5"
+      placeholder="e.g. Installing an APK stops at 'copying to the Frame'"></label>
+    <label class="field">What happened?<textarea id="bugText" maxlength="5000" required minlength="10"
+      placeholder="What you did, what happened, and what you expected."></textarea></label>
+    <label class="field">How can we reach you? (optional, for a reply)<input type="text" id="bugContact" maxlength="120" placeholder="Email, GitHub or Discord name"></label>
+    <label class="popt"><input type="checkbox" id="bugDiag" checked><b>Include diagnostics</b>
+      <span class="sub">Frame Control's version, your OS and the Frame's SteamOS build.</span></label>
+    <label class="popt"><input type="checkbox" id="bugLogs"><b>Also include recent activity and the server log</b>
+      <span class="sub">Often shows what went wrong, but can contain file and app names. Check it below before sending.</span></label>
+    <details id="bugDiagBox"><summary>Show exactly what's included</summary><div class="sentlog" id="bugDiagText">Loading…</div></details>
+    <p id="bugWarn">Sent privately to the Frame Control developer. Nothing is published.</p>
+    <div class="row rep-actions"><span class="sub" id="bugMsg"></span><span class="spacer"></span>
+      <button type="button" class="small" id="bugCancel">Cancel</button>
+      <button type="button" class="small" id="bugCopy">Copy report</button>
+      <button type="submit" class="action small" id="bugSend">Send report</button></div>
   </form>
 </dialog>
 <dialog id="titleDlg" aria-labelledby="titleTitle">
@@ -780,9 +990,9 @@ const QUICK = [["Remmina", "org.remmina.Remmina"], ["Moonlight", "com.moonlight_
 const CDN = "https://cdn.cloudflare.steamstatic.com/steam/apps";
 const HINTS = {
   headset: "What the lenses show, composited by SteamVR: the room, floating panels, dashboard and controllers. Live streams it as video (one eye, about 30 fps); Capture takes a still of both eyes. Captures show everything on screen, including anything private.",
-  flat: "gamescope's 2D layer: the desktop panel and Steam's flat UI, without the room or VR scene.",
+  flat: "The app panel in use in the headset, flat and still: it doesn't move as the wearer looks around. Pick another panel to watch it. Control lets you tap or click right where you want on it.",
 };
-const SOURCE_LABEL = { steamvr: "Headset view", gamescope: "Desktop panel", shot: "Screenshot" };
+const SOURCE_LABEL = { steamvr: "Headset view", gamescope: "Desktop panel", panel: "Desktop", shot: "Screenshot" };
 let state = null, view = "headset", eye = "left", live = false, liveTimer = null, volTimer = null;
 let lastImg = null, lastSource = null, lastShot = null, viewGen = 0;
 
@@ -1042,8 +1252,12 @@ function setView(v) {
   view = v;
   document.querySelectorAll("[data-view]").forEach(b => b.classList.toggle("on", b.dataset.view === v));
   $("eyeSeg").style.visibility = v === "headset" && !video.ctl ? "visible" : "hidden";
+  $("eyeSeg").style.display = v === "flat" ? "none" : "";  // the Desktop view has no eyes to pick
   $("viewHint").textContent = HINTS[v];
-  if (live && changed) { toggleLive(false); toggleLive(true); }  // video for the headset, captures for the panel
+  $("panelPick").hidden = v !== "flat";
+  if (v === "flat") watchPanels(); else clearTimeout(desk.timer);
+  if (live && changed) { toggleLive(false); toggleLive(true); }
+  ctrlShow();
 }
 function setEye(e) {
   eye = e;
@@ -1070,20 +1284,27 @@ function setZoom(z, cx, cy) {
 $("zoomIn").onclick = () => setZoom(zoom * 1.5);
 $("zoomOut").onclick = () => setZoom(zoom / 1.5);
 $("zoomFit").onclick = () => setZoom(1);
-$("fullBtn").onclick = () => document.fullscreenElement ? document.exitFullscreen() : $("viewer").requestFullscreen();
+// Full screen, or on phones (no element full screen there) the viewer filling the window.
+$("fullBtn").onclick = () => {
+  if (document.fullscreenElement) return document.exitFullscreen();
+  if ($("viewer").requestFullscreen && !TOUCH) return $("viewer").requestFullscreen().catch(() => $("viewer").classList.toggle("immersive"));
+  $("viewer").classList.toggle("immersive");
+  setZoom(1);
+};
 document.addEventListener("fullscreenchange", () => setZoom(1));
 $("viewer").addEventListener("wheel", e => {
-  if ($("canvas").hidden) return;
+  if ($("canvas").hidden || ctrl.on) return;
   e.preventDefault();
   const v = $("viewer").getBoundingClientRect();
   setZoom(zoom * Math.exp(-e.deltaY * 0.002), e.clientX - v.left, e.clientY - v.top);
 }, { passive: false });
 $("canvas").addEventListener("dblclick", e => {
+  if (ctrl.on) return;
   const v = $("viewer").getBoundingClientRect();
   setZoom(zoom > 1 ? 1 : 2.5, e.clientX - v.left, e.clientY - v.top);
 });
 $("canvas").addEventListener("pointerdown", e => {
-  if (zoom === 1) return;
+  if (zoom === 1 || ctrl.on) return;
   const start = { x: e.clientX - panX, y: e.clientY - panY };
   $("viewer").classList.add("panning");
   $("canvas").setPointerCapture(e.pointerId);
@@ -1093,7 +1314,10 @@ $("canvas").addEventListener("pointerdown", e => {
   $("canvas").addEventListener("pointerup", up, { once: true });
 });
 document.addEventListener("keydown", e => {
-  if (page !== "home" || $("canvas").hidden || /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName) || e.metaKey || e.ctrlKey) return;
+  if (page !== "home" || /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName) || e.metaKey || e.ctrlKey) return;
+  if (ctrl.on && document.activeElement === $("viewer")) return;  // keys are going to the Frame
+  if (e.key === "c") return $("ctrlBtn").click();
+  if ($("canvas").hidden) return;
   if (e.key === "+" || e.key === "=") setZoom(zoom * 1.5);
   else if (e.key === "-") setZoom(zoom / 1.5);
   else if (e.key === "0") setZoom(1);
@@ -1135,8 +1359,14 @@ async function capture() {
   if (!live) $("viewer").classList.add("busy");  // no spinner flashing over a live stream
   let url = null;
   try {
-    const r = await fetch(view === "headset" ? "/api/screenshot?view=headset" : "/api/screenshot",
-                          { headers: {"X-Frame-UI": UI_KEY} });
+    let url_ = "/api/screenshot?view=headset";
+    var shotPanel = null;
+    if (view === "flat") {
+      shotPanel = deskPanel() || (await loadPanels(), deskPanel());
+      if (!shotPanel) throw new Error("no app panel is open in the headset");
+      url_ = `/api/screenshot?view=panel&window=${shotPanel.window}&display=${encodeURIComponent(shotPanel.display)}`;
+    }
+    const r = await fetch(url_, { headers: {"X-Frame-UI": UI_KEY} });
     if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `HTTP ${r.status}`);
     const source = r.headers.get("X-Capture-Source") || "gamescope";
     url = URL.createObjectURL(await r.blob());
@@ -1145,6 +1375,9 @@ async function capture() {
     if (gen !== viewGen) return true;
     lastImg = img; lastSource = source; lastShot = null;
     draw();
+    desk.shown = source === "panel" ? panelKey(shotPanel) : null;
+    if (source === "panel") $("srcBadge").textContent = `Desktop · ${shotPanel?.name || "panel"}`;
+    ctrlShow();
     $("stamp").hidden = false; $("stamp").textContent = new Date().toLocaleTimeString();
     $("saveBtn").disabled = false;
     return true;
@@ -1157,26 +1390,29 @@ async function capture() {
     $("viewer").classList.remove("busy");
   }
 }
-let liveFailures = 0;
-async function liveLoop() {
-  if (!live) return;
-  liveFailures = (await capture()) ? 0 : liveFailures + 1;
+let liveFailures = 0, liveGen = 0;
+async function liveLoop(gen = liveGen) {
+  if (!live || gen !== liveGen) return;
+  const ok = await capture();
+  if (gen !== liveGen) return;  // Live was restarted (say, as video) while this capture ran
+  liveFailures = ok ? 0 : liveFailures + 1;
   if (liveFailures >= 5) {
     toggleLive(false);
-    toast("Live stopped after 5 failed captures. Is the headset on?", true);
+    toast(view === "flat" ? "Live stopped: couldn't capture the panel." : "Live stopped after 5 failed captures. Is the headset on?", true);
     return;
   }
-  if (live) liveTimer = setTimeout(liveLoop, view === "headset" ? 300 : 700);
+  if (live) liveTimer = setTimeout(() => liveLoop(gen), view === "headset" ? 300 : 700);
 }
 function toggleLive(on) {
   live = on;
+  liveGen++;
   liveFailures = 0;
   $("liveBtn").classList.toggle("on", live);
   $("liveBadge").hidden = !live;
   clearTimeout(liveTimer);
   stopVideo();
   if (!live) return;
-  if (view === "headset" && "VideoDecoder" in window) {
+  if ("VideoDecoder" in window && (view === "headset" || deskPanel())) {
     const started = startVideo();
     const ctl = video.ctl;
     started.catch(e => {
@@ -1221,9 +1457,10 @@ async function startVideo() {
       if (!shown++) {
         viewGen++;  // a capture still in flight mustn't replace the video
         lastImg = null; lastSource = "video"; lastShot = null;
+        desk.shown = panelKey(panel); ctrlShow();
         $("viewer").classList.remove("busy");
         c.hidden = false; $("viewerEmpty").hidden = true; $("zoombar").hidden = false; $("asleep").hidden = true;
-        $("srcBadge").hidden = false; $("srcBadge").textContent = "Headset view · video";
+        $("srcBadge").hidden = false; $("srcBadge").textContent = `${video.label} · video`;
         $("stamp").hidden = false; $("saveBtn").disabled = false;
       }
       frames++;
@@ -1235,7 +1472,11 @@ async function startVideo() {
     },
     error: e => log("Video decoder: " + e.message, "e"),
   });
-  const r = await fetch(`/api/stream?${STREAM_QUERY}`, { headers: {"X-Frame-UI": UI_KEY}, signal: ctl.signal });
+  const panel = view === "flat" ? deskPanel() : null;
+  desk.shown = null;  // until this stream's first picture
+  video.label = panel ? `Desktop · ${panel.name || "panel"}` : "Headset view";
+  const query = panel ? `src=panel&window=${panel.window}&display=${encodeURIComponent(panel.display)}&${STREAM_QUERY}` : STREAM_QUERY;
+  const r = await fetch(`/api/stream?${query}`, { headers: {"X-Frame-UI": UI_KEY}, signal: ctl.signal });
   if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `HTTP ${r.status}`);
   const reader = r.body.getReader();
   let buf = new Uint8Array(0), scan = 0, auStart = -1;
@@ -1280,7 +1521,7 @@ function stopVideo() {
   if (video.dec && video.dec.state !== "closed") video.dec.close();
   video.ctl = video.dec = null;
   $("viewer").classList.remove("busy");
-  if (lastSource === "video") { $("srcBadge").textContent = "Headset view · video (stopped)"; $("stamp").hidden = true; }
+  if (lastSource === "video") { $("srcBadge").textContent = `${video.label || "Headset view"} · video (stopped)`; $("stamp").hidden = true; }
   $("eyeSeg").style.visibility = view === "headset" ? "visible" : "hidden";
 }
 $("shotBtn").onclick = () => capture();
@@ -1299,6 +1540,421 @@ function download(blob, name) {
 }
 document.querySelectorAll("[data-view]").forEach(b => b.onclick = () => setView(b.dataset.view));
 document.querySelectorAll("[data-eye]").forEach(b => b.onclick = () => setEye(b.dataset.eye));
+
+// ---- Desktop view: the app panel in use in the headset (or one picked to watch) ----
+// gamescope says which panel has focus: the one the wearer last used. That's the one
+// Control reaches, so the view follows it unless you pick another to watch.
+// Panels are "display/window": window ids are per X display, and the Frame has two.
+// desk.shown is the panel whose picture is on screen now; Control only acts on that one.
+const desk = { panels: [], focus: null, pick: "", timer: null, loaded: false, shown: null };
+const panelKey = p => p ? `${p.display}/${p.window}` : null;
+function deskPanel() {
+  const want = desk.pick || desk.focus;
+  // Nothing in use and nothing picked: show the first panel rather than nothing.
+  return desk.panels.find(p => panelKey(p) === want) || (!desk.pick && !desk.focus && desk.panels[0]) || null;
+}
+async function loadPanels() {
+  try {
+    const before = panelKey(deskPanel());
+    const r = await api("/api/panels");
+    desk.panels = r.panels || []; desk.loaded = true;
+    desk.focus = r.focus ? `${r.focus_display}/${r.focus}` : null;
+    if (desk.pick && !desk.panels.some(p => panelKey(p) === desk.pick)) desk.pick = "";
+    renderPanelPick();
+    const now = panelKey(deskPanel());
+    if (view === "flat" && live && now !== before) { toggleLive(false); toggleLive(true); }
+    ctrlShow();
+  } catch (e) {
+    log("Couldn't list the headset's panels: " + e.message, "e");
+  }
+}
+function watchPanels() {
+  clearTimeout(desk.timer);
+  if (view !== "flat") return;
+  loadPanels().finally(() => { if (view === "flat") desk.timer = setTimeout(watchPanels, document.hidden ? 10000 : 3000); });
+}
+function renderPanelPick() {
+  const sel = $("panelPick");
+  sel.innerHTML = `<option value="">${desk.focus ? "Panel in use" : "Panel in use (none yet)"}</option>` +
+    desk.panels.map(p => `<option value="${esc(panelKey(p))}">${esc(p.name || "Untitled")}${p.focused ? " (in use)" : ""}</option>`).join("");
+  sel.value = desk.pick;
+}
+$("panelPick").onchange = () => {
+  desk.pick = $("panelPick").value;
+  ctrlShow();
+  if (live) { toggleLive(false); toggleLive(true); } else if (lastImg || lastSource) capture();
+};
+
+// ---- Control: tap or click on the view to use the Frame ----
+// Through gamescope's own input (frame_touch.py). On the Desktop view a tap lands
+// exactly where you tapped; on the headset view, which moves with the wearer's head,
+// the view is a trackpad for the pointer instead.
+const ctrl = { on: false, queue: [], sending: false, state: "off", message: "", move: null, rel: [0, 0], raf: 0,
+               held: new Set(), keys: new Set(), pointers: new Map(), g: null, retry: null };
+const EVDEV = { Escape: 1, Minus: 12, Equal: 13, Backspace: 14, Tab: 15, BracketLeft: 26, BracketRight: 27, Enter: 28,
+  ControlLeft: 29, Semicolon: 39, Quote: 40, Backquote: 41, ShiftLeft: 42, Backslash: 43, Comma: 51, Period: 52,
+  Slash: 53, ShiftRight: 54, NumpadMultiply: 55, AltLeft: 56, Space: 57, CapsLock: 58, F11: 87, F12: 88,
+  IntlBackslash: 86, NumpadEnter: 96, ControlRight: 97, NumpadDivide: 98, AltRight: 100, Home: 102, ArrowUp: 103,
+  PageUp: 104, ArrowLeft: 105, ArrowRight: 106, End: 107, ArrowDown: 108, PageDown: 109, Insert: 110, Delete: 111,
+  MetaLeft: 125, MetaRight: 126, ContextMenu: 127, NumpadSubtract: 74, NumpadAdd: 78, NumpadDecimal: 83 };
+[..."qwertyuiop"].forEach((c, i) => EVDEV["Key" + c.toUpperCase()] = 16 + i);
+[..."asdfghjkl"].forEach((c, i) => EVDEV["Key" + c.toUpperCase()] = 30 + i);
+[..."zxcvbnm"].forEach((c, i) => EVDEV["Key" + c.toUpperCase()] = 44 + i);
+[..."1234567890"].forEach((c, i) => EVDEV["Digit" + c] = 2 + i);
+for (let i = 1; i <= 10; i++) EVDEV["F" + i] = 58 + i;
+[[7, 71], [8, 72], [9, 73], [4, 75], [5, 76], [6, 77], [1, 79], [2, 80], [3, 81], [0, 82]].forEach(([n, k]) => EVDEV["Numpad" + n] = k);
+const CTRL_BUTTONS = ["left", "middle", "right"];  // MouseEvent.button 0, 1, 2
+
+function ctrlMode() { return view === "flat" ? "abs" : "rel"; }
+// Where taps go on the Desktop view, or why they can't.
+function ctrlTarget() {
+  if (ctrlMode() === "rel") return { ok: true };
+  const p = deskPanel();
+  if (!desk.loaded) return { why: "Finding the headset's panels…" };
+  if (!p) return { why: "No app panel is open in the headset." };
+  if (!desk.focus) return { why: "Nobody's using a panel in the headset yet. Taps work once one is in use." };
+  if (panelKey(p) !== desk.focus) return { why: "Only the panel in use takes taps. Pick “Panel in use” to control it." };
+  if (desk.shown !== desk.focus) return { why: live ? "Waiting for the picture of the panel in use…"
+                                                    : "The panel in use has changed. Press Capture or Live to see it first." };
+  return { ok: true, panel: p };
+}
+function ctrlShow() {
+  const v = $("viewer"), b = $("ctrlBadge");
+  $("ctrlBtn").classList.toggle("on", ctrl.on);
+  v.classList.toggle("control", ctrl.on);
+  v.classList.toggle("rel", ctrl.on && ctrlMode() === "rel");
+  $("ctrlKeys").hidden = !ctrl.on;
+  b.hidden = !ctrl.on;
+  if (!ctrl.on) return;
+  const t = ctrlTarget();
+  let text = ctrlMode() === "abs" ? `Tap or click to use ${t.panel ? t.panel.name || "the panel" : "the panel"}`
+                                  : "Drag to move the pointer, tap to click, two fingers to scroll";
+  let warn = false;
+  if (!t.ok) { text = t.why; warn = true; }
+  else if (ctrl.state === "error") { text = ctrl.message || "Control isn't working"; warn = true; }
+  else if (ctrl.state === "starting") text = "Connecting…";
+  b.textContent = text;
+  b.classList.toggle("warn", warn);
+}
+function ctrlToggle(on) {
+  if (!on) ctrlRelease();
+  ctrl.on = on;
+  if (on) {
+    setZoom(1);
+    ctrlPoll(0);
+    if (view === "flat" && !desk.loaded) watchPanels();
+    if (!TOUCH) $("viewer").focus({ preventScroll: true });
+  }
+  if (window.frameApp && window.frameApp.captureKeys) window.frameApp.captureKeys(on && document.activeElement === $("viewer"));
+  ctrlShow();
+}
+$("ctrlBtn").onclick = () => ctrlToggle(!ctrl.on);
+// Until it's ready, check on the Frame side every half second (for up to 15 s).
+async function ctrlPoll(n) {
+  if (!ctrl.on) return;
+  try {
+    const r = await api(n ? "/api/touch" : "/api/touch?start=1");
+    ctrl.state = r.state; ctrl.message = r.message || "";
+  } catch (e) { ctrl.state = "error"; ctrl.message = e.message; }
+  if (!ctrl.on) return;  // turned off while connecting
+  ctrlShow();
+  if (ctrl.state !== "ready" && ctrl.state !== "error" && n < 30) return setTimeout(() => ctrlPoll(n + 1), 500);
+  if (ctrl.state === "ready") return ctrlFlush();
+  if (ctrl.state !== "error") {
+    ctrl.state = "error"; ctrl.message = "The Frame didn't answer. Turn Control off and on to try again.";
+    ctrlShow();
+  }
+}
+$("viewer").tabIndex = 0;
+$("viewer").addEventListener("focus", () => { if (ctrl.on && window.frameApp?.captureKeys) window.frameApp.captureKeys(true); });
+$("viewer").addEventListener("blur", () => { ctrlRelease(); if (window.frameApp?.captureKeys) window.frameApp.captureKeys(false); });
+document.addEventListener("visibilitychange", () => { if (document.hidden) ctrlRelease(); });
+window.addEventListener("blur", () => ctrlRelease());  // another app took the keyboard
+
+const isMoveEvent = e => ("fx" in e || "dx" in e) && !("button" in e) && !("key" in e);
+const isRelease = e => ("button" in e || "key" in e) && e.down === false;
+// While it connects, keep clicks and keys, each with the last position before it, so a
+// tap still lands where it was made; lone moves are stale by then.
+function ctrlKeepable(events) {
+  const out = [];
+  let move = null;
+  for (const e of events) {
+    if (isMoveEvent(e)) { if ("fx" in e) move = e; continue; }
+    if (move && "button" in e && e.down !== false) out.push(move);
+    move = null;
+    out.push(e);
+  }
+  if (move) out.push(move);  // the last position: a click queued after it needs it
+  return out;
+}
+function ctrlSend(events) {
+  ctrl.queue.push(...events.map(e => isMoveEvent(e) ? e : ctrlAim(e)).filter(Boolean));
+  // Keep order; if the Frame is slow to answer, drop pointer moves first, then the oldest
+  // presses and scrolls, never a release.
+  if (ctrl.queue.length > 300) {
+    const q = ctrlKeepable(ctrl.queue), keep = new Set();
+    q.forEach((e, i) => { if (isRelease(e) || i >= q.length - 200) keep.add(i); });
+    // A kept press keeps the position before it, so it lands where it was made.
+    for (const i of [...keep]) if (i > 0 && "button" in q[i] && q[i].down !== false && "fx" in q[i - 1]) keep.add(i - 1);
+    ctrl.queue = q.filter((e, i) => keep.has(i));
+  }
+  ctrlFlush();
+}
+async function ctrlFlush() {
+  if (ctrl.sending || !ctrl.queue.length) return;
+  // Backing off after a failure: new input waits for the same retry.
+  const wait = (ctrl.retryAt || 0) - Date.now();
+  if (wait > 0) {
+    clearTimeout(ctrl.retry);
+    ctrl.retry = setTimeout(ctrlFlush, wait);
+    return;
+  }
+  ctrl.sending = true;
+  // Up to 200 events, and at most about 100 characters of text: the Frame types a batch
+  // key by key before reading the next, and a release mustn't wait behind a long paste.
+  let n = 0, chars = 0;
+  while (n < ctrl.queue.length && n < 200 && (n === 0 || chars + (ctrl.queue[n].text?.length || 0) <= 100)) {
+    chars += ctrl.queue[n].text?.length || 0;
+    n++;
+  }
+  const batch = ctrl.queue.splice(0, n);
+  let again = 0;
+  try {
+    const r = await api("/api/touch", { events: batch });
+    ctrl.state = r.state; ctrl.message = r.message || "";
+    if (r.stale && typeof loadPanels === "function") loadPanels();  // focus moved on: catch up now
+    if (!r.sent && r.state === "error") {
+      // Broken: presses would be stale by the time it's back; releases still matter.
+      ctrl.queue.unshift(...batch.filter(isRelease));
+      again = 2000;
+    } else if (!r.sent) {
+      ctrl.queue.unshift(...ctrlKeepable(batch));  // connecting: send them once it's ready
+      again = 300;
+    }
+  } catch (e) {
+    ctrl.state = "error"; ctrl.message = e.message;
+    ctrl.queue.unshift(...batch.filter(isRelease));
+    again = 1000;  // try the releases again in a moment, not in a tight loop
+  } finally {
+    ctrl.sending = false;
+    ctrlShow();
+    clearTimeout(ctrl.retry);
+    ctrl.retryAt = again ? Date.now() + again : 0;
+    if (again) { if (ctrl.queue.length) ctrl.retry = setTimeout(ctrlFlush, again); }
+    else if (ctrl.queue.length) ctrlFlush();
+  }
+}
+// Pointer moves: at most one per animation frame.
+function ctrlMoveTo(fx, fy) {
+  const p = ctrlTarget().panel;
+  if (!p) return;
+  ctrl.move = { fx, fy, window: p.window, display: p.display };
+  ctrlSchedule();
+}
+function ctrlMoveBy(dx, dy) { ctrl.rel[0] += dx; ctrl.rel[1] += dy; ctrlSchedule(); }
+function ctrlSchedule() { if (!ctrl.raf) ctrl.raf = requestAnimationFrame(ctrlFlushMoves); }
+function ctrlFlushMoves() {
+  ctrl.raf = 0;
+  const out = [];
+  if (ctrl.move) { out.push(ctrl.move); ctrl.move = null; }
+  if (ctrl.rel[0] || ctrl.rel[1]) { out.push({ dx: Math.round(ctrl.rel[0]), dy: Math.round(ctrl.rel[1]) }); ctrl.rel = [0, 0]; }
+  if (out.length) ctrlSend(out);
+}
+// On the Desktop view, presses name the panel they're for, so the Frame drops them if
+// focus has moved on (releases always go).
+// A press with no panel to aim at (the Desktop view lost its target) isn't sent at all.
+function ctrlAim(e) {
+  if (ctrlMode() !== "abs" || e.down === false) return e;
+  const p = ctrlTarget().panel;
+  return p ? { ...e, window: p.window, display: p.display } : null;
+}
+function ctrlButton(name, down) {
+  ctrlFlushMoves();  // the click lands where the pointer was sent
+  if (down) ctrl.held.add(name); else ctrl.held.delete(name);
+  ctrlSend([ctrlAim({ button: name, down })]);
+}
+function ctrlKeyEvent(code, down) {
+  ctrlFlushMoves();
+  if (down) ctrl.keys.add(code); else ctrl.keys.delete(code);
+  ctrlSend([ctrlAim({ key: code, down })]);
+}
+function ctrlClick(name = "left") { ctrlButton(name, true); ctrlButton(name, false); }
+function ctrlRelease() {
+  for (const b of [...ctrl.held]) ctrlButton(b, false);
+  for (const k of [...ctrl.keys]) ctrlKeyEvent(k, false);
+  if (ctrl.g && ctrl.g.timer) clearTimeout(ctrl.g.timer);
+  ctrl.pointers.clear(); ctrl.g = null;
+}
+// Where a pointer event falls on the panel, as fractions (the canvas box includes any letterboxing).
+function ctrlFraction(e) {
+  const c = $("canvas"), r = c.getBoundingClientRect();
+  const scale = Math.min(r.width / c.width, r.height / c.height);
+  const w = c.width * scale, h = c.height * scale;
+  const x = (e.clientX - r.left - (r.width - w) / 2) / w, y = (e.clientY - r.top - (r.height - h) / 2) / h;
+  return x >= 0 && x <= 1 && y >= 0 && y <= 1 ? [x, y] : null;
+}
+
+// Mouse (and pen) on a computer: the view is the Frame's screen.
+function ctrlMouse(e) {
+  if (ctrlMode() === "abs") {
+    const f = ctrlFraction(e);
+    if (f) ctrlMoveTo(...f);
+  } else if (e.type === "pointermove" && (e.movementX || e.movementY)) {
+    ctrlMoveBy(e.movementX * 1.5, e.movementY * 1.5);
+  }
+}
+// Touch: tap to click, press and hold to right-click, two fingers to scroll. Dragging is a
+// mouse drag on the Desktop view (sliders, selecting text) and moves the pointer on the headset view.
+const TAP_MOVE = 8, HOLD_MS = 550, TOUCH_SPEED = 1.6, SCROLL_SPEED = 2;
+function ctrlTouchDown(e) {
+  ctrl.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (ctrl.pointers.size === 1) {
+    const g = ctrl.g = { kind: "maybe", x: e.clientX, y: e.clientY, e, target: ctrlAimedAt() };
+    g.timer = setTimeout(() => {
+      if (ctrl.g !== g || g.kind !== "maybe" || !ctrlSameTarget(g)) return;
+      g.kind = "held";
+      if (ctrlMode() === "abs") {
+        const f = ctrlFraction(g.e);
+        if (!f) return;  // on the bars around the picture: nothing to press
+        ctrlMoveTo(...f);
+      }
+      ctrlClick("right");
+      navigator.vibrate?.(10);
+    }, HOLD_MS);
+  } else if (ctrl.pointers.size === 2) {
+    if (ctrl.g?.timer) clearTimeout(ctrl.g.timer);
+    if (ctrl.held.has("left")) ctrlButton("left", false);
+    ctrl.g = { kind: "scroll", ...centroid() };
+  }
+}
+// The panel a gesture started on; if that stops being the one in use, the gesture
+// does nothing more (except let go of what it holds).
+function ctrlAimedAt() { return ctrlMode() === "abs" ? panelKey(ctrlTarget().panel) : "headset"; }
+function ctrlSameTarget(g) { return g.target && g.target === ctrlAimedAt(); }
+function centroid() {
+  const ps = [...ctrl.pointers.values()];
+  return { x: ps.reduce((a, p) => a + p.x, 0) / ps.length, y: ps.reduce((a, p) => a + p.y, 0) / ps.length };
+}
+function ctrlTouchMove(e) {
+  const prev = ctrl.pointers.get(e.pointerId);
+  if (!prev || !ctrl.g) return;
+  const g = ctrl.g, dx = e.clientX - prev.x, dy = e.clientY - prev.y;
+  ctrl.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (g.kind === "scroll") {
+    const c = centroid();
+    // Content follows the fingers, as on the phone itself.
+    ctrlSend([{ scroll: [-(c.x - g.x) * SCROLL_SPEED, -(c.y - g.y) * SCROLL_SPEED] }]);
+    g.x = c.x; g.y = c.y;
+    return;
+  }
+  if (g.kind === "maybe" && Math.hypot(e.clientX - g.x, e.clientY - g.y) > TAP_MOVE) {
+    clearTimeout(g.timer);
+    if (!ctrlSameTarget(g)) { g.kind = "done"; return; }
+    if (ctrlMode() === "abs") {
+      const f = ctrlFraction(g.e);
+      if (f) { ctrlMoveTo(...f); ctrlButton("left", true); }
+      g.kind = "drag";
+    } else g.kind = "move";
+  }
+  if (g.kind === "drag") { const f = ctrlFraction(e); if (f) ctrlMoveTo(...f); }
+  else if (g.kind === "move") ctrlMoveBy(dx * TOUCH_SPEED, dy * TOUCH_SPEED);
+}
+function ctrlTouchUp(e) {
+  const g = ctrl.g;
+  ctrl.pointers.delete(e.pointerId);
+  if (!g) return;
+  if (g.kind === "scroll") g.kind = "done";  // the finger left behind doesn't jump the scroll or drag
+  if (g.kind === "maybe" && !ctrlSameTarget(g)) g.kind = "done";
+  if (g.kind === "maybe" && ctrl.pointers.size === 0) {
+    clearTimeout(g.timer);
+    if (ctrlMode() === "abs") { const f = ctrlFraction(g.e); if (!f) { ctrl.g = null; return; } ctrlMoveTo(...f); }
+    ctrlClick("left");
+  } else if (g.kind === "drag") ctrlButton("left", false);
+  if (ctrl.pointers.size === 0) ctrl.g = null;
+}
+// The system took the touch (a swipe home, a call): no tap, and let go of anything held.
+function ctrlTouchCancel(e) {
+  ctrl.pointers.delete(e.pointerId);
+  if (ctrl.g?.timer) clearTimeout(ctrl.g.timer);
+  if (ctrl.held.has("left")) ctrlButton("left", false);
+  if (ctrl.g) ctrl.g.kind = "done";
+  if (ctrl.pointers.size === 0) ctrl.g = null;
+}
+const canvasEl = $("canvas");
+canvasEl.addEventListener("pointerdown", e => {
+  if (!ctrl.on) return;
+  e.preventDefault();
+  $("viewer").focus({ preventScroll: true });
+  try { canvasEl.setPointerCapture(e.pointerId); } catch { /* a pointer that's already gone */ }
+  if (!ctrlTarget().ok) return ctrlShow();
+  if (e.pointerType === "touch") return ctrlTouchDown(e);
+  if (ctrlMode() === "abs" && !ctrlFraction(e)) return;  // on the bars around the picture
+  ctrlMouse(e);
+  ctrlButton(CTRL_BUTTONS[e.button] || "left", true);
+});
+canvasEl.addEventListener("pointermove", e => {
+  if (!ctrl.on || !ctrlTarget().ok) return;
+  if (e.pointerType === "touch") return ctrlTouchMove(e);
+  ctrlMouse(e);
+});
+for (const type of ["pointerup", "pointercancel"]) canvasEl.addEventListener(type, e => {
+  if (!ctrl.on) return;
+  if (e.pointerType === "touch") return type === "pointercancel" ? ctrlTouchCancel(e) : ctrlTouchUp(e);
+  if (type === "pointercancel") return [...ctrl.held].forEach(b => ctrlButton(b, false));  // no button is named
+  const name = CTRL_BUTTONS[e.button] || "left";
+  if (ctrl.held.has(name)) ctrlButton(name, false);
+});
+canvasEl.addEventListener("contextmenu", e => { if (ctrl.on) e.preventDefault(); });
+$("viewer").addEventListener("wheel", e => {
+  if (!ctrl.on || !ctrlTarget().ok) return;
+  e.preventDefault();
+  const unit = e.deltaMode === 1 ? 40 : e.deltaMode === 2 ? 800 : 1;
+  ctrlSend([{ scroll: [e.deltaX * unit, e.deltaY * unit] }]);
+}, { passive: false });
+// Keys while the view has focus go to the Frame (⌘ as Ctrl on a Mac); click elsewhere to stop.
+function ctrlKey(e, down) {
+  if (!ctrl.on || document.activeElement !== $("viewer") || (down && !ctrlTarget().ok)) return;
+  let code = EVDEV[e.code];
+  if (IS_MAC && (e.code === "MetaLeft" || e.code === "MetaRight")) code = 29;
+  if (!code) return;
+  e.preventDefault();
+  e.stopPropagation();  // it's for the Frame, not Frame Control's own shortcuts
+  if (down && e.repeat && [29, 42, 54, 56, 97, 100, 125, 126].includes(code)) return;
+  if (!down && !ctrl.keys.has(code)) return;
+  ctrlKeyEvent(code, down);
+}
+$("viewer").addEventListener("keydown", e => ctrlKey(e, true));
+$("viewer").addEventListener("keyup", e => ctrlKey(e, false));
+
+// Phone keyboard: the field types plain text; the buttons send single keys and clicks.
+function ctrlTap(code) { ctrlKeyEvent(code, true); ctrlKeyEvent(code, false); }
+let ctrlWarned = false;
+function ctrlText(text) {
+  const plain = text.replace(/[^\x20-\x7e\n\t]/g, "");
+  if (plain !== text && !ctrlWarned) {
+    ctrlWarned = true;
+    toast("Control types plain letters, numbers and symbols. For accents and emoji, use Keyboard and trackpad below.");
+  }
+  // Small pieces: the Frame types them key by key, and a release queued behind mustn't wait long.
+  for (const part of plain.match(/[\s\S]{1,100}/g) || []) ctrlSend([{ text: part }]);
+}
+$("ctrlType").addEventListener("beforeinput", e => {
+  if (e.isComposing) return;
+  e.preventDefault();
+  if (!ctrlTarget().ok) return ctrlShow();
+  if (e.inputType === "insertLineBreak" || e.inputType === "insertParagraph") return ctrlTap(28);
+  if (e.inputType === "deleteContentBackward") return ctrlTap(14);
+  if (e.inputType === "deleteContentForward") return ctrlTap(111);
+  const text = e.data ?? e.dataTransfer?.getData("text/plain") ?? "";
+  if (text) ctrlText(text);
+});
+$("ctrlType").addEventListener("compositionend", e => { if (e.data) ctrlText(e.data); $("ctrlType").value = ""; });
+$("ctrlKeys").addEventListener("click", e => {
+  const k = e.target.closest("[data-ctrl-key]"), c = e.target.closest("[data-ctrl-click]");
+  if (!ctrlTarget().ok) return ctrlShow();
+  if (k) ctrlTap(+k.dataset.ctrlKey);
+  if (c) ctrlClick(c.dataset.ctrlClick);
+});
 
 // ---- controls ----
 $("refreshAll").onclick = () => { refresh(); loadTitles(); };  // titles too: the Frame may have been asleep at start
@@ -1451,6 +2107,7 @@ function upload(file, mode) {
     xhr.setRequestHeader("X-Frame-UI", UI_KEY);
     xhr.setRequestHeader("X-Filename", encodeURIComponent(file.name));
     xhr.setRequestHeader("X-Mode", mode);
+    if (mode === "apk") xhr.setRequestHeader("X-APK-Display", $("apkDisplay").value);
     const bar = $("prog").firstElementChild;
     $("prog").style.display = "block"; bar.style.width = "0";
     xhr.upload.onprogress = e => { if (e.lengthComputable) bar.style.width = (100 * e.loaded / e.total) + "%"; };
@@ -1464,6 +2121,42 @@ function upload(file, mode) {
     xhr.send(file);
   });
 }
+async function refreshMedia(selectId) {
+  const data = await api("/api/media", { action: "list" });
+  const selected = selectId || $("mediaFile").value;
+  $("mediaFile").replaceChildren();
+  if (!data.files.length) $("mediaFile").add(new Option("Send media to begin", ""));
+  for (const file of data.files) $("mediaFile").add(new Option(file.name, file.id));
+  if (data.files.some(f => f.id === selected)) $("mediaFile").value = selected;
+  const p = data.player;
+  $("mediaState").textContent = p.error || `${p.state}${p.file ? ": " + p.file : ""}`;
+  return data;
+}
+$("mediaChoose").onclick = () => $("mediaInput").click();
+$("mediaInput").onchange = () => act("Send media", async () => {
+  const file = $("mediaInput").files[0];
+  if (!file) return;
+  const result = await upload(file, "media");
+  await refreshMedia(result.id);
+  $("mediaInput").value = "";
+  return result;
+}, $("mediaChoose"));
+$("mediaRefresh").onclick = () => act("Refresh media", () => refreshMedia(), $("mediaRefresh"));
+$("mediaPlay").onclick = () => act("Play media", async () => {
+  const id = $("mediaFile").value;
+  if (!id) throw new Error("Send or select a media file first");
+  const result = await api("/api/media", { action: "play", id,
+    layout: $("mediaLayout").value, theatre: $("mediaTheatre").checked });
+  $("mediaState").textContent = "Starting…";
+  setTimeout(() => refreshMedia().catch(e => { $("mediaState").textContent = e.message; }), 1500);
+  return result;
+}, $("mediaPlay"));
+$("mediaStop").onclick = () => act("Stop media", async () => {
+  const result = await api("/api/media", { action: "stop" });
+  await refreshMedia();
+  return result;
+}, $("mediaStop"));
+
 let apkLookup = 0;
 async function checkApkAlternatives(apk) {
   const lookup = ++apkLookup;
@@ -1502,10 +2195,26 @@ function showApkAlternatives(reason, result) {
     if (res) $("apkAltDlg").close(); else { b.disabled = false; b.textContent = "Install"; }
     await loadAndroid();
     if (cat.apps) { const y = window.scrollY; filterCatalog(); window.scrollTo(0, y); }
+    if (res && res.app) await offerTest(res.app);
   };
   if (!$("apkAltDlg").open) $("apkAltDlg").showModal();
 }
 $("apkAltClose").onclick = () => $("apkAltDlg").close();
+
+// ---- about and licences ----
+document.addEventListener("click", async e => {
+  if (!e.target.closest("[data-about]")) return;
+  e.preventDefault();
+  $("aboutDlg").showModal();
+  try {
+    const { notices } = await api("/api/licenses");
+    $("aboutText").innerHTML = notices.map((n, i) =>
+      `<details${i ? "" : " open"}><summary>${esc(n.title)}</summary><pre>${esc(n.text)}</pre></details>`).join("");
+  } catch (err) {
+    $("aboutText").textContent = `Couldn't load the licences: ${err.message}. They're also in THIRD_PARTY_NOTICES.md and frame/kdeconnect in Frame Control's source.`;
+  }
+});
+$("aboutClose").onclick = () => $("aboutDlg").close();
 
 const TITLE_EXT = /\.(zip|exe)$/i;
 async function sendFiles(files, dirs = new Set()) {
@@ -1519,7 +2228,8 @@ async function sendFiles(files, dirs = new Set()) {
     if (!f.size) { toast(`${f.name}: empty files aren't supported`, true); continue; }
     if (TITLE_EXT.test(f.name)) { await sideload(f, path); continue; }
     const apk = f.name.toLowerCase().endsWith(".apk");
-    await act(apk ? `Install ${f.name}` : `Copy ${f.name} to ~/Downloads`, () => upload(f, apk ? "apk" : "push"));
+    const res = await act(apk ? `Install ${f.name}` : `Copy ${f.name} to ~/Downloads`, () => upload(f, apk ? "apk" : "push"));
+    if (apk && res && res.app) await offerTest(res.app);
   }
   $("fileInput").value = "";
   refresh();
@@ -1908,7 +2618,8 @@ document.body.addEventListener("click", async e => {
     toast(`Installing ${b.dataset.name}. The first time takes a minute…`);
     const done = runJob(`Install ${b.dataset.name}`, pkg, () => api("/api/android", { action, package: pkg }));
     b.outerHTML = `<span class="tag">Installing…</span>`;
-    await done;
+    const res = await done;
+    if (res && res.app) await offerTest(res.app);
   } else if (action === "remove") {
     if (!confirm(`Remove ${b.dataset.name} and its data from the Frame?`)) return;
     await act(`Remove ${b.dataset.name}`, () => api("/api/android", { action, package: pkg }), b);
@@ -2036,6 +2747,14 @@ loadDisplays();
 const RLABEL = { works: "Works", issues: "Problems", broken: "Doesn't work", runs: "Runs (test)",
                  crashes: "Crashed (test)", install_failed: "Won't install", instance_failed: "Didn't start (test)" };
 const RCLASS = { works: "works", runs: "works", issues: "maybe" };
+let repShared = false;
+function setRepHint() {
+  $("repHint").textContent = repShared
+    ? "Reports go to Frame Control's shared compatibility database and change the verdicts in the catalogue. Any APK can be reported, including ones not on F-Droid."
+    : telemetry.compat && !telemetry.blocked
+    ? "Reports change the verdicts you see and are shared with Frame Control's compatibility database (Privacy settings). Any APK can be reported, including ones not on F-Droid."
+    : "Reports are saved on this computer and change the verdicts you see. Turn on Share compatibility results in Privacy settings to add them to the shared database. Any APK can be reported, including ones not on F-Droid.";
+}
 const REPORTS_SHOWN = 5;
 let repsAll = false;
 $("repMore").onclick = () => { repsAll = true; loadReports(); };
@@ -2043,9 +2762,7 @@ async function loadReports() {
   let reps, shared;
   try { ({ reports: reps, shared } = await api("/api/android/reports")); }
   catch (e) { $("repList").innerHTML = `<div class="sub">${esc(e.message)}</div>`; return; }
-  $("repHint").textContent = shared
-    ? "Reports go to Frame Control's shared compatibility database and change the verdicts in the catalogue. Any APK can be reported, including ones not on F-Droid."
-    : "Reports are saved on this computer and change the verdicts you see. They aren't uploaded: the shared database is maintainer-only for now. Any APK can be reported, including ones not on F-Droid.";
+  repShared = shared; setRepHint();
   $("repCount").textContent = reps.length ? `${reps.length} newest` : "";
   $("repMore").hidden = reps.length <= REPORTS_SHOWN || repsAll;
   $("repMore").textContent = `Show all ${reps.length}`;
@@ -2167,6 +2884,7 @@ async function openShot(s) {
     await new Promise((ok, bad) => { img.onload = ok; img.onerror = () => bad(new Error("not an image")); img.src = url; });
     if (gen !== viewGen) return;
     lastImg = img; lastSource = "shot"; lastShot = { blob, file: s.file };
+    desk.shown = null;  // a screenshot, not a panel: Control has nothing to act on here
     draw();
     $("srcBadge").textContent = `Screenshot · ${shotApp(s.appid)}`;
     $("stamp").hidden = false; $("stamp").textContent = new Date(s.time * 1000).toLocaleString();
@@ -2298,7 +3016,7 @@ $("macview").onclick = async e => {
 // ---- pages: #home, #games, #android, #tools (older section links still work) ----
 const PAGES = ["home", "games", "android", "tools"];
 const SECTION_PAGE = { view: "home", device: "home", shots: "home", library: "games", sideloaded: "games", getgames: "games",
-                       display: "android", transfer: "tools", apps: "tools", power: "tools", macview: "tools", panels: "tools" };
+                       display: "android", transfer: "tools", apps: "tools", power: "tools", macview: "tools", privacy: "tools", panels: "tools" };
 let page = "home";
 function showPage() {
   const id = location.hash.slice(1);
@@ -2317,12 +3035,374 @@ window.addEventListener("hashchange", showPage);
 const typesText = el => el?.matches?.('textarea, input:not([type=range], [type=checkbox], [type=radio], [type=file], [type=button])');
 document.addEventListener("focusin", e => document.body.classList.toggle("typing", !!typesText(e.target)));
 document.addEventListener("focusout", () => document.body.classList.remove("typing"));
+
+// ---- keyboard and trackpad: events go to KDE Connect on the Frame (see ui/frame_input_agent.py) ----
+const pad = { state: "off", queue: [], sending: false, poll: null, captured: false };
+const PAD_STATES = {
+  off: "", starting: "Connecting…", installing: "Setting up KDE Connect on the Frame (first time only)…",
+  pairing: "Pairing with KDE Connect…", ready: "On",
+};
+// KDE Connect's specialKey numbers (plugins/mousepad in its source).
+const PAD_SPECIAL = { Backspace: 1, Tab: 2, ArrowLeft: 4, ArrowUp: 5, ArrowRight: 6, ArrowDown: 7, PageUp: 8,
+  PageDown: 9, Home: 10, End: 11, Enter: 12, Delete: 13, Escape: 14,
+  ...Object.fromEntries(Array.from({ length: 12 }, (_, i) => [`F${i + 1}`, 21 + i])) };
+const IS_MAC = /^Mac/.test(navigator.platform);
+const TOUCH = matchMedia("(hover: none)").matches;
+
+function padShow(status) {
+  pad.state = status.state || "off";
+  const ready = pad.state === "ready";
+  const busy = !ready && pad.state !== "off" && pad.state !== "error";
+  $("padState").textContent = pad.state === "error" ? "" : PAD_STATES[pad.state] || "";
+  $("padOn").hidden = ready || busy;
+  $("padOn").textContent = pad.state === "error" ? "Try again" : "Turn on";
+  $("padArea").classList.toggle("off", !ready);
+  $("padHint").textContent = pad.state === "error" ? status.message || "Couldn't reach KDE Connect on the Frame."
+    : !ready ? (busy ? PAD_STATES[pad.state] : "Turn on to use this as a trackpad for the Frame.")
+    : TOUCH ? "Drag to move the pointer · tap to click · two fingers to scroll · two-finger tap to right-click"
+    : pad.captured ? "Your mouse and keyboard now control the Frame. Press Esc to stop."
+    : "Click here to use your mouse and keyboard on the Frame (Esc to stop), or drag like a trackpad.";
+  clearTimeout(pad.poll);
+  if (ready && pad.queue.length) padFlush();
+  if (busy) pad.poll = setTimeout(async () => padShow(await api("/api/input").catch(e => ({ state: "error", message: e.message }))), 1000);
+}
+async function padStart() {
+  localStorage.padUsed = "1";  // from now on it turns on with the page
+  padShow({ state: "starting" });
+  padShow(await api("/api/input?start=1").catch(e => ({ state: "error", message: e.message })));
+}
+$("padOn").onclick = padStart;
+
+// Queue events and send them one request at a time, merging pointer moves made meanwhile.
+const isMove = e => Object.keys(e).every(k => k === "dx" || k === "dy");
+function padSend(event) {
+  // While it reconnects, keys and clicks wait in the queue; pointer moves would be stale.
+  // A button release is always kept, so a drag never leaves the button held on the Frame.
+  const room = pad.queue.length < 200 || event.singlerelease;
+  const reconnecting = ["starting", "pairing", "installing"].includes(pad.state) && room;
+  // Even after an error: a button pressed on the Frame must be let go once it's back.
+  const release = event.singlerelease && pad.state !== "off";
+  if (pad.state !== "ready" && !(reconnecting && !isMove(event)) && !release) return;
+  const last = pad.queue[pad.queue.length - 1];
+  if (last && isMove(last) && isMove(event)) { last.dx = (last.dx || 0) + (event.dx || 0); last.dy = (last.dy || 0) + (event.dy || 0); }
+  else pad.queue.push(event);
+  padFlush();
+}
+// Events that didn't reach the Frame (the link had dropped, and is reconnecting): keep
+// the keys and clicks for when it's back, but not pointer moves, which would be stale.
+// Button releases are kept whatever the queue's length.
+function padKeep(events) {
+  pad.queue = [...events, ...pad.queue].filter(e => !isMove(e)).filter((e, i) => i < 200 || e.singlerelease);
+}
+async function padFlush() {
+  if (pad.sending || !pad.queue.length || pad.state !== "ready") return;
+  pad.sending = true;
+  const events = pad.queue.splice(0, 200);
+  try {
+    const status = await api("/api/input", { events });
+    if (!status.sent) padKeep(events);
+    if (status.state !== "ready") padShow(status);
+  } catch (e) {
+    padKeep(events);
+    padShow({ state: "error", message: e.message });
+  } finally {
+    pad.sending = false;
+    if (pad.queue.length) padFlush();
+  }
+}
+function padKey(e) {
+  const mods = { ...(e.ctrlKey || (IS_MAC && e.metaKey) ? { ctrl: true } : {}), ...(e.altKey ? { alt: true } : {}),
+                 ...(!IS_MAC && e.metaKey ? { super: true } : {}) };
+  if (PAD_SPECIAL[e.key]) return { specialKey: PAD_SPECIAL[e.key], ...mods, ...(e.shiftKey ? { shift: true } : {}) };
+  if (e.key.length === 1) return { key: e.key, ...mods };  // already shifted, so no shift flag
+  return null;
+}
+
+// Touch: one finger moves, a quick tap clicks; two fingers scroll, or right-click when tapped.
+const PAD_SPEED = 1.6, PAD_SCROLL_STEP = 18;
+const touches = new Map();
+let gesture = null;
+$("padArea").addEventListener("pointerdown", e => {
+  if (pad.state === "off" || pad.state === "error") { padStart(); return; }
+  if (pad.state !== "ready") return;
+  if (e.pointerType === "mouse") {
+    if (pad.captured) return;  // mousedown and mouseup below send the clicks
+    // Lock the pointer to the pad and pass the whole mouse and keyboard through; where
+    // that isn't allowed, the mouse drags like a finger on a trackpad instead.
+    if (e.button === 0 && !pad.noLock && $("padArea").requestPointerLock) { $("padArea").requestPointerLock(); return; }
+    // Only the left button drags and taps like a finger; the others are clicks of their own.
+    if (e.button === 1 || e.button === 2) { padSend(e.button === 2 ? { rightclick: true } : { middleclick: true }); return; }
+    if (e.button !== 0) return;
+  }
+  try { $("padArea").setPointerCapture(e.pointerId); } catch {}  // keeps the drag if the finger leaves the pad
+  touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (touches.size === 1) gesture = { start: performance.now(), moved: 0, fingers: 1, scroll: 0 };
+  else if (gesture) gesture.fingers = Math.max(gesture.fingers, touches.size);
+  e.preventDefault();
+});
+$("padArea").addEventListener("pointermove", e => {
+  if (pad.captured) { padSend({ dx: e.movementX, dy: e.movementY }); return; }
+  const t = touches.get(e.pointerId);
+  if (!t || !gesture) return;
+  const dx = e.clientX - t.x, dy = e.clientY - t.y;
+  t.x = e.clientX; t.y = e.clientY;
+  gesture.moved += Math.abs(dx) + Math.abs(dy);
+  if (touches.size >= 2) {
+    // Scroll with the lead finger only, a notch per step, like a laptop trackpad (content follows the fingers).
+    if (e.pointerId !== touches.keys().next().value) return;
+    gesture.scroll += dy;
+    while (Math.abs(gesture.scroll) >= PAD_SCROLL_STEP) {
+      const up = gesture.scroll > 0;
+      padSend({ scroll: true, dy: up ? 1 : -1 });
+      gesture.scroll -= up ? PAD_SCROLL_STEP : -PAD_SCROLL_STEP;
+    }
+  } else if (gesture.fingers === 1) {
+    padSend({ dx: dx * PAD_SPEED, dy: dy * PAD_SPEED });
+  }
+});
+function padLift(e) {
+  if (!touches.delete(e.pointerId) || touches.size || !gesture) return;
+  const quick = performance.now() - gesture.start < 250 && gesture.moved < 10;
+  if (quick) padSend(gesture.fingers >= 2 ? { rightclick: true } : { singleclick: true });
+  gesture = null;
+}
+$("padArea").addEventListener("pointerup", padLift);
+$("padArea").addEventListener("pointercancel", e => { touches.delete(e.pointerId); if (!touches.size) gesture = null; });
+
+// A computer's mouse and keyboard: captured while the pointer is locked to the pad.
+document.addEventListener("pointerlockerror", () => { pad.noLock = true; });
+document.addEventListener("pointerlockchange", () => {
+  pad.captured = document.pointerLockElement === $("padArea");
+  window.frameApp?.captureKeys?.(pad.captured);  // the desktop app's menu shortcuts go to the Frame too
+  // Esc or switching windows mid-drag: let go of the button on the Frame as well.
+  if (!pad.captured && pad.held) { padSend({ singlerelease: true }); pad.held = false; }
+  $("padArea").classList.toggle("captured", pad.captured);
+  padShow({ state: pad.state });
+});
+$("padArea").addEventListener("mousedown", e => {
+  if (!pad.captured) return;
+  if (e.button === 0) { padSend({ singlehold: true }); pad.held = true; }
+  else if (e.button === 1) padSend({ middleclick: true });
+  else if (e.button === 2) padSend({ rightclick: true });
+});
+$("padArea").addEventListener("mouseup", e => { if (pad.held && e.button === 0) { padSend({ singlerelease: true }); pad.held = false; } });
+$("padArea").addEventListener("contextmenu", e => e.preventDefault());
+$("padArea").addEventListener("wheel", e => {
+  if (pad.state !== "ready") return;
+  e.preventDefault();
+  if (e.deltaY) padSend({ scroll: true, dy: e.deltaY > 0 ? -1 : 1 });
+}, { passive: false });
+// Capture phase, so the page's own shortcuts (tabs 1-4, R, zoom) don't also fire.
+window.addEventListener("keydown", e => {
+  if (!pad.captured) return;
+  e.preventDefault(); e.stopImmediatePropagation();
+  const event = padKey(e);
+  if (event) padSend(event);
+}, true);
+
+// The text field: each keystroke goes to the Frame. While focused it holds one space,
+// so Backspace always has something to delete; empty otherwise, to show its prompt.
+const padType = $("padType");
+padType.addEventListener("beforeinput", e => {
+  if (e.inputType === "insertCompositionText") return;  // IME composing; sent on compositionend
+  e.preventDefault();
+  if (pad.state === "off" || pad.state === "error") padStart();  // what's typed meanwhile waits in the queue
+  const text = e.data ?? e.dataTransfer?.getData("text/plain") ?? "";
+  if (/^insert(Text|ReplacementText|FromPaste|FromDrop)$/.test(e.inputType) && text) padText(text);
+  else if (e.inputType === "deleteContentBackward") padSend({ specialKey: 1 });
+  else if (e.inputType === "deleteWordBackward") padSend({ specialKey: 1, ctrl: true });  // Ctrl+Backspace: a word, on Linux
+  else if (e.inputType === "deleteContentForward") padSend({ specialKey: 13 });
+  else if (e.inputType === "deleteWordForward") padSend({ specialKey: 13, ctrl: true });
+  else if (e.inputType === "insertLineBreak" || e.inputType === "insertParagraph") padSend({ specialKey: 12 });
+});
+padType.addEventListener("compositionend", e => { if (e.data) padText(e.data); padType.value = " "; padCaret(); });
+// Text in pieces the server takes (500 characters), with Enter for each line break.
+function padText(text) {
+  text.replace(/\r\n?/g, "\n").split("\n").forEach((line, i) => {
+    if (i) padSend({ specialKey: 12 });
+    const chars = Array.from(line);  // whole characters, so an emoji isn't cut in two
+    for (let at = 0; at < chars.length; at += 500) padSend({ key: chars.slice(at, at + 500).join("") });
+  });
+}
+padType.addEventListener("keydown", e => {
+  const special = PAD_SPECIAL[e.key];
+  // Text and deletions arrive as beforeinput; this takes the keys that don't edit the field.
+  if (!special || e.key === "Backspace" || e.key === "Delete" || e.isComposing) return;
+  e.preventDefault();
+  padSend(padKey(e));
+});
+// The caret stays after the space, so Backspace always has something to delete.
+const padCaret = () => requestAnimationFrame(() => padType.setSelectionRange(1, 1));
+padType.addEventListener("focus", () => { padType.value = " "; padCaret(); if (pad.state === "off") padStart(); });
+padType.addEventListener("blur", () => { padType.value = ""; });
+padType.addEventListener("input", e => {
+  if (e.isComposing) return;  // an input method is still composing; compositionend sends it
+  if (padType.value !== " ") padType.value = " ";
+  padCaret();
+});
+padType.addEventListener("click", padCaret);
+document.querySelector("#pad .pad-keys").addEventListener("click", e => {
+  const b = e.target.closest("button");
+  if (!b) return;
+  if (b.dataset.padClick) padSend({ [b.dataset.padClick]: true });
+  else if (b.dataset.padKey) padSend({ specialKey: +b.dataset.padKey });
+});
+api("/api/input").then(s => s.state === "off" && localStorage.padUsed ? padStart() : padShow(s), () => padShow({ state: "off" }));
 showPage();
 document.addEventListener("keydown", e => {
   if (e.metaKey || e.ctrlKey || e.altKey || /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName) || document.querySelector("dialog[open]")) return;
   const n = PAGES[+e.key - 1];
   if (n) location.hash = n;
 });
+
+// ---- after an APK install: test it, so the compatibility database learns whether it runs ----
+async function offerTest(m) {
+  if (!m.package || !confirm(`${m.label || m.package} is installed. Test it now?\n\nIt opens in the headset for about 20 seconds `
+                             + "and records whether it stays up.")) return;
+  toast(`Testing ${m.label || m.package}: launching it and watching for 20 s…`);
+  await act(`Test ${m.label || m.package}`, () => api("/api/android", { action: "probe", package: m.package }));
+  loadReports();
+}
+
+// ---- privacy: anonymous analytics levels (ui/frame_telemetry.py, docs/privacy.md) ----
+const telemetry = { usage: false, compat: false, blocked: "not loaded" };
+function renderTelemetry(s) {
+  Object.assign(telemetry, s);
+  setRepHint();
+  $("tUsage").checked = s.usage; $("tCompat").checked = s.compat; $("tDiag").checked = s.diagnostics;
+  $("tStatus").textContent = s.blocked ? `Nothing is being sent: ${s.blocked}.`
+    : `${s.queued ? s.queued + " waiting to send. " : ""}Your anonymous id is ${s.id.slice(0, 8)}…; it isn't linked to you or this computer.`;
+  $("tSent").textContent = s.sent.length ? s.sent.map(e => JSON.stringify({ event: e.event, time: e.timestamp, ...e.properties })).join("\n\n")
+                                         : "Nothing sent yet.";
+  const showNotice = !s.blocked && !s.noticeShown && s.usage;
+  $("privacyNotice").hidden = !showNotice;
+  if (showNotice) api("/api/telemetry", { noticeShown: true }).catch(() => {});
+}
+async function loadTelemetry() {
+  try { renderTelemetry(await api("/api/telemetry")); } catch {}
+}
+async function setTelemetry(change) {
+  try { renderTelemetry(await api("/api/telemetry", change)); }
+  catch (e) { toast(`Couldn't save: ${e.message}`, true); loadTelemetry(); }
+}
+$("tUsage").onchange = e => setTelemetry({ usage: e.target.checked });
+$("tCompat").onchange = e => setTelemetry({ compat: e.target.checked });
+$("tDiag").onchange = e => setTelemetry({ diagnostics: e.target.checked });
+$("tSentBox").ontoggle = () => { if ($("tSentBox").open) loadTelemetry(); };
+$("noticeOk").onclick = () => { $("privacyNotice").hidden = true; };
+$("noticeMore").onclick = async () => {
+  $("privacyNotice").hidden = true;
+  await setTelemetry({ compat: true, diagnostics: true });
+  toast("Thanks! Compatibility results and error details will be shared too. Change it any time in Privacy.");
+};
+$("noticeSettings").onclick = () => { $("privacyNotice").hidden = true; location.hash = "#privacy"; };
+loadTelemetry();
+function pageEvent(event, properties) {
+  if (telemetry.usage && !telemetry.blocked) api("/api/telemetry/event", { event, properties }).catch(() => {});
+}
+// Which tabs get used: once per tab per session.
+const tabsSeen = new Set();
+document.querySelectorAll("nav a").forEach(a => a.addEventListener("click", () => {
+  const tab = a.getAttribute("href").slice(1);
+  if (!tabsSeen.has(tab)) { tabsSeen.add(tab); pageEvent("tab_viewed", { tab }); }
+}));
+
+// ---- report a problem (ui/frame_report.py): sent privately to PostHog, with diagnostics ----
+const bug = { preview: "" };
+const activityLines = () => [...$("log").children].slice(0, 25).map(el => el.textContent.trim());
+function bugReportText() {
+  const contact = $("bugContact").value.trim();
+  const body = `Kind: ${$("bugKind").value}${contact ? `\nContact: ${contact}` : ""}\n\n${$("bugText").value.trim()}${bug.preview ? "\n\n---\nDiagnostics:\n```\n" + bug.preview + "\n```" : ""}`;
+  return { title: $("bugTitleIn").value.trim(), body };
+}
+// The preview is a snapshot: exactly this text is sent, even if more activity happens meanwhile.
+async function loadBugPreview() {
+  if (!$("bugDiag").checked) { bug.preview = ""; $("bugDiagText").textContent = "Nothing: diagnostics are off."; return; }
+  $("bugDiagText").textContent = "Loading…";
+  try { bug.preview = (await api("/api/report/preview", { activity: activityLines(), includeLogs: $("bugLogs").checked })).text; }
+  catch (e) { bug.preview = ""; $("bugDiagText").textContent = `Couldn't collect diagnostics: ${e.message}`; return; }
+  $("bugDiagText").textContent = bug.preview;
+}
+function openBugReport() {
+  $("bugForm").reset();
+  $("bugMsg").textContent = ""; $("bugSend").disabled = false;
+  $("bugCancel").textContent = "Cancel";
+  $("bugDiagBox").open = false; $("bugLogs").disabled = false;
+  $("bugDlg").showModal();
+  loadBugPreview();
+}
+document.body.addEventListener("click", e => { if (e.target.closest("[data-report]")) openBugReport(); });
+$("bugDiag").onchange = () => { $("bugLogs").disabled = !$("bugDiag").checked; loadBugPreview(); };
+$("bugLogs").onchange = loadBugPreview;
+$("bugCancel").onclick = () => $("bugDlg").close();
+$("bugCopy").onclick = async () => {
+  const { title, body } = bugReportText();
+  try { await navigator.clipboard.writeText(`${title}\n\n${body}`); $("bugMsg").textContent = "Copied."; }
+  catch { $("bugMsg").textContent = "Couldn't copy; select the text under Show exactly what's included."; }
+};
+$("bugForm").onsubmit = async e => {
+  e.preventDefault();
+  if (!$("bugForm").reportValidity()) return;
+  $("bugSend").disabled = true; $("bugMsg").textContent = "Sending…";
+  try {
+    const res = await api("/api/report", {
+      kind: $("bugKind").value, title: $("bugTitleIn").value, message: $("bugText").value,
+      contact: $("bugContact").value, diagnostics: $("bugDiag").checked ? bug.preview : "" });
+    $("bugMsg").textContent = `Sent, thank you. Your reference is ${res.id}.`;
+    $("bugCancel").textContent = "Close";
+    log(res.message, "ok");
+  } catch (err) {
+    $("bugMsg").textContent = `Couldn't send it: ${err.message}. Try again later, or use Copy report.`;
+    $("bugSend").disabled = false;
+  }
+};
+if (window.frameApp && window.frameApp.onReportProblem) window.frameApp.onReportProblem(openBugReport);
+
+// ---- updates (the desktop app only: app/updater.js) ----
+const upd = { dismissed: false, offered: null };
+function renderUpdate(s) {
+  if (!s) return;
+  $("appVersion").textContent = `Version ${s.current}`;
+  const r = s.latest;
+  const show = r && ["available", "downloading", "ready", "error"].includes(s.status) && !upd.dismissed
+               && !(s.status === "error" && !r);
+  $("updateBar").hidden = !show;
+  if (!show) return;
+  if (s.status === "available" && upd.offered !== r.version) { upd.offered = r.version; pageEvent("update_offered", { to_version: r.version }); }
+  const busy = s.status === "downloading" || s.status === "ready";
+  $("updateText").innerHTML = s.status === "error"
+    ? `Updating to ${esc(r.version)} didn't work: ${esc(s.error || "unknown error")}`
+    : busy ? `Downloading Frame Control ${esc(r.version)}… It restarts when it's ready.`
+    : `<b>Frame Control ${esc(r.version)} is available.</b> You have ${esc(s.current)}.`
+      + (s.canInstall ? "" : ` ${esc(s.why ? "It can't update itself here (" + s.why + ")," : "")} download it from the release page.`);
+  $("updateProg").hidden = !busy;
+  $("updateProg").firstElementChild.style.width = Math.round((s.progress || 0) * 100) + "%";
+  $("updateGo").textContent = s.canInstall ? (s.status === "error" ? "Try again" : "Update and restart") : "Open release page";
+  $("updateGo").disabled = busy; $("updateLater").hidden = busy;
+}
+if (window.frameApp && window.frameApp.update) {
+  window.frameApp.update.onState(renderUpdate);
+  window.frameApp.update.get().then(renderUpdate);
+  $("updateCheck").hidden = false;
+  $("updateCheck").onclick = async () => {
+    const btn = $("updateCheck");
+    btn.disabled = true;
+    let s;
+    try { s = await window.frameApp.update.check(); } finally { btn.disabled = false; }
+    upd.dismissed = false; renderUpdate(s);
+    if (s && s.status === "none") toast(`You have the newest version (${s.current})`);
+    if (s && s.status === "check-failed") toast(`Couldn't check for updates: ${s.error}`, true);
+  };
+  $("updateGo").onclick = () => {
+    pageEvent("update_started", { to_version: upd.offered || "" });
+    window.frameApp.update.install();
+  };
+  $("updateLater").onclick = () => { upd.dismissed = true; $("updateBar").hidden = true; };
+  $("updateNotes").onclick = async () => {
+    const s = await window.frameApp.update.get();
+    if (s && s.latest) window.open(s.latest.page, "_blank");
+  };
+}
 
 // ---- install links from websites (frame-control://install, docs/web-install.md) ----
 // The app passes each link here. The server checks it and reads the manifest;

@@ -1,4 +1,5 @@
 """frame_titles without a headset: executable headers, launch targets, zips, runtimes."""
+import sandbox  # noqa: F401  (first: keeps tests off real data and services)
 import json
 import os
 import shutil

@@ -1,7 +1,7 @@
 {
   "name": "frame-control",
   "productName": "Frame Control",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "Desktop app for managing a Valve Steam Frame over SSH",
   "private": true,
   "main": "main.js",
@@ -37,6 +37,7 @@
       "main.js",
       "preload.js",
       "install-link.js",
+      "updater.js",
       "package.json",
       "build/icon.png"
     ],
@@ -46,7 +47,8 @@
         "to": "ui",
         "filter": [
           "*.py",
-          "*.html"
+          "*.html",
+          "telemetry.json"
         ]
       },
       {
@@ -65,11 +67,29 @@
         ]
       },
       {
+        "from": "../frame/openxr-compat",
+        "to": "frame/openxr-compat",
+        "filter": [
+          "XrApiLayer_FRAME_compat.json",
+          "prebuilt/**/*.so"
+        ]
+      },
+      {
         "from": "../frame/devkit-utils",
         "to": "frame/devkit-utils",
         "filter": [
           "**/*",
           "!**/__pycache__/**"
+        ]
+      },
+      {
+        "from": "../frame/kdeconnect",
+        "to": "frame/kdeconnect",
+        "filter": [
+          "packages.json",
+          "NOTICE.md",
+          "LICENSES/**/*",
+          "packages/*.pkg.tar.zst"
         ]
       },
       {
@@ -94,6 +114,14 @@
         "filter": [
           "**/*"
         ]
+      },
+      {
+        "from": "../THIRD_PARTY_NOTICES.md",
+        "to": "THIRD_PARTY_NOTICES.md"
+      },
+      {
+        "from": "../LICENSE",
+        "to": "LICENSE"
       }
     ],
     "mac": {

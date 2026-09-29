@@ -275,3 +275,12 @@ implementation. We have not established a keyboard detector or a calibrated
 camera-to-panel mapping. Built-in full-room passthrough is not proof of a
 public, selectively masked camera stream. No keyboard cutout is offered, and
 no third-party camera/overlay app is substituted for it.
+
+## Frame Control's media theatre
+
+[The owned media player](vr-video.md) can show its video or stereo image on a
+larger, head-relative screen with its own dark surround. **Verified remotely
+2026-09-28**, SteamOS 0.4.1 / BUILD_ID 20260925.6191901: screen, eye isolation,
+surround and cleanup. It does not alter panel docking or global settings.
+Its `Overlay` RGBA rendering hook is available to stream producers; applying
+SteamVR theatre docking to existing Mac/PC panels is still unverified here.

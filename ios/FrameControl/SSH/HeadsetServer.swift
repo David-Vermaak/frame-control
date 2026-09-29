@@ -80,8 +80,10 @@ final class HeadsetServer: @unchecked Sendable {
     }
 
     /// Starts the server in dir and waits for it to say which port it took.
-    static func start(in dir: String, over link: FrameLink, key: String, device: String) async throws -> HeadsetServer {
+    /// client is a stable id for this install (keyboard-and-trackpad pairing is kept per client).
+    static func start(in dir: String, over link: FrameLink, key: String, device: String, client: String) async throws -> HeadsetServer {
         let command = "cd \(dir) && FRAME_LOCAL=1 FRAME_UI_KEY=\(key) FRAME_DEVICE=\(shellQuote(device)) "
+            + "FRAME_CLIENT=\(shellQuote(client)) "
             + "exec python3 -I -u -B \"$PWD/ui/server.py\" --port 0 --exit-on-eof 2>&1"
         let stream = try await link.client.executeCommandStream(command)
         let box = PortWaiter()
