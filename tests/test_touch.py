@@ -138,6 +138,15 @@ class Apply(unittest.TestCase):
         self.assertEqual(self.said, [("ready", {"focus": 7, "display": ":1", "stale": True}),
                                      ("ready", {"focus": 7, "display": ":1"})])
 
+    def test_stale_clears_on_a_trackpad_move_but_not_on_a_stale_release(self):
+        gs = FakeGamescope()
+        panel = self.t.apply(gs, {"fx": 0.5, "fy": 0.5, "window": 99, "display": ":1"}, None)
+        panel = self.t.apply(gs, {"button": "left", "down": False, "window": 99, "display": ":1"}, panel)
+        self.assertTrue(self.t.STALE[0])  # that release was still aimed at the old panel
+        self.t.apply(gs, {"dx": 3, "dy": 0}, panel)
+        self.assertFalse(self.t.STALE[0])
+        self.assertEqual(self.said[-1][1].get("stale"), None)
+
     def test_same_window_id_on_the_other_display_is_another_panel(self):
         gs = FakeGamescope()
         self.t.apply(gs, {"fx": 0.5, "fy": 0.5, "window": 7, "display": ":0"}, None)

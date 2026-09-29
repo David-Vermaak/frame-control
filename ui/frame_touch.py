@@ -369,9 +369,10 @@ def apply(gs, event, panel):
         say("ready", focus=panel.get("window"), display=panel.get("display"), stale=True)  # the page re-syncs
         STALE[0] = True
         return panel
-    if "window" in event and STALE[0]:
+    if STALE[0] and not stale:
+        # Anything that goes through (a trackpad move names no panel) means caught up: stop re-syncing.
         STALE[0] = False
-        say("ready", focus=panel.get("window"), display=panel.get("display"))  # caught up: stop re-syncing
+        say("ready", focus=(panel or {}).get("window"), display=(panel or {}).get("display"))
     if "fx" in event and panel and panel.get("window"):
         gs.move_to(*to_root(panel, number(event["fx"], 1), number(event["fy"], 1)))
     if "dx" in event or "dy" in event:
