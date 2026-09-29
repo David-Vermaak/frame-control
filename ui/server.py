@@ -71,7 +71,10 @@ if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", FRAME):
     sys.exit(f"FRAME_ALIAS must be a plain host alias, not {FRAME!r}")
 # Reuse one SSH connection for the frequent status/screenshot calls, where ssh
 # supports it (not on Windows: there every command connects on its own).
-CONTROL = None if LOCAL else frame_host.control_path(private=os.environ.get("FRAME_PRIVATE_SSH") == "1")
+# A private server (the MCP adapter starts one per session) keeps its own SSH masters, and
+# uses the headsets without editing them.
+PRIVATE = os.environ.get("FRAME_PRIVATE_SSH") == "1"
+CONTROL = None if LOCAL else frame_host.control_path(private=PRIVATE)
 # The ControlPath itself is per headset: the connector puts it in HOST_OPTS.
 MUX = ["ssh", "-o", "BatchMode=yes"]
 MUX_BASE = list(MUX)
@@ -101,6 +104,9 @@ def route(alias, host_opts):
         MUX[:] = [*MUX_BASE, *HOST_OPTS]
         SSH[:] = [*MUX, *SSH_TAIL]
         frame_android.SSH_OPTS = SSH[1:]
+    mv = globals().get("macview")
+    if mv:
+        mv.retarget(alias, host_opts)  # its tunnel is its own ssh: it must follow the headset too
 
 
 LINK = None  # the connector (frame_link.Link); None on the Frame itself
@@ -1436,6 +1442,8 @@ def open_setup(alias, host=None):
 def devices_post(body):
     if not LINK:
         raise Failure("Headsets are managed from the computer app", 400)
+    if PRIVATE:
+        raise Failure("Headsets are managed in the Frame Control app", 403)
     try:
         # Under the work lock: nothing can start on the old headset while it switches.
         with _work_lock:
@@ -1846,7 +1854,8 @@ def one_server():
     """Only one Frame Control server per user: two would each connect, reconnect and
     edit the headsets on their own, and could move each other's installs to another
     headset. Held until this process exits. (FRAME_CONTROL_DATA_DIR gives a second,
-    separate one, as the tests do.)"""
+    separate one, as the tests do. A private server, the MCP adapter's, runs alongside:
+    it can't add, remove or switch headsets.)"""
     lock = frame_devices.file_lock(frame_host.data_dir("server.lock"), timeout=float(os.environ.get("FRAME_CONTROL_SERVER_WAIT") or 20))  # while the app restarts it
     try:
         lock.__enter__()
@@ -1868,7 +1877,8 @@ def main():
     frame_telemetry.start()
     global LINK, _ONE_SERVER
     if not LOCAL:
-        _ONE_SERVER = one_server()
+        if not PRIVATE:  # a private server only uses the headsets (see one_server)
+            _ONE_SERVER = one_server()
         LINK = frame_link.Link(frame_devices.Registry(), env_alias=FRAME if FRAME_FROM_ENV else None,
                                mux_base=MUX_BASE, control=CONTROL, apply=route, explain=unreachable)
         LINK.work_lock, LINK.work = _work_lock, lambda: _work[0]

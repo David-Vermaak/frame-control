@@ -120,6 +120,7 @@ class MacView:
         self.tunnel_ssh = list(tunnel_ssh)
         self.run = run
         self.frame = frame
+        self.host_opts = []  # the headset in use and how to reach it (see retarget)
         self.track = track or (lambda proc: None)  # the server ends these on exit
         self.lock = threading.Lock()
         self.token = secrets.token_urlsafe(24)
@@ -239,11 +240,32 @@ class MacView:
                 last = self._last_tunnel_error
             raise MacViewError(f"Couldn't open a tunnel from {self.frame} to this Mac: {last or 'no answer through it'}")
 
+    def retarget(self, alias, host_opts):
+        """The server now reaches the headset as `alias` with `host_opts` (another address,
+        or another headset). No lock: this runs while the server routes, which a tunnel
+        being opened may be waiting on; each assignment is atomic."""
+        # host_opts is "-o", "Name=value" pairs; the tunnel keeps its own connection,
+        # not the shared master.
+        opts = [x for flag, value in zip(host_opts[::2], host_opts[1::2])
+                if not value.startswith("ControlPath=") for x in (flag, value)]
+        moved = alias != self.frame
+        self.frame, self.host_opts = alias, opts
+        tunnel = self.tunnel
+        if moved and tunnel is not None:
+            # Another headset: its viewers can't be the old one's. The supervisor
+            # reopens a tunnel to the new one if anything is being shown.
+            self.tunnel, self.remote_port = None, None
+            if tunnel.poll() is None:
+                tunnel.terminate()
+
     def _open_tunnel(self, via, ports):
         """Tries the ports on one route; True once the tunnel answers. With self.lock held."""
         last = ""
         for port in ports:
-            proc = subprocess.Popen([*self.tunnel_ssh, *via, "-o", "ExitOnForwardFailure=yes",
+            # `via` first: ssh keeps the first value of an option, so USB-C's HostName wins
+            # while the headset's pinned identity (in host_opts) still checks it.
+            proc = subprocess.Popen([*self.tunnel_ssh, "-o", "ControlPath=none", *via, *self.host_opts,
+                                     "-o", "ExitOnForwardFailure=yes",
                                      "-o", "ServerAliveInterval=5", "-o", "ServerAliveCountMax=3", "-N",
                                      "-R", f"127.0.0.1:{port}:127.0.0.1:{self.port}", self.frame],
                                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
@@ -294,6 +316,8 @@ class MacView:
             socket.create_connection((ip, 22), timeout=1).close()
         except OSError:
             return []  # not plugged into this Mac
+        if any(o.startswith("HostKeyAlias=") for o in self.host_opts):
+            return ["-o", f"HostName={ip}"]  # checked against the headset's own pinned key
         alias = self.frame
         try:
             cfg = subprocess.run(["ssh", "-G", self.frame], capture_output=True, text=True, timeout=5).stdout

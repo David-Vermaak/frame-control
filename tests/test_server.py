@@ -260,6 +260,22 @@ class OneServer(unittest.TestCase):
         first.wait(10)
         self.assertIn("Frame Control on", self.start(env).stdout.readline())
 
+    def test_a_private_server_runs_alongside_but_cant_change_headsets(self):
+        """The MCP adapter starts its own server (FRAME_PRIVATE_SSH=1) while the app runs."""
+        data = tempfile.mkdtemp(prefix="frame-one-server-")
+        env = {**os.environ, "FRAME_CONTROL_DATA_DIR": data, "FRAME_ALIAS": "frame-control-test.invalid",
+               "FRAME_CONTROL_SERVER_WAIT": "1"}
+        self.assertIn("Frame Control on", self.start(env).stdout.readline())
+        private = self.start({**env, "FRAME_PRIVATE_SSH": "1"})
+        line = private.stdout.readline()
+        self.assertIn("Frame Control on", line)
+        port = int(line.split("http://127.0.0.1:")[1].split()[0])
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
+        conn.request("POST", "/api/devices", body=json.dumps({"action": "use", "id": "x"}),
+                     headers={"Content-Type": "application/json", "X-Frame-UI": "1", "Host": f"127.0.0.1:{port}"})
+        r = conn.getresponse()
+        self.assertEqual(r.status, 403, r.read())
+
 
 @unittest.skipIf(os.name == "nt", "runs on the Frame (Linux); local-bin/ssh is a POSIX shell script")
 class LocalMode(unittest.TestCase):

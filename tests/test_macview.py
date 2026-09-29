@@ -42,6 +42,23 @@ class Helpers(unittest.TestCase):
         self.assertEqual(h, 1080)
         self.assertAlmostEqual(w / h, 0.5, places=2)
 
+    def test_the_tunnel_follows_the_headset(self):
+        mv = frame_macview.MacView(["ssh"], lambda *a, **k: "", "frame")
+        mv.retarget("frame", ["-o", "ControlPath=/tmp/x-%C", "-o", "HostName=192.0.2.1", "-o", "HostKeyAlias=frame-control-a"])
+        self.assertEqual(mv.host_opts, ["-o", "HostName=192.0.2.1", "-o", "HostKeyAlias=frame-control-a"])
+
+        class Tunnel:
+            ended = False
+            def poll(self): return None
+            def terminate(self): Tunnel.ended = True
+        mv.tunnel, mv.remote_port = Tunnel(), 47999
+        mv.retarget("frame", ["-o", "HostName=192.0.2.9"])  # another address, same headset: keep it
+        self.assertFalse(Tunnel.ended)
+        mv.retarget("frame-2", ["-o", "HostName=192.0.2.2"])  # another headset: never the old one's tunnel
+        self.assertTrue(Tunnel.ended)
+        self.assertIsNone(mv.tunnel)
+        self.assertEqual(mv.frame, "frame-2")
+
     @unittest.skipUnless(shutil.which("bash"), "needs bash")
     @unittest.skipIf(os.name == "nt", "Windows' bash.exe is WSL's launcher, and runners have no distribution")
     def test_launch_script_parses(self):
