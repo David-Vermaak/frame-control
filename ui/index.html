@@ -147,6 +147,18 @@
   .viewer .badge { position: absolute; left: 12px; top: 12px; font-size: 11px; letter-spacing: 1.2px; text-transform: uppercase;
                    background: rgba(0,0,0,.6); color: var(--text); padding: 4px 9px; border-radius: 2px; }
   .viewer .badge.live { left: auto; right: 12px; background: var(--bad); color: #fff; font-weight: 700; }
+  .view-actions { display: flex; gap: 10px; }
+  .ctrl-status { margin-top: 10px; font-size: 13px; color: var(--blue); }
+  .ctrl-status::before { content: "● "; }
+  .ctrl-status.warn { color: var(--warn); }
+  /* Control: the view takes taps, clicks, drags and keys, and none of them zoom or pan it. */
+  .viewer.control { outline: 1px solid var(--blue); }
+  .viewer.control canvas { cursor: crosshair; touch-action: none; }
+  .viewer.control.rel canvas { cursor: move; }
+  .viewer.immersive { position: fixed; z-index: 40; inset: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left);
+                      max-height: none; aspect-ratio: auto; border-radius: 0; }
+  .ctrl-keys { margin-top: 10px; }
+  #panelPick { max-width: 240px; height: 30px; }
   .viewer .stamp { position: absolute; right: 12px; bottom: 12px; font-size: 11px; color: #c7d5e0;
                    background: rgba(0,0,0,.6); padding: 3px 8px; border-radius: 2px; }
   .viewer .asleep { position: absolute; inset: auto 0 0 0; padding: 14px 18px; text-align: center; color: var(--text);
@@ -390,6 +402,9 @@
     .grid-top, .grid-3, .and-grid, .and-col { gap: 14px; }
     .toolbar { gap: 8px; }
     .toolbar .spacer { display: none; }
+    .view-actions { flex: 1 1 100%; display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+    .view-actions button { justify-content: center; padding: 0 4px; }
+    #panelPick { flex: 1 1 100%; max-width: none; }
     .shelf-head { flex-wrap: wrap; row-gap: 8px; }
     .shelf { grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 10px; }
     .cat-grid { grid-template-columns: 1fr; }
@@ -469,16 +484,20 @@
       <div class="toolbar">
         <div class="seg" aria-label="What to capture">
           <button data-view="headset" class="on" title="What the headset shows, via the SteamVR compositor">Headset view</button>
-          <button data-view="flat" title="gamescope's 2D layer: the desktop panel and Steam's flat UI">Desktop panel</button>
+          <button data-view="flat" title="The app panel in use, flat: it stays still however the wearer looks around">Desktop</button>
         </div>
+        <select id="panelPick" class="small" hidden aria-label="Which panel to show"></select>
         <div class="seg" id="eyeSeg" aria-label="Crop">
           <button data-eye="left" class="on" title="One eye, like pointing a camera into one lens">Left eye</button>
           <button data-eye="both" title="Both eyes side by side">Both eyes</button>
         </div>
         <div class="spacer"></div>
-        <button class="action" id="shotBtn">Capture</button>
-        <button id="liveBtn" title="Keep updating: video of the headset view, or repeated captures of the desktop panel">Live</button>
-        <button id="saveBtn" disabled>Save</button>
+        <span class="view-actions">
+          <button class="action" id="shotBtn">Capture</button>
+          <button id="liveBtn" title="Keep updating, as video">Live</button>
+          <button id="ctrlBtn" title="Control the Frame by tapping or clicking on the view (C)">Control</button>
+          <button id="saveBtn" disabled>Save</button>
+        </span>
       </div>
       <div class="viewer" id="viewer">
         <div class="empty" id="viewerEmpty">
@@ -499,6 +518,25 @@
         </div>
         <div class="asleep" id="asleep" hidden>The headset is showing a blank frame. It's probably asleep or not being worn. Put it on and capture again.</div>
         <div class="loading"><div class="spinner"></div></div>
+      </div>
+      <div class="ctrl-status" id="ctrlBadge" role="status" hidden></div>
+      <div class="pad-keys ctrl-keys" id="ctrlKeys" hidden aria-label="Keys and clicks for the Frame">
+        <input id="ctrlType" type="text" placeholder="Type here to type on the Frame" autocomplete="off" autocapitalize="off"
+               autocorrect="off" spellcheck="false" enterkeyhint="send">
+        <span class="seg pad-clicks">
+          <button data-ctrl-click="left" title="Left click where the pointer is">Click</button>
+          <button data-ctrl-click="right" title="Right click where the pointer is">Right-click</button>
+        </span>
+        <span class="seg pad-special">
+          <button data-ctrl-key="1" title="Escape">Esc</button>
+          <button data-ctrl-key="15" title="Tab">Tab</button>
+          <button data-ctrl-key="105" title="Left arrow" aria-label="Left arrow">←</button>
+          <button data-ctrl-key="103" title="Up arrow" aria-label="Up arrow">↑</button>
+          <button data-ctrl-key="108" title="Down arrow" aria-label="Down arrow">↓</button>
+          <button data-ctrl-key="106" title="Right arrow" aria-label="Right arrow">→</button>
+          <button data-ctrl-key="14" title="Backspace" aria-label="Backspace">⌫</button>
+          <button data-ctrl-key="28" title="Enter">Enter</button>
+        </span>
       </div>
       <div class="hint" id="viewHint"></div>
     </section>
@@ -943,9 +981,9 @@ const QUICK = [["Remmina", "org.remmina.Remmina"], ["Moonlight", "com.moonlight_
 const CDN = "https://cdn.cloudflare.steamstatic.com/steam/apps";
 const HINTS = {
   headset: "What the lenses show, composited by SteamVR: the room, floating panels, dashboard and controllers. Live streams it as video (one eye, about 30 fps); Capture takes a still of both eyes. Captures show everything on screen, including anything private.",
-  flat: "gamescope's 2D layer: the desktop panel and Steam's flat UI, without the room or VR scene.",
+  flat: "The app panel in use in the headset, flat and still: it doesn't move as the wearer looks around. Pick another panel to watch it. Control lets you tap or click right where you want on it.",
 };
-const SOURCE_LABEL = { steamvr: "Headset view", gamescope: "Desktop panel", shot: "Screenshot" };
+const SOURCE_LABEL = { steamvr: "Headset view", gamescope: "Desktop panel", panel: "Desktop", shot: "Screenshot" };
 let state = null, view = "headset", eye = "left", live = false, liveTimer = null, volTimer = null;
 let lastImg = null, lastSource = null, lastShot = null, viewGen = 0;
 
@@ -1205,8 +1243,12 @@ function setView(v) {
   view = v;
   document.querySelectorAll("[data-view]").forEach(b => b.classList.toggle("on", b.dataset.view === v));
   $("eyeSeg").style.visibility = v === "headset" && !video.ctl ? "visible" : "hidden";
+  $("eyeSeg").style.display = v === "flat" ? "none" : "";  // the Desktop view has no eyes to pick
   $("viewHint").textContent = HINTS[v];
-  if (live && changed) { toggleLive(false); toggleLive(true); }  // video for the headset, captures for the panel
+  $("panelPick").hidden = v !== "flat";
+  if (v === "flat") watchPanels(); else clearTimeout(desk.timer);
+  if (live && changed) { toggleLive(false); toggleLive(true); }
+  ctrlShow();
 }
 function setEye(e) {
   eye = e;
@@ -1233,20 +1275,27 @@ function setZoom(z, cx, cy) {
 $("zoomIn").onclick = () => setZoom(zoom * 1.5);
 $("zoomOut").onclick = () => setZoom(zoom / 1.5);
 $("zoomFit").onclick = () => setZoom(1);
-$("fullBtn").onclick = () => document.fullscreenElement ? document.exitFullscreen() : $("viewer").requestFullscreen();
+// Full screen, or on phones (no element full screen there) the viewer filling the window.
+$("fullBtn").onclick = () => {
+  if (document.fullscreenElement) return document.exitFullscreen();
+  if ($("viewer").requestFullscreen && !TOUCH) return $("viewer").requestFullscreen().catch(() => $("viewer").classList.toggle("immersive"));
+  $("viewer").classList.toggle("immersive");
+  setZoom(1);
+};
 document.addEventListener("fullscreenchange", () => setZoom(1));
 $("viewer").addEventListener("wheel", e => {
-  if ($("canvas").hidden) return;
+  if ($("canvas").hidden || ctrl.on) return;
   e.preventDefault();
   const v = $("viewer").getBoundingClientRect();
   setZoom(zoom * Math.exp(-e.deltaY * 0.002), e.clientX - v.left, e.clientY - v.top);
 }, { passive: false });
 $("canvas").addEventListener("dblclick", e => {
+  if (ctrl.on) return;
   const v = $("viewer").getBoundingClientRect();
   setZoom(zoom > 1 ? 1 : 2.5, e.clientX - v.left, e.clientY - v.top);
 });
 $("canvas").addEventListener("pointerdown", e => {
-  if (zoom === 1) return;
+  if (zoom === 1 || ctrl.on) return;
   const start = { x: e.clientX - panX, y: e.clientY - panY };
   $("viewer").classList.add("panning");
   $("canvas").setPointerCapture(e.pointerId);
@@ -1256,7 +1305,10 @@ $("canvas").addEventListener("pointerdown", e => {
   $("canvas").addEventListener("pointerup", up, { once: true });
 });
 document.addEventListener("keydown", e => {
-  if (page !== "home" || $("canvas").hidden || /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName) || e.metaKey || e.ctrlKey) return;
+  if (page !== "home" || /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName) || e.metaKey || e.ctrlKey) return;
+  if (ctrl.on && document.activeElement === $("viewer")) return;  // keys are going to the Frame
+  if (e.key === "c") return $("ctrlBtn").click();
+  if ($("canvas").hidden) return;
   if (e.key === "+" || e.key === "=") setZoom(zoom * 1.5);
   else if (e.key === "-") setZoom(zoom / 1.5);
   else if (e.key === "0") setZoom(1);
@@ -1298,8 +1350,14 @@ async function capture() {
   if (!live) $("viewer").classList.add("busy");  // no spinner flashing over a live stream
   let url = null;
   try {
-    const r = await fetch(view === "headset" ? "/api/screenshot?view=headset" : "/api/screenshot",
-                          { headers: {"X-Frame-UI": UI_KEY} });
+    let url_ = "/api/screenshot?view=headset";
+    var shotPanel = null;
+    if (view === "flat") {
+      shotPanel = deskPanel() || (await loadPanels(), deskPanel());
+      if (!shotPanel) throw new Error("no app panel is open in the headset");
+      url_ = `/api/screenshot?view=panel&window=${shotPanel.window}&display=${encodeURIComponent(shotPanel.display)}`;
+    }
+    const r = await fetch(url_, { headers: {"X-Frame-UI": UI_KEY} });
     if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `HTTP ${r.status}`);
     const source = r.headers.get("X-Capture-Source") || "gamescope";
     url = URL.createObjectURL(await r.blob());
@@ -1308,6 +1366,9 @@ async function capture() {
     if (gen !== viewGen) return true;
     lastImg = img; lastSource = source; lastShot = null;
     draw();
+    desk.shown = source === "panel" ? panelKey(shotPanel) : null;
+    if (source === "panel") $("srcBadge").textContent = `Desktop · ${shotPanel?.name || "panel"}`;
+    ctrlShow();
     $("stamp").hidden = false; $("stamp").textContent = new Date().toLocaleTimeString();
     $("saveBtn").disabled = false;
     return true;
@@ -1320,26 +1381,29 @@ async function capture() {
     $("viewer").classList.remove("busy");
   }
 }
-let liveFailures = 0;
-async function liveLoop() {
-  if (!live) return;
-  liveFailures = (await capture()) ? 0 : liveFailures + 1;
+let liveFailures = 0, liveGen = 0;
+async function liveLoop(gen = liveGen) {
+  if (!live || gen !== liveGen) return;
+  const ok = await capture();
+  if (gen !== liveGen) return;  // Live was restarted (say, as video) while this capture ran
+  liveFailures = ok ? 0 : liveFailures + 1;
   if (liveFailures >= 5) {
     toggleLive(false);
-    toast("Live stopped after 5 failed captures. Is the headset on?", true);
+    toast(view === "flat" ? "Live stopped: couldn't capture the panel." : "Live stopped after 5 failed captures. Is the headset on?", true);
     return;
   }
-  if (live) liveTimer = setTimeout(liveLoop, view === "headset" ? 300 : 700);
+  if (live) liveTimer = setTimeout(() => liveLoop(gen), view === "headset" ? 300 : 700);
 }
 function toggleLive(on) {
   live = on;
+  liveGen++;
   liveFailures = 0;
   $("liveBtn").classList.toggle("on", live);
   $("liveBadge").hidden = !live;
   clearTimeout(liveTimer);
   stopVideo();
   if (!live) return;
-  if (view === "headset" && "VideoDecoder" in window) {
+  if ("VideoDecoder" in window && (view === "headset" || deskPanel())) {
     const started = startVideo();
     const ctl = video.ctl;
     started.catch(e => {
@@ -1384,9 +1448,10 @@ async function startVideo() {
       if (!shown++) {
         viewGen++;  // a capture still in flight mustn't replace the video
         lastImg = null; lastSource = "video"; lastShot = null;
+        desk.shown = panelKey(panel); ctrlShow();
         $("viewer").classList.remove("busy");
         c.hidden = false; $("viewerEmpty").hidden = true; $("zoombar").hidden = false; $("asleep").hidden = true;
-        $("srcBadge").hidden = false; $("srcBadge").textContent = "Headset view · video";
+        $("srcBadge").hidden = false; $("srcBadge").textContent = `${video.label} · video`;
         $("stamp").hidden = false; $("saveBtn").disabled = false;
       }
       frames++;
@@ -1398,7 +1463,11 @@ async function startVideo() {
     },
     error: e => log("Video decoder: " + e.message, "e"),
   });
-  const r = await fetch(`/api/stream?${STREAM_QUERY}`, { headers: {"X-Frame-UI": UI_KEY}, signal: ctl.signal });
+  const panel = view === "flat" ? deskPanel() : null;
+  desk.shown = null;  // until this stream's first picture
+  video.label = panel ? `Desktop · ${panel.name || "panel"}` : "Headset view";
+  const query = panel ? `src=panel&window=${panel.window}&display=${encodeURIComponent(panel.display)}&${STREAM_QUERY}` : STREAM_QUERY;
+  const r = await fetch(`/api/stream?${query}`, { headers: {"X-Frame-UI": UI_KEY}, signal: ctl.signal });
   if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `HTTP ${r.status}`);
   const reader = r.body.getReader();
   let buf = new Uint8Array(0), scan = 0, auStart = -1;
@@ -1443,7 +1512,7 @@ function stopVideo() {
   if (video.dec && video.dec.state !== "closed") video.dec.close();
   video.ctl = video.dec = null;
   $("viewer").classList.remove("busy");
-  if (lastSource === "video") { $("srcBadge").textContent = "Headset view · video (stopped)"; $("stamp").hidden = true; }
+  if (lastSource === "video") { $("srcBadge").textContent = `${video.label || "Headset view"} · video (stopped)`; $("stamp").hidden = true; }
   $("eyeSeg").style.visibility = view === "headset" ? "visible" : "hidden";
 }
 $("shotBtn").onclick = () => capture();
@@ -1462,6 +1531,421 @@ function download(blob, name) {
 }
 document.querySelectorAll("[data-view]").forEach(b => b.onclick = () => setView(b.dataset.view));
 document.querySelectorAll("[data-eye]").forEach(b => b.onclick = () => setEye(b.dataset.eye));
+
+// ---- Desktop view: the app panel in use in the headset (or one picked to watch) ----
+// gamescope says which panel has focus: the one the wearer last used. That's the one
+// Control reaches, so the view follows it unless you pick another to watch.
+// Panels are "display/window": window ids are per X display, and the Frame has two.
+// desk.shown is the panel whose picture is on screen now; Control only acts on that one.
+const desk = { panels: [], focus: null, pick: "", timer: null, loaded: false, shown: null };
+const panelKey = p => p ? `${p.display}/${p.window}` : null;
+function deskPanel() {
+  const want = desk.pick || desk.focus;
+  // Nothing in use and nothing picked: show the first panel rather than nothing.
+  return desk.panels.find(p => panelKey(p) === want) || (!desk.pick && !desk.focus && desk.panels[0]) || null;
+}
+async function loadPanels() {
+  try {
+    const before = panelKey(deskPanel());
+    const r = await api("/api/panels");
+    desk.panels = r.panels || []; desk.loaded = true;
+    desk.focus = r.focus ? `${r.focus_display}/${r.focus}` : null;
+    if (desk.pick && !desk.panels.some(p => panelKey(p) === desk.pick)) desk.pick = "";
+    renderPanelPick();
+    const now = panelKey(deskPanel());
+    if (view === "flat" && live && now !== before) { toggleLive(false); toggleLive(true); }
+    ctrlShow();
+  } catch (e) {
+    log("Couldn't list the headset's panels: " + e.message, "e");
+  }
+}
+function watchPanels() {
+  clearTimeout(desk.timer);
+  if (view !== "flat") return;
+  loadPanels().finally(() => { if (view === "flat") desk.timer = setTimeout(watchPanels, document.hidden ? 10000 : 3000); });
+}
+function renderPanelPick() {
+  const sel = $("panelPick");
+  sel.innerHTML = `<option value="">${desk.focus ? "Panel in use" : "Panel in use (none yet)"}</option>` +
+    desk.panels.map(p => `<option value="${esc(panelKey(p))}">${esc(p.name || "Untitled")}${p.focused ? " (in use)" : ""}</option>`).join("");
+  sel.value = desk.pick;
+}
+$("panelPick").onchange = () => {
+  desk.pick = $("panelPick").value;
+  ctrlShow();
+  if (live) { toggleLive(false); toggleLive(true); } else if (lastImg || lastSource) capture();
+};
+
+// ---- Control: tap or click on the view to use the Frame ----
+// Through gamescope's own input (frame_touch.py). On the Desktop view a tap lands
+// exactly where you tapped; on the headset view, which moves with the wearer's head,
+// the view is a trackpad for the pointer instead.
+const ctrl = { on: false, queue: [], sending: false, state: "off", message: "", move: null, rel: [0, 0], raf: 0,
+               held: new Set(), keys: new Set(), pointers: new Map(), g: null, retry: null };
+const EVDEV = { Escape: 1, Minus: 12, Equal: 13, Backspace: 14, Tab: 15, BracketLeft: 26, BracketRight: 27, Enter: 28,
+  ControlLeft: 29, Semicolon: 39, Quote: 40, Backquote: 41, ShiftLeft: 42, Backslash: 43, Comma: 51, Period: 52,
+  Slash: 53, ShiftRight: 54, NumpadMultiply: 55, AltLeft: 56, Space: 57, CapsLock: 58, F11: 87, F12: 88,
+  IntlBackslash: 86, NumpadEnter: 96, ControlRight: 97, NumpadDivide: 98, AltRight: 100, Home: 102, ArrowUp: 103,
+  PageUp: 104, ArrowLeft: 105, ArrowRight: 106, End: 107, ArrowDown: 108, PageDown: 109, Insert: 110, Delete: 111,
+  MetaLeft: 125, MetaRight: 126, ContextMenu: 127, NumpadSubtract: 74, NumpadAdd: 78, NumpadDecimal: 83 };
+[..."qwertyuiop"].forEach((c, i) => EVDEV["Key" + c.toUpperCase()] = 16 + i);
+[..."asdfghjkl"].forEach((c, i) => EVDEV["Key" + c.toUpperCase()] = 30 + i);
+[..."zxcvbnm"].forEach((c, i) => EVDEV["Key" + c.toUpperCase()] = 44 + i);
+[..."1234567890"].forEach((c, i) => EVDEV["Digit" + c] = 2 + i);
+for (let i = 1; i <= 10; i++) EVDEV["F" + i] = 58 + i;
+[[7, 71], [8, 72], [9, 73], [4, 75], [5, 76], [6, 77], [1, 79], [2, 80], [3, 81], [0, 82]].forEach(([n, k]) => EVDEV["Numpad" + n] = k);
+const CTRL_BUTTONS = ["left", "middle", "right"];  // MouseEvent.button 0, 1, 2
+
+function ctrlMode() { return view === "flat" ? "abs" : "rel"; }
+// Where taps go on the Desktop view, or why they can't.
+function ctrlTarget() {
+  if (ctrlMode() === "rel") return { ok: true };
+  const p = deskPanel();
+  if (!desk.loaded) return { why: "Finding the headset's panels…" };
+  if (!p) return { why: "No app panel is open in the headset." };
+  if (!desk.focus) return { why: "Nobody's using a panel in the headset yet. Taps work once one is in use." };
+  if (panelKey(p) !== desk.focus) return { why: "Only the panel in use takes taps. Pick “Panel in use” to control it." };
+  if (desk.shown !== desk.focus) return { why: live ? "Waiting for the picture of the panel in use…"
+                                                    : "The panel in use has changed. Press Capture or Live to see it first." };
+  return { ok: true, panel: p };
+}
+function ctrlShow() {
+  const v = $("viewer"), b = $("ctrlBadge");
+  $("ctrlBtn").classList.toggle("on", ctrl.on);
+  v.classList.toggle("control", ctrl.on);
+  v.classList.toggle("rel", ctrl.on && ctrlMode() === "rel");
+  $("ctrlKeys").hidden = !ctrl.on;
+  b.hidden = !ctrl.on;
+  if (!ctrl.on) return;
+  const t = ctrlTarget();
+  let text = ctrlMode() === "abs" ? `Tap or click to use ${t.panel ? t.panel.name || "the panel" : "the panel"}`
+                                  : "Drag to move the pointer, tap to click, two fingers to scroll";
+  let warn = false;
+  if (!t.ok) { text = t.why; warn = true; }
+  else if (ctrl.state === "error") { text = ctrl.message || "Control isn't working"; warn = true; }
+  else if (ctrl.state === "starting") text = "Connecting…";
+  b.textContent = text;
+  b.classList.toggle("warn", warn);
+}
+function ctrlToggle(on) {
+  if (!on) ctrlRelease();
+  ctrl.on = on;
+  if (on) {
+    setZoom(1);
+    ctrlPoll(0);
+    if (view === "flat" && !desk.loaded) watchPanels();
+    if (!TOUCH) $("viewer").focus({ preventScroll: true });
+  }
+  if (window.frameApp && window.frameApp.captureKeys) window.frameApp.captureKeys(on && document.activeElement === $("viewer"));
+  ctrlShow();
+}
+$("ctrlBtn").onclick = () => ctrlToggle(!ctrl.on);
+// Until it's ready, check on the Frame side every half second (for up to 15 s).
+async function ctrlPoll(n) {
+  if (!ctrl.on) return;
+  try {
+    const r = await api(n ? "/api/touch" : "/api/touch?start=1");
+    ctrl.state = r.state; ctrl.message = r.message || "";
+  } catch (e) { ctrl.state = "error"; ctrl.message = e.message; }
+  if (!ctrl.on) return;  // turned off while connecting
+  ctrlShow();
+  if (ctrl.state !== "ready" && ctrl.state !== "error" && n < 30) return setTimeout(() => ctrlPoll(n + 1), 500);
+  if (ctrl.state === "ready") return ctrlFlush();
+  if (ctrl.state !== "error") {
+    ctrl.state = "error"; ctrl.message = "The Frame didn't answer. Turn Control off and on to try again.";
+    ctrlShow();
+  }
+}
+$("viewer").tabIndex = 0;
+$("viewer").addEventListener("focus", () => { if (ctrl.on && window.frameApp?.captureKeys) window.frameApp.captureKeys(true); });
+$("viewer").addEventListener("blur", () => { ctrlRelease(); if (window.frameApp?.captureKeys) window.frameApp.captureKeys(false); });
+document.addEventListener("visibilitychange", () => { if (document.hidden) ctrlRelease(); });
+window.addEventListener("blur", () => ctrlRelease());  // another app took the keyboard
+
+const isMoveEvent = e => ("fx" in e || "dx" in e) && !("button" in e) && !("key" in e);
+const isRelease = e => ("button" in e || "key" in e) && e.down === false;
+// While it connects, keep clicks and keys, each with the last position before it, so a
+// tap still lands where it was made; lone moves are stale by then.
+function ctrlKeepable(events) {
+  const out = [];
+  let move = null;
+  for (const e of events) {
+    if (isMoveEvent(e)) { if ("fx" in e) move = e; continue; }
+    if (move && "button" in e && e.down !== false) out.push(move);
+    move = null;
+    out.push(e);
+  }
+  if (move) out.push(move);  // the last position: a click queued after it needs it
+  return out;
+}
+function ctrlSend(events) {
+  ctrl.queue.push(...events.map(e => isMoveEvent(e) ? e : ctrlAim(e)).filter(Boolean));
+  // Keep order; if the Frame is slow to answer, drop pointer moves first, then the oldest
+  // presses and scrolls, never a release.
+  if (ctrl.queue.length > 300) {
+    const q = ctrlKeepable(ctrl.queue), keep = new Set();
+    q.forEach((e, i) => { if (isRelease(e) || i >= q.length - 200) keep.add(i); });
+    // A kept press keeps the position before it, so it lands where it was made.
+    for (const i of [...keep]) if (i > 0 && "button" in q[i] && q[i].down !== false && "fx" in q[i - 1]) keep.add(i - 1);
+    ctrl.queue = q.filter((e, i) => keep.has(i));
+  }
+  ctrlFlush();
+}
+async function ctrlFlush() {
+  if (ctrl.sending || !ctrl.queue.length) return;
+  // Backing off after a failure: new input waits for the same retry.
+  const wait = (ctrl.retryAt || 0) - Date.now();
+  if (wait > 0) {
+    clearTimeout(ctrl.retry);
+    ctrl.retry = setTimeout(ctrlFlush, wait);
+    return;
+  }
+  ctrl.sending = true;
+  // Up to 200 events, and at most about 100 characters of text: the Frame types a batch
+  // key by key before reading the next, and a release mustn't wait behind a long paste.
+  let n = 0, chars = 0;
+  while (n < ctrl.queue.length && n < 200 && (n === 0 || chars + (ctrl.queue[n].text?.length || 0) <= 100)) {
+    chars += ctrl.queue[n].text?.length || 0;
+    n++;
+  }
+  const batch = ctrl.queue.splice(0, n);
+  let again = 0;
+  try {
+    const r = await api("/api/touch", { events: batch });
+    ctrl.state = r.state; ctrl.message = r.message || "";
+    if (r.stale && typeof loadPanels === "function") loadPanels();  // focus moved on: catch up now
+    if (!r.sent && r.state === "error") {
+      // Broken: presses would be stale by the time it's back; releases still matter.
+      ctrl.queue.unshift(...batch.filter(isRelease));
+      again = 2000;
+    } else if (!r.sent) {
+      ctrl.queue.unshift(...ctrlKeepable(batch));  // connecting: send them once it's ready
+      again = 300;
+    }
+  } catch (e) {
+    ctrl.state = "error"; ctrl.message = e.message;
+    ctrl.queue.unshift(...batch.filter(isRelease));
+    again = 1000;  // try the releases again in a moment, not in a tight loop
+  } finally {
+    ctrl.sending = false;
+    ctrlShow();
+    clearTimeout(ctrl.retry);
+    ctrl.retryAt = again ? Date.now() + again : 0;
+    if (again) { if (ctrl.queue.length) ctrl.retry = setTimeout(ctrlFlush, again); }
+    else if (ctrl.queue.length) ctrlFlush();
+  }
+}
+// Pointer moves: at most one per animation frame.
+function ctrlMoveTo(fx, fy) {
+  const p = ctrlTarget().panel;
+  if (!p) return;
+  ctrl.move = { fx, fy, window: p.window, display: p.display };
+  ctrlSchedule();
+}
+function ctrlMoveBy(dx, dy) { ctrl.rel[0] += dx; ctrl.rel[1] += dy; ctrlSchedule(); }
+function ctrlSchedule() { if (!ctrl.raf) ctrl.raf = requestAnimationFrame(ctrlFlushMoves); }
+function ctrlFlushMoves() {
+  ctrl.raf = 0;
+  const out = [];
+  if (ctrl.move) { out.push(ctrl.move); ctrl.move = null; }
+  if (ctrl.rel[0] || ctrl.rel[1]) { out.push({ dx: Math.round(ctrl.rel[0]), dy: Math.round(ctrl.rel[1]) }); ctrl.rel = [0, 0]; }
+  if (out.length) ctrlSend(out);
+}
+// On the Desktop view, presses name the panel they're for, so the Frame drops them if
+// focus has moved on (releases always go).
+// A press with no panel to aim at (the Desktop view lost its target) isn't sent at all.
+function ctrlAim(e) {
+  if (ctrlMode() !== "abs" || e.down === false) return e;
+  const p = ctrlTarget().panel;
+  return p ? { ...e, window: p.window, display: p.display } : null;
+}
+function ctrlButton(name, down) {
+  ctrlFlushMoves();  // the click lands where the pointer was sent
+  if (down) ctrl.held.add(name); else ctrl.held.delete(name);
+  ctrlSend([ctrlAim({ button: name, down })]);
+}
+function ctrlKeyEvent(code, down) {
+  ctrlFlushMoves();
+  if (down) ctrl.keys.add(code); else ctrl.keys.delete(code);
+  ctrlSend([ctrlAim({ key: code, down })]);
+}
+function ctrlClick(name = "left") { ctrlButton(name, true); ctrlButton(name, false); }
+function ctrlRelease() {
+  for (const b of [...ctrl.held]) ctrlButton(b, false);
+  for (const k of [...ctrl.keys]) ctrlKeyEvent(k, false);
+  if (ctrl.g && ctrl.g.timer) clearTimeout(ctrl.g.timer);
+  ctrl.pointers.clear(); ctrl.g = null;
+}
+// Where a pointer event falls on the panel, as fractions (the canvas box includes any letterboxing).
+function ctrlFraction(e) {
+  const c = $("canvas"), r = c.getBoundingClientRect();
+  const scale = Math.min(r.width / c.width, r.height / c.height);
+  const w = c.width * scale, h = c.height * scale;
+  const x = (e.clientX - r.left - (r.width - w) / 2) / w, y = (e.clientY - r.top - (r.height - h) / 2) / h;
+  return x >= 0 && x <= 1 && y >= 0 && y <= 1 ? [x, y] : null;
+}
+
+// Mouse (and pen) on a computer: the view is the Frame's screen.
+function ctrlMouse(e) {
+  if (ctrlMode() === "abs") {
+    const f = ctrlFraction(e);
+    if (f) ctrlMoveTo(...f);
+  } else if (e.type === "pointermove" && (e.movementX || e.movementY)) {
+    ctrlMoveBy(e.movementX * 1.5, e.movementY * 1.5);
+  }
+}
+// Touch: tap to click, press and hold to right-click, two fingers to scroll. Dragging is a
+// mouse drag on the Desktop view (sliders, selecting text) and moves the pointer on the headset view.
+const TAP_MOVE = 8, HOLD_MS = 550, TOUCH_SPEED = 1.6, SCROLL_SPEED = 2;
+function ctrlTouchDown(e) {
+  ctrl.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (ctrl.pointers.size === 1) {
+    const g = ctrl.g = { kind: "maybe", x: e.clientX, y: e.clientY, e, target: ctrlAimedAt() };
+    g.timer = setTimeout(() => {
+      if (ctrl.g !== g || g.kind !== "maybe" || !ctrlSameTarget(g)) return;
+      g.kind = "held";
+      if (ctrlMode() === "abs") {
+        const f = ctrlFraction(g.e);
+        if (!f) return;  // on the bars around the picture: nothing to press
+        ctrlMoveTo(...f);
+      }
+      ctrlClick("right");
+      navigator.vibrate?.(10);
+    }, HOLD_MS);
+  } else if (ctrl.pointers.size === 2) {
+    if (ctrl.g?.timer) clearTimeout(ctrl.g.timer);
+    if (ctrl.held.has("left")) ctrlButton("left", false);
+    ctrl.g = { kind: "scroll", ...centroid() };
+  }
+}
+// The panel a gesture started on; if that stops being the one in use, the gesture
+// does nothing more (except let go of what it holds).
+function ctrlAimedAt() { return ctrlMode() === "abs" ? panelKey(ctrlTarget().panel) : "headset"; }
+function ctrlSameTarget(g) { return g.target && g.target === ctrlAimedAt(); }
+function centroid() {
+  const ps = [...ctrl.pointers.values()];
+  return { x: ps.reduce((a, p) => a + p.x, 0) / ps.length, y: ps.reduce((a, p) => a + p.y, 0) / ps.length };
+}
+function ctrlTouchMove(e) {
+  const prev = ctrl.pointers.get(e.pointerId);
+  if (!prev || !ctrl.g) return;
+  const g = ctrl.g, dx = e.clientX - prev.x, dy = e.clientY - prev.y;
+  ctrl.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (g.kind === "scroll") {
+    const c = centroid();
+    // Content follows the fingers, as on the phone itself.
+    ctrlSend([{ scroll: [-(c.x - g.x) * SCROLL_SPEED, -(c.y - g.y) * SCROLL_SPEED] }]);
+    g.x = c.x; g.y = c.y;
+    return;
+  }
+  if (g.kind === "maybe" && Math.hypot(e.clientX - g.x, e.clientY - g.y) > TAP_MOVE) {
+    clearTimeout(g.timer);
+    if (!ctrlSameTarget(g)) { g.kind = "done"; return; }
+    if (ctrlMode() === "abs") {
+      const f = ctrlFraction(g.e);
+      if (f) { ctrlMoveTo(...f); ctrlButton("left", true); }
+      g.kind = "drag";
+    } else g.kind = "move";
+  }
+  if (g.kind === "drag") { const f = ctrlFraction(e); if (f) ctrlMoveTo(...f); }
+  else if (g.kind === "move") ctrlMoveBy(dx * TOUCH_SPEED, dy * TOUCH_SPEED);
+}
+function ctrlTouchUp(e) {
+  const g = ctrl.g;
+  ctrl.pointers.delete(e.pointerId);
+  if (!g) return;
+  if (g.kind === "scroll") g.kind = "done";  // the finger left behind doesn't jump the scroll or drag
+  if (g.kind === "maybe" && !ctrlSameTarget(g)) g.kind = "done";
+  if (g.kind === "maybe" && ctrl.pointers.size === 0) {
+    clearTimeout(g.timer);
+    if (ctrlMode() === "abs") { const f = ctrlFraction(g.e); if (!f) { ctrl.g = null; return; } ctrlMoveTo(...f); }
+    ctrlClick("left");
+  } else if (g.kind === "drag") ctrlButton("left", false);
+  if (ctrl.pointers.size === 0) ctrl.g = null;
+}
+// The system took the touch (a swipe home, a call): no tap, and let go of anything held.
+function ctrlTouchCancel(e) {
+  ctrl.pointers.delete(e.pointerId);
+  if (ctrl.g?.timer) clearTimeout(ctrl.g.timer);
+  if (ctrl.held.has("left")) ctrlButton("left", false);
+  if (ctrl.g) ctrl.g.kind = "done";
+  if (ctrl.pointers.size === 0) ctrl.g = null;
+}
+const canvasEl = $("canvas");
+canvasEl.addEventListener("pointerdown", e => {
+  if (!ctrl.on) return;
+  e.preventDefault();
+  $("viewer").focus({ preventScroll: true });
+  try { canvasEl.setPointerCapture(e.pointerId); } catch { /* a pointer that's already gone */ }
+  if (!ctrlTarget().ok) return ctrlShow();
+  if (e.pointerType === "touch") return ctrlTouchDown(e);
+  if (ctrlMode() === "abs" && !ctrlFraction(e)) return;  // on the bars around the picture
+  ctrlMouse(e);
+  ctrlButton(CTRL_BUTTONS[e.button] || "left", true);
+});
+canvasEl.addEventListener("pointermove", e => {
+  if (!ctrl.on || !ctrlTarget().ok) return;
+  if (e.pointerType === "touch") return ctrlTouchMove(e);
+  ctrlMouse(e);
+});
+for (const type of ["pointerup", "pointercancel"]) canvasEl.addEventListener(type, e => {
+  if (!ctrl.on) return;
+  if (e.pointerType === "touch") return type === "pointercancel" ? ctrlTouchCancel(e) : ctrlTouchUp(e);
+  if (type === "pointercancel") return [...ctrl.held].forEach(b => ctrlButton(b, false));  // no button is named
+  const name = CTRL_BUTTONS[e.button] || "left";
+  if (ctrl.held.has(name)) ctrlButton(name, false);
+});
+canvasEl.addEventListener("contextmenu", e => { if (ctrl.on) e.preventDefault(); });
+$("viewer").addEventListener("wheel", e => {
+  if (!ctrl.on || !ctrlTarget().ok) return;
+  e.preventDefault();
+  const unit = e.deltaMode === 1 ? 40 : e.deltaMode === 2 ? 800 : 1;
+  ctrlSend([{ scroll: [e.deltaX * unit, e.deltaY * unit] }]);
+}, { passive: false });
+// Keys while the view has focus go to the Frame (⌘ as Ctrl on a Mac); click elsewhere to stop.
+function ctrlKey(e, down) {
+  if (!ctrl.on || document.activeElement !== $("viewer") || (down && !ctrlTarget().ok)) return;
+  let code = EVDEV[e.code];
+  if (IS_MAC && (e.code === "MetaLeft" || e.code === "MetaRight")) code = 29;
+  if (!code) return;
+  e.preventDefault();
+  e.stopPropagation();  // it's for the Frame, not Frame Control's own shortcuts
+  if (down && e.repeat && [29, 42, 54, 56, 97, 100, 125, 126].includes(code)) return;
+  if (!down && !ctrl.keys.has(code)) return;
+  ctrlKeyEvent(code, down);
+}
+$("viewer").addEventListener("keydown", e => ctrlKey(e, true));
+$("viewer").addEventListener("keyup", e => ctrlKey(e, false));
+
+// Phone keyboard: the field types plain text; the buttons send single keys and clicks.
+function ctrlTap(code) { ctrlKeyEvent(code, true); ctrlKeyEvent(code, false); }
+let ctrlWarned = false;
+function ctrlText(text) {
+  const plain = text.replace(/[^\x20-\x7e\n\t]/g, "");
+  if (plain !== text && !ctrlWarned) {
+    ctrlWarned = true;
+    toast("Control types plain letters, numbers and symbols. For accents and emoji, use Keyboard and trackpad below.");
+  }
+  // Small pieces: the Frame types them key by key, and a release queued behind mustn't wait long.
+  for (const part of plain.match(/[\s\S]{1,100}/g) || []) ctrlSend([{ text: part }]);
+}
+$("ctrlType").addEventListener("beforeinput", e => {
+  if (e.isComposing) return;
+  e.preventDefault();
+  if (!ctrlTarget().ok) return ctrlShow();
+  if (e.inputType === "insertLineBreak" || e.inputType === "insertParagraph") return ctrlTap(28);
+  if (e.inputType === "deleteContentBackward") return ctrlTap(14);
+  if (e.inputType === "deleteContentForward") return ctrlTap(111);
+  const text = e.data ?? e.dataTransfer?.getData("text/plain") ?? "";
+  if (text) ctrlText(text);
+});
+$("ctrlType").addEventListener("compositionend", e => { if (e.data) ctrlText(e.data); $("ctrlType").value = ""; });
+$("ctrlKeys").addEventListener("click", e => {
+  const k = e.target.closest("[data-ctrl-key]"), c = e.target.closest("[data-ctrl-click]");
+  if (!ctrlTarget().ok) return ctrlShow();
+  if (k) ctrlTap(+k.dataset.ctrlKey);
+  if (c) ctrlClick(c.dataset.ctrlClick);
+});
 
 // ---- controls ----
 $("refreshAll").onclick = () => { refresh(); loadTitles(); };  // titles too: the Frame may have been asleep at start
@@ -2391,6 +2875,7 @@ async function openShot(s) {
     await new Promise((ok, bad) => { img.onload = ok; img.onerror = () => bad(new Error("not an image")); img.src = url; });
     if (gen !== viewGen) return;
     lastImg = img; lastSource = "shot"; lastShot = { blob, file: s.file };
+    desk.shown = null;  // a screenshot, not a panel: Control has nothing to act on here
     draw();
     $("srcBadge").textContent = `Screenshot · ${shotApp(s.appid)}`;
     $("stamp").hidden = false; $("stamp").textContent = new Date(s.time * 1000).toLocaleString();

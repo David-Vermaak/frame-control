@@ -8,6 +8,7 @@ This covers three directions, plus input:
 - **PC VR from Linux**: [feasibility and options](linux-vr-streaming.md),
   including Valve's streaming and USB support. No Linux host tested yet.
 - **Input**: type and point in the Frame from the Mac or iPhone.
+- **Live view and Control**: watch a panel flat and tap on it to use it.
 
 The confidence labels are the same as in [ssh.md](ssh.md).
 
@@ -184,12 +185,71 @@ on the Frame, which talks KDE Connect's own LAN protocol to the Frame's
   and ignores injected pointer motion; `:1` holds apps such as Chromium and
   takes it. KDE Connect runs on `:1`, so it reaches apps, not Steam's own menus.
   There's also a `gamescope-0-ei` (libei) socket.
-- **Not yet tested:** typing and clicking as seen in the headset, and whether
-  it reaches the KDE desktop panel (Plasma is its own session).
+- Typing through KDE Connect lands in a Chromium panel on `:1` (seen in the
+  panel's own capture, 2026-09-29). It **can't reach panels on `:0`** (Frame
+  Control's own panels, Steam's UI) and, since XTest positions are clamped to
+  `:1`'s 1280×720 root, can't reach beyond that in a bigger window. Control on
+  the live view (below) has neither limit.
+- **Not yet tested:** whether it reaches the KDE desktop panel (Plasma is its
+  own session).
 - **Known limit:** keys and clicks typed while the link is reconnecting wait
   and are sent once it's back, but anything sent in the moment the Wi-Fi
   drops, before SSH notices, can be lost. Confirming every event would add a
   round trip to each pointer move.
+
+## Live view and Control: watch a panel and tap on it
+
+**Built: Home → Desktop / Headset view → Control.** The live view has two
+sources:
+
+- **Headset view**: what the lenses show (SteamVR's mirror, `/dev/video99`). It
+  moves with the wearer's head, so Control makes the view a trackpad: drag to
+  move the pointer, tap to click, press and hold to right-click, two fingers to
+  scroll. With a mouse, moving over the view moves the pointer.
+- **Desktop**: the app panel in use in the headset, from its own window, so it
+  stays still however the wearer looks around. Control makes taps and clicks
+  land exactly where you put them. Dragging is a mouse drag, press and hold is a
+  right-click, two fingers scroll, and on a computer the mouse, wheel and
+  keyboard work directly on it (⌘ is sent as Ctrl on a Mac). A picker shows any
+  other panel, view only.
+
+Below the view, a text field and key buttons type on the Frame from a phone.
+
+How (**verified 2026-09-29**, SteamOS 0.4.1, build 20260925.6191901):
+
+- **Input goes through gamescope's own injection.** gamescope serves an EIS
+  socket (`/run/user/1000/gamescope-0-ei`; Steam feeds Remote Play input through
+  it), and `libei` 1.4.1 is on the image. [`ui/frame_touch.py`](../ui/frame_touch.py)
+  talks to it with `ctypes`: nothing to install. gamescope offers one device,
+  "Gamescope Virtual Input", with relative and absolute pointer, buttons,
+  scroll and keyboard (Linux key codes; no text capability, so the text field
+  types printable ASCII on a US layout). Its absolute region is unbounded; the
+  pointer uses the focused panel's display coordinates, and gamescope fits each
+  window to its display, so a 1920×1080 window on the 1280×720 `:1` takes
+  positions at two thirds scale. Taps on a 1280×720 page landed on the exact
+  pixel.
+- **It reaches the panel that has focus** (`GAMESCOPE_FOCUSED_WINDOW` on `:0`'s
+  root), on either X display. In the OpenVR backend focus moves only on SteamVR
+  overlay events (the controller's laser entering or clicking a panel), or to a
+  new panel when none holds it (read from gamescope's `OpenVRBackend.cpp`, seen
+  with `gamescopectl focus_info`, which writes to the journal). Neither
+  `GAMESCOPECTRL_BASELAYER_WINDOW`/`_APPID` nor X focus moves it, and no
+  gamescope command does. So Control follows the wearer: whatever they last
+  used is what your taps reach. A window without a Steam app id (`STEAM_GAME`)
+  gets a connector of its own and doesn't hold focus.
+- **Keys in a burst can arrive out of order**, so the helper paces them (8 ms
+  apart).
+- **Known limit:** if focus moves to another panel in the middle of a drag, the
+  release goes to the panel that has focus then. Whether gamescope hands it to
+  the window that got the press isn't known yet. When the session ends, the
+  helper lets go of every button and key it still holds.
+- **The Desktop picture is the window's own pixels**: `ffmpeg -f x11grab
+  -window_id <window> -i :<display>` works on gamescope's redirected windows,
+  while grabbing the root gives black. It streams as H.264 like the headset view
+  (about 30 fps at 720p).
+- Tested from the iPhone app (Simulator): a tap on the Desktop view focused a
+  text box in the panel and the text field typed into it; a trackpad move went
+  exactly (+40, +25).
 
 Our own `uinput` keyboard and mouse would also work (`steamos` is in the
 `input` group and `/dev/uinput` is group-writable, verified 2026-09-27), and

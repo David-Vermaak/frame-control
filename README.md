@@ -35,8 +35,8 @@ See what the headset sees, install games and Android apps, move files and text a
 <tr>
 <td width="50%" valign="top">
 
-**👓 Headset view**<br>
-Live video of what the lenses show (about 30 fps), or a still of both eyes. Zoom, pan, full screen, save as PNG.
+**👓 Headset view and Desktop**<br>
+Live video of what the lenses show, or of the app panel in use, flat and still however the wearer looks around. Turn on Control and tap or click right on it to use the Frame from your phone or computer.
 
 </td>
 <td width="50%" valign="top">
