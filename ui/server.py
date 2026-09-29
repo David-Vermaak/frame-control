@@ -48,6 +48,7 @@ import frame_comfort  # noqa: E402
 import frame_host  # noqa: E402
 import frame_macview  # noqa: E402
 import frame_media  # noqa: E402
+import frame_panels  # noqa: E402
 import frame_report  # noqa: E402
 import frame_store  # noqa: E402
 import frame_telemetry  # noqa: E402
@@ -1764,6 +1765,32 @@ def _sweep_one(prefix, d):
         pass
 
 
+# ---- Panel switcher (same helper on the companion and in the headset) ----
+
+def panels_action(body):
+    action = body.get("action", "list")
+    script = (HERE / "frame_panels.py").read_text()
+    if action == "open":
+        # Installed in the user account so the page can outlive this SSH call.
+        remote = ('umask 077; mkdir -p ~/.local/share/frame-control/panels && '
+                  'tmp=$(mktemp ~/.local/share/frame-control/panels/install.XXXXXX) && '
+                  'cat > "$tmp" && mv "$tmp" ~/.local/share/frame-control/panels/switcher.py && '
+                  'python3 ~/.local/share/frame-control/panels/switcher.py --open')
+    elif action == "list":
+        remote = "python3 -"
+    elif action == "focus":
+        key = body.get("key")
+        if not isinstance(key, str) or not frame_panels.KEY.fullmatch(key):
+            raise Failure("Choose an open panel.", 400)
+        remote = "python3 - --focus " + shlex.quote(key)
+    else:
+        raise Failure("Unknown panel action", 400)
+    result = json.loads(ssh(remote, stdin=script, timeout=45))
+    if "error" in result:
+        raise Failure(result["error"], 502)
+    return result
+
+
 # ---- Our Frame-side media player -----------------------------------------
 
 _MEDIA_LOCK = threading.Lock()
@@ -1906,7 +1933,7 @@ POST = {"/api/comfort": comfort, "/api/media": media, "/api/agent/call": agent_c
         "/api/webinstall/check": webinstall_check, "/api/webinstall/start": webinstall_start,
         "/api/webinstall/cancel": webinstall_cancel,
         "/api/telemetry": frame_telemetry.update_settings, "/api/telemetry/event": frame_telemetry.page_event,
-        "/api/report/preview": report_preview, "/api/report": report_send, "/api/macview": macview_action}
+        "/api/report/preview": report_preview, "/api/report": report_send, "/api/macview": macview_action, "/api/panels": panels_action}
 
 
 # ---- HTTP ------------------------------------------------------------------

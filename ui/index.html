@@ -842,6 +842,15 @@
       </div>
     </section>
 
+    <section class="panel" id="panels">
+      <div class="shelf-head"><h2>Panel switcher</h2><span class="spacer"></span>
+        <button class="small" id="panelsRefresh">Refresh</button>
+        <button class="small action" id="panelsOpen">Open in headset</button></div>
+      <div class="list" id="panelList"><div class="sub">Refresh to see open panels.</div></div>
+      <div class="hint">Choose a panel to show it in SteamVR. The headset switcher stays available from Steam's dashboard.
+        Saved spatial layouts are not available yet.</div>
+    </section>
+
     <section class="panel" id="macview" hidden>
       <div class="shelf-head"><h2>Mac in the headset</h2><span class="count" id="mvCount"></span><span class="spacer"></span>
         <select id="mvQuality" title="Picture quality and bandwidth">
@@ -3034,6 +3043,27 @@ $("shotsRefresh").onclick = loadShots;
 $("shotsSaveNew").onclick = e => saveShots(shots.list.filter(s => !s.saved), e.currentTarget);
 $("shotsFolder").onclick = e => act($("shotsFolder").textContent, () => api("/api/open", { what: "shots" }), e.currentTarget);
 
+// ---- Panel switcher: our UI over SteamVR's panel API ----
+let panelSeq = 0;
+async function loadPanels() {
+  const seq = ++panelSeq;
+  try {
+    const s = await api("/api/panels", {action: "list"});
+    if (seq !== panelSeq) return;
+    $("panelList").innerHTML = s.panels.length ? s.panels.map(p =>
+      `<div class="item"><div class="grow"><div class="t">${esc(p.title)}</div></div>
+       <button class="small" data-panel="${esc(p.key)}">Show</button></div>`).join("")
+      : '<div class="sub">No open panels.</div>';
+  } catch (e) { if (seq === panelSeq) failed($("panelList"), e); }
+}
+$("panelsRefresh").onclick = loadPanels;
+$("panelsOpen").onclick = e => act("Open panel switcher in headset",
+  () => api("/api/panels", {action: "open"}), e.currentTarget);
+$("panelList").onclick = e => {
+  const b = e.target.closest("[data-panel]"); if (!b) return;
+  act("Show panel", () => api("/api/panels", {action: "focus", key: b.dataset.panel}), b);
+};
+
 // ---- Mac in the headset: windows and displays as panels (ui/frame_macview.py) ----
 let mvSeq = 0, mvTimer = 0;
 // streaming: the src it's shown as (a window may be "separate:<id>"), or "".
@@ -3112,7 +3142,7 @@ $("macview").onclick = async e => {
 // ---- pages: #home, #games, #android, #tools (older section links still work) ----
 const PAGES = ["home", "games", "android", "tools"];
 const SECTION_PAGE = { view: "home", device: "home", shots: "home", library: "games", sideloaded: "games", getgames: "games",
-                       display: "android", transfer: "tools", apps: "tools", power: "tools", macview: "tools", privacy: "tools" };
+                       display: "android", transfer: "tools", apps: "tools", power: "tools", macview: "tools", privacy: "tools", panels: "tools" };
 let page = "home";
 function showPage() {
   const id = location.hash.slice(1);
@@ -3124,7 +3154,7 @@ function showPage() {
   document.title = page === "home" ? "Frame Control" : `${page[0].toUpperCase() + page.slice(1)} · Frame Control`;
   const section = !PAGES.includes(id) && id && $(id);
   if (section) section.scrollIntoView(); else window.scrollTo(0, 0);
-  if (page === "tools") loadMacView();
+  if (page === "tools") { loadMacView(); loadPanels(); }
 }
 window.addEventListener("hashchange", showPage);
 // While a text field has focus, phones hide the bottom tab bar (see body.typing in the CSS).
