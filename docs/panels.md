@@ -168,6 +168,21 @@ selection while wearing the headset, physical placement, and non-XR Chromium.
 The API reports that focus was *requested*: another action can take focus before
 we observe the result. Closed panels are rejected after re-enumeration.
 
+### Shared-device recheck, 2026-09-29
+
+**Verified:** the follow-up's atomic `mkdir /tmp/frame-test.lock` attempts
+failed because another thread held the lock. The existing lock was left alone;
+no applications were installed, launched or stopped in this follow-up. The last
+read-only battery check showed 62%, charging. The 180 Python and 8 website tests
+passed again locally.
+
+**Unverified in this follow-up:** the prepared browser-button test (Refresh,
+selection, reload and Close) and repeated OpenXR transition could not run under
+the shared lock. The device results elsewhere in this page are the earlier
+2026-09-28 observations, not results from this blocked recheck. In particular,
+HTTP focus is not evidence of worn-headset laser input. Follow the
+[shared-device test procedure](testing.md#headset-smoke-test) for the next run.
+
 ## Saved spatial layouts: blocked on the current panel route
 
 **Verified 2026-09-28**, same build, using a temporary xterm panel with

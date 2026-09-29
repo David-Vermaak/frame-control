@@ -104,6 +104,20 @@ switch while SSH is down:
 
 ## Headset smoke test
 
+**Documented shared-device procedure:** before a test installs, launches or
+stops an application, acquire `ssh frame 'mkdir /tmp/frame-test.lock'`. If it
+fails, leave that lock alone and continue offline work. Only the thread that
+acquired it releases it with `ssh frame 'rmdir /tmp/frame-test.lock'`, after
+cleanup. Keep each device session to a few minutes.
+
+Check battery capacity and charging state under `/sys/class/power_supply`
+before and after; keep capacity above 20%. Stop only processes started by the
+test, remove temporary installs and profiles, and restore the prior dashboard
+state. Leave Steam and SteamVR running. Do not reboot or change global settings.
+Record the build, actual interaction results, cleanup and any unworn-headset
+limits alongside screenshots or logs. These are caller responsibilities; the
+smoke script below does not acquire this shared lock itself.
+
 ```sh
 scripts/frame-smoke.sh           # needs `ssh frame` to work without a password
 scripts/frame-smoke.sh --pair    # also pairs a throwaway key: approve it in the headset
