@@ -36,6 +36,7 @@ def zip_bytes(files, links=()):
     return buf.getvalue()
 
 
+@unittest.skipIf(sys.platform == "win32", "the helper runs on the Frame (Linux): /proc, flock and POSIX prefix paths")
 class FakeLibrary(unittest.TestCase):
     """A Steam library with Gravitas's real layout, and pinned downloads served from memory."""
 
@@ -230,9 +231,10 @@ class Downloads(FakeLibrary):
 
 class Actions(FakeLibrary):
     def test_one_change_at_a_time(self):
+        import fcntl
         lock = Path(tempfile.mkdtemp()) / "mods.lock"
         with mock.patch.object(frame_mods, "LOCK", lock), open(lock, "w") as held:
-            frame_mods.fcntl.flock(held, frame_mods.fcntl.LOCK_EX)
+            fcntl.flock(held, fcntl.LOCK_EX)
             with self.assertRaisesRegex(frame_mods.Fail, "another mod action"):
                 frame_mods.main(["install", str(APPID)])
             self.assertFalse(frame_mods.status(APPID)["installed"])
@@ -294,6 +296,7 @@ class Start(FakeLibrary):
 
 
 class Helper(unittest.TestCase):
+    @unittest.skipIf(sys.platform == "win32", "uninstall takes the flock lock, which only exists on the Frame (Linux)")
     def test_unexpected_errors_are_still_json(self):
         # A receipt from another version, without "exe": a KeyError, not a traceback.
         script = (ROOT / "ui" / "frame_mods.py").read_text().replace(

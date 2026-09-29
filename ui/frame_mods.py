@@ -22,7 +22,6 @@ from python.org, each checked against a pinned hash. Files live in
 <prefix>/drive_c/frame-control, never in the game's own folder, and a receipt
 records what to remove.
 """
-import fcntl
 import hashlib
 import json
 import os
@@ -511,6 +510,7 @@ def main(argv):
     action = {"status": status, "install": install, "start": start, "uninstall": uninstall}[argv[0]]
     if action is status:
         return status(int(argv[1]))
+    import fcntl  # only on the Frame; the server and its tests also import this module on Windows
     # One change at a time, or an uninstall could delete what an install is moving in.
     LOCK.parent.mkdir(parents=True, exist_ok=True)
     with open(LOCK, "w") as lock:
