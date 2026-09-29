@@ -12,7 +12,8 @@ An iPhone can't run Python or `ssh`, but the Frame can. So the app:
 1. connects to the Frame over SSH itself (the [Citadel](https://github.com/orlandos-nl/Citadel)
    Swift SSH library), with its own ed25519 key from the Keychain;
 2. copies Frame Control's server and helpers (`ios/scripts/make_frame_bundle.py`,
-   under 1 MB) to `~/.cache/frame-control/<version>` on the Frame, once per version;
+   4.6 MB, 3.6 MB of it the KDE Connect the keyboard and trackpad use) to
+   `~/.cache/frame-control/<version>` on the Frame, once per version;
 3. starts `ui/server.py` there with `FRAME_LOCAL=1`. It listens only on the
    Frame's own 127.0.0.1, and it stops when the phone disconnects (`--exit-on-eof`);
 4. tunnels to it through the SSH session and shows the same page as the desktop

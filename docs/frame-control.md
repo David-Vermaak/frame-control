@@ -56,9 +56,11 @@ counts them while they run.
   Steam library), then launch, stop, test or remove it. **Report an APK** records
   whether any APK worked (F-Droid or not: pick a file, type a package, or use an
   installed app). Your reports are saved on your computer and change the verdicts
-  you see. They aren't uploaded anywhere: the shared database is maintainer-only
-  for now (see [compat-db/README.md](../compat-db/README.md)). Uses the app's bundled
-  `adb`, or yours if you have one.
+  you see. With **Share compatibility results** on (Privacy & updates), they also
+  go to the shared database ([privacy.md](privacy.md),
+  [compat-db/README.md](../compat-db/README.md)). A failed install records
+  itself when the APK was the problem, and after an install the app offers a
+  20-second test. Uses the app's bundled `adb`, or yours if you have one.
 - **Android display**: pick a running Lepton instance (by the app in it) and set
   its resolution (Native 1920×1080, or Sharp 2560×1440 with density scaled to
   match), UI scale (Smaller / Default / Larger, or an exact dpi) and text size
@@ -90,8 +92,11 @@ app bundles `ui/`, `scripts/`, `frame/android/`, Valve's `frame/devkit-utils/` a
 ([python-build-standalone](https://github.com/astral-sh/python-build-standalone))
 and `adb` from Google's platform-tools, so there's nothing else to install. It
 also bundles curl's copy of Mozilla's CA list, because Python on Windows only
-trusts root certificates already in the Windows store.
-`app/build/fetch-deps.js` downloads both, pinned by SHA-256.
+trusts root certificates already in the Windows store. And it bundles KDE
+Connect for the Frame (Valve's arm64 build and five libraries, 3.6 MB,
+[`frame/kdeconnect`](../frame/kdeconnect/NOTICE.md)), which it copies to the
+Frame for the keyboard and trackpad.
+`app/build/fetch-deps.js` downloads all of it, pinned by SHA-256.
 
 The server is Python stdlib only and listens on 127.0.0.1. It rejects requests
 with a non-local `Host` header, and any `/api/` request without a custom
@@ -152,5 +157,16 @@ npm run dist:win       # Windows: installer and .zip
 npm run dist:linux     # Linux: AppImage and .deb, x64 and arm64
 ```
 
-Pushing a `v*` tag builds all three in GitHub Actions and attaches them to the
-release (`.github/workflows/release.yml`).
+Pushing a `v*` tag builds all three in GitHub Actions and attaches them to a
+draft release (`.github/workflows/release.yml`). Running copies are offered it
+once you publish it: see [releasing.md](releasing.md).
+
+## AI agents and assistant
+
+**Documented:** [the MCP adapter and assistant panel](agents.md) are Frame
+Control implementations. MCP wraps this HTTP API without API keys. Changes
+require a separate user approval; power also retains its password prompt. The
+assistant uses a user-chosen endpoint and sends nothing until the user opts in
+for a message. Screenshot context is separately opt-in. Model replies cannot
+operate the headset. Tools → Open assistant opens the page; the linked guide
+covers putting it in a Chromium panel on the Frame.

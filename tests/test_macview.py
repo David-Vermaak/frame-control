@@ -43,6 +43,7 @@ class Helpers(unittest.TestCase):
         self.assertAlmostEqual(w / h, 0.5, places=2)
 
     @unittest.skipUnless(shutil.which("bash"), "needs bash")
+    @unittest.skipIf(os.name == "nt", "Windows' bash.exe is WSL's launcher, and runners have no distribution")
     def test_launch_script_parses(self):
         bash = str(Path(os.environ.get("ProgramFiles", "C:/Program Files")) / "Git/bin/bash.exe") if sys.platform == "win32" else "bash"
         if sys.platform == "win32" and not Path(bash).exists():
