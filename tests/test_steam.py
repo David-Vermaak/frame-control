@@ -2,6 +2,7 @@
 
 Run: python3 -m unittest discover -s tests
 """
+import sandbox  # noqa: F401  (first: keeps tests off real data and services)
 import json
 import subprocess
 import sys
@@ -13,6 +14,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "ui"))
 
 import frame_store  # noqa: E402
+import frame_steam  # noqa: E402
 import test_server  # noqa: E402  (not `from … import`, or unittest runs ServerGuards twice)
 
 
@@ -48,6 +50,39 @@ class FrameSteamHelper(unittest.TestCase):
                                  capture_output=True, text=True, timeout=30)
             self.assertEqual(out.returncode, 1, args)
             self.assertIn("error", json.loads(out.stdout), args)
+
+    def test_installed_game_is_not_reinstalled(self):
+        with mock.patch.object(frame_steam, "Page") as page, \
+                mock.patch.object(frame_steam, "steam_url") as launch:
+            page.return_value.eval.return_value = {"name": "Gravitas", "installed": True}
+            self.assertEqual(frame_steam.install(1067310)["state"], "installed")
+        launch.assert_not_called()
+
+    def test_license_and_eula_wait_for_headset(self):
+        # Seen during #26's free Gravitas install: state 3 is not permission
+        # to click through the license. The same guard applies to an EULA.
+        for state in (3, 8):
+            with self.subTest(state=state), \
+                    mock.patch.object(frame_steam, "Page") as page, \
+                    mock.patch.object(frame_steam, "steam_url") as launch, \
+                    mock.patch.object(frame_steam.time, "sleep"):
+                page.return_value.eval.side_effect = [
+                    None, {"app": 1067310, "state": state, "need": 1, "free": 100}]
+                self.assertEqual(frame_steam.install(1067310)["state"], "headset")
+                launch.assert_called_once_with("steam://install/1067310")
+                self.assertNotIn(mock.call("SteamClient.Installs.ContinueInstall()"),
+                                 page.return_value.eval.call_args_list)
+
+    def test_insufficient_space_leaves_options_open(self):
+        with mock.patch.object(frame_steam, "Page") as page, \
+                mock.patch.object(frame_steam, "steam_url"), \
+                mock.patch.object(frame_steam.time, "sleep"):
+            page.return_value.eval.side_effect = [
+                {"name": "Gravitas", "installed": False},
+                {"app": 1067310, "state": 7, "need": 100, "free": 10}]
+            self.assertEqual(frame_steam.install(1067310)["state"], "headset")
+            self.assertNotIn(mock.call("SteamClient.Installs.ContinueInstall()"),
+                             page.return_value.eval.call_args_list)
 
 
 class HelperErrors(unittest.TestCase):
