@@ -171,3 +171,29 @@ for 15 minutes and was terminated (shell exit 143). A smaller inline native
 code review returned no output within 300 seconds (process exit -15).
 SWE-2 Max was requested; no completed review or findings were received, so
 independent review is **unverified**, not a passed check. The PR remains draft.
+
+## Device follow-up, 2026-09-29
+
+**Verified, read-only, SteamOS BUILD_ID 20260925.6191901:** the Frame was
+reachable, charging (44% initially, 63% at the end), and SteamVR reported
+activity level 3 (standby). No Plasma desktop was running. Introspection of
+the active `org.freedesktop.portal.Desktop` service exposed ScreenCast with
+source types 3, but no RemoteDesktop interface. **Inferred:** this gamescope
+session cannot provide this feature's required consented input path; a
+ScreenCast-only session is insufficient.
+
+**Blocked, not a device execution result:** the shared `/tmp/frame-test.lock`
+was held by another thread. Ten lock-acquisition attempts over five minutes
+all failed, after earlier preparation-time attempts also found it occupied.
+The current `a992f6d` ARM64 CI bundle was downloaded to the Mac, but nothing
+was installed, launched or stopped on the Frame. No new screenshots or
+current-revision device timings were obtained. The lock was not removed and
+no global settings were changed. The earlier synthetic results above remain
+valid only for their named revisions; standby visibility, physical laser
+input and worn-headset performance remain unverified.
+
+**Verified, Mac:** a fresh full suite ran 309 tests successfully, with one
+native-PC class skipped. Current-revision CI passed
+[native hosts](https://github.com/saphid/frame-control/actions/runs/36504546909),
+[installers](https://github.com/saphid/frame-control/actions/runs/36504546800)
+and [general checks](https://github.com/saphid/frame-control/actions/runs/36504546887).
