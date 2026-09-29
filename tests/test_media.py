@@ -1,6 +1,9 @@
 """Owned media planning, eye isolation, decoder choice and fake-Frame ownership."""
+import argparse
+import io
 import json
 import os
+import signal
 from pathlib import Path
 import struct
 import sys
@@ -55,6 +58,58 @@ class Media(unittest.TestCase):
         cmd = player.decoder_command(Path('x.png'), {'codec_name': 'png'}, 640, 480, False, True)
         self.assertNotIn('-re', cmd)
         self.assertIn('-frames:v', cmd)
+
+    def test_video_survives_standby_and_stop_after_end_stays_ended(self):
+        # Verified 2026-09-29: an unworn Frame enters standby within seconds and
+        # SetOverlayRaw then returns RequestFailed (23) until it wakes.
+        calls = []
+
+        class FakeOverlay:
+            def __init__(self):
+                self.closed = False
+
+            def create(self, *a, **k):
+                return len(calls)
+
+            def call(self, *a):
+                pass
+
+            def pixels(self, handle, data, w, h):
+                calls.append((handle, w, h))
+                if len(calls) <= 3:
+                    raise player.OverlayBusy('standby')
+
+            def close(self):
+                # A Stop arriving during cleanup must be ignored, not become an error.
+                # Call the installed handler directly: a real SIGTERM kills Windows.
+                handler = signal.getsignal(signal.SIGTERM)
+                if callable(handler):
+                    handler(signal.SIGTERM, None)
+
+        frame = bytes(4*2*4)
+        proc = unittest.mock.MagicMock()
+        proc.stdout = io.BytesIO(frame*4)
+        proc.wait.return_value = 0
+        proc.poll.return_value = 0
+        with tempfile.TemporaryDirectory() as d, \
+                patch.object(player, 'Overlay', FakeOverlay), \
+                patch.object(player, 'probe', return_value=({'codec_name': 'h264', 'width': 4, 'height': 2}, False)), \
+                patch.object(player.subprocess, 'Popen', return_value=proc), \
+                patch.object(player.time, 'sleep'):
+            path = Path(d)/'clip_SBS.mp4'
+            path.write_bytes(b'x')
+            status = Path(d)/'status.json'
+            old = signal.getsignal(signal.SIGTERM), signal.getsignal(signal.SIGINT)
+            try:
+                player.play(argparse.Namespace(file=str(path), layout='auto', theatre=True, status=str(status)))
+            finally:
+                signal.signal(signal.SIGTERM, old[0])
+                signal.signal(signal.SIGINT, old[1])
+            result = json.loads(status.read_text())
+        self.assertEqual((result['state'], result['frames']), ('ended', 4))
+        # Surround + first two video frames were dropped; the surround was re-sent after wake.
+        self.assertEqual(result['dropped'], 3)
+        self.assertIn((0, 1, 1), calls[3:])
 
     def test_fake_frame_library_and_traversal(self):
         with tempfile.TemporaryDirectory() as d, patch.object(remote, 'ROOT', Path(d)):
