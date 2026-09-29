@@ -176,6 +176,29 @@ class FakeCaptureTool:
         return self.returncode
 
 
+class WornCheck(unittest.TestCase):
+    def sensor(self, name, raw):
+        root = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        device = root / "iio:device2"
+        device.mkdir()
+        (device / "name").write_text(name + "\n")
+        (device / "in_proximity_raw").write_text(raw + "\n")
+        return root
+
+    def test_reads_the_proximity_sensor(self):
+        self.assertEqual(pulse.proximity(self.sensor("vcnl4000", "3.250000000")), 3.25)
+
+    def test_unreadable_sensor_does_not_block(self):
+        self.assertIsNone(pulse.proximity(self.sensor("other", "9")))
+        self.assertIsNone(pulse.proximity(self.sensor("vcnl4000", "junk")))
+        self.assertIsNone(pulse.proximity(Path("/nonexistent")))
+        self.assertTrue(pulse.worn(None))
+
+    def test_low_reading_means_unworn(self):
+        self.assertFalse(pulse.worn(3.1))
+        self.assertTrue(pulse.worn(pulse.WORN_MIN))
+
+
 class CaptureLifecycle(unittest.TestCase):
     def setUp(self):
         self.root = Path(tempfile.mkdtemp())

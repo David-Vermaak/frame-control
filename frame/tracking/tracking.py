@@ -347,8 +347,10 @@ def run_pulse(args, osc):
     if not pulse.ET_BIN.exists():
         raise TrackingError("SteamVR's eye-tracking tool is not installed on this Frame")
     print(f"Capturing {args.seconds} s from the eye cameras. Wear the headset and keep still.", flush=True)
+    readings = [pulse.proximity()]
     try:
         frames = pulse.Capture(args.seconds).run()
+        readings.append(pulse.proximity())
     except RuntimeError as error:  # capture status only; no image data
         raise TrackingError(str(error))
     print(f"Captured {len(frames)} eye frames; images already deleted. Analysing...", flush=True)
@@ -356,7 +358,12 @@ def run_pulse(args, osc):
         result = pulse.analyse(frames)
     except ValueError as error:
         raise TrackingError(str(error))
-    clear = pulse.reliable(result)
+    on_face = all(pulse.worn(reading) for reading in readings)
+    if not on_face:
+        # Unworn, the cameras still show a steady periodic artifact that looks
+        # like a pulse (verified on the Frame), so it is never called clear.
+        print("The proximity sensor says the headset is not being worn; no pulse can be read.")
+    clear = on_face and pulse.reliable(result)
     offset = time.time() - time.monotonic()  # the capture's timestamps are CLOCK_MONOTONIC
     if args.log:
         fd = os.open(args.log, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)

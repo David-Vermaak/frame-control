@@ -29,6 +29,10 @@ ET_WEIGHTS = ET_DIR / "resources/et_dsp_20250610_03136.weights"
 GRID = 16        # 16 × 16 patches of 25 × 25 pixels on the 400 × 400 image
 RATE = 15.0      # analysis sample rate, Hz; the band of interest ends at 3 Hz
 LOW, HIGH = 42.0, 180.0  # BPM search band
+# The Frame's proximity sensor (vcnl4000) reads about 3 with nobody wearing it.
+# A worn reading has not been measured yet, so the cut-off is provisional.
+IIO = Path("/sys/bus/iio/devices")
+WORN_MIN = 20.0
 WINDOW = 15.0    # seconds per windowed estimate
 
 
@@ -447,6 +451,22 @@ def analyse(frames):
         for k in range(len(eye_frames[0][1])):
             patches[f"{eye}{k}"] = [eye_frames[i][1][k] for i in nearest]
     return estimate(times, patches)
+
+
+def proximity(root=None):
+    """The headset's proximity reading, or None if it can't be read."""
+    try:
+        for device in sorted(Path(root or IIO).glob("iio:device*")):
+            if (device / "name").read_text().strip() == "vcnl4000":
+                return float((device / "in_proximity_raw").read_text())
+    except (OSError, ValueError):
+        pass
+    return None
+
+
+def worn(reading):
+    """False only when the sensor says the headset is not on a face."""
+    return reading is None or reading >= WORN_MIN
 
 
 def reliable(result):

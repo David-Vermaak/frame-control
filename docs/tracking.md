@@ -218,14 +218,22 @@ How it works:
   far off an unclear result was.
   The thresholds are provisional until checked on real wearers.
 
-**Verified on the Frame, unworn, 2026-09-29:** a 30-second run captured
-5,362 eye frames, never had more than 7 images on disk, finished 3 s after
-the capture ended and left no capture directory. It reported no clear pulse
-(exit 3), as it should with nobody wearing it. Worth knowing: the unworn
-patches agreed on a steady rhythm near 127-129 BPM (about 2.1 Hz) with low
-signal/noise (0.15-0.19), in two separate runs. That is a camera or illumination artifact, not a pulse,
-and the signal/noise gate kept it from being reported. A worn test should
-also record an unworn baseline, to rule out the same artifact.
+**Verified on the Frame, unworn, 2026-09-29:** captures of 3,600-5,400 eye
+frames never had more than 8 images on disk, finished a few seconds after the
+capture ended and left no capture directory. **The estimator alone gave a
+false "clear" pulse.** With nobody wearing the headset, five runs reported a
+steady, self-consistent rhythm (90, 90, 93, 94 and 96 BPM; patch agreement
+100%, signal/noise 0.63-0.70), and earlier runs reported 127-129 BPM at lower
+signal/noise. It is a periodic camera or illumination artifact, and its
+frequency drifts between runs. A wearer-less scene cannot contain a pulse, so
+the signal/noise gate cannot tell this artifact from one. Because of that,
+`pulse` reads the Frame's proximity sensor (`vcnl4000`) before and after the
+capture. It reads about 3 unworn (**verified**). If either reading is below 20
+the result is never called clear, nothing is sent over OSC, and the command
+exits 3. **Inferred, unmeasured:** that a worn reading is well above 20; the
+cut-off is provisional until someone wears the headset. If the sensor can't be
+read, the guard is skipped. Confirming a real pulse also needs a reference
+(below).
 
 **Do not interrupt the capture. Verified on the Frame, 2026-09-29:** sending
 SIGTERM to `eyetracking --calib` left the DSP service's eye camera (OV6211)
