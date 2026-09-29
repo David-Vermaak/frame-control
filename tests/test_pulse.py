@@ -339,6 +339,23 @@ class CaptureLifecycle(unittest.TestCase):
         self.assertIn("etcalib_a", str(raised.exception))
         self.assertFalse(second.exists())
 
+    def test_removes_a_directory_seen_only_at_the_end(self):
+        capture = pulse.Capture(20)
+        capture.PREFIX = str(self.root / "etcalib_")
+        capture.before = capture.candidates()
+        late = self.root / "etcalib_late"
+        late.mkdir()
+        (late / "left_0.png").write_bytes(b"png")
+        capture.remove()
+        self.assertFalse(late.exists())
+        self.assertTrue((self.root / "etcalib_older").exists())
+
+    def test_never_adopts_directories_without_a_baseline(self):
+        capture = pulse.Capture(20)
+        capture.PREFIX = str(self.root / "etcalib_")
+        capture.remove()
+        self.assertTrue((self.root / "etcalib_older").exists())
+
     def test_only_removes_capture_directories(self):
         capture = pulse.Capture(20)
         capture.directory = self.root
@@ -436,6 +453,12 @@ class HeartCheck(unittest.TestCase):
             self.assertEqual(check.main(["compare", str(self.write("ours.csv", "1000,inf\n1001,70\n")),
                                          str(self.write("bad.xml", "<not closed"))]), 1)
         self.assertEqual(shown.getvalue().count("Could not compare"), 2)
+
+    def test_health_records_with_non_finite_values_are_skipped(self):
+        record = '<Record type="HKQuantityTypeIdentifierHeartRate" startDate="2026-09-29 12:00:00 +1000" value="%s"/>'
+        path = self.write("export.xml", "<HealthData>" + record % "inf" + record % "72" + "</HealthData>")
+        start = check.parse_time("2026-09-29 12:00:00 +1000")
+        self.assertEqual(check.read_health(path, start - 1, start + 1), [(start, 72)])
 
     def test_time_formats(self):
         self.assertEqual(check.parse_time("1700000000.5"), 1700000000.5)

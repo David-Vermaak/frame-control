@@ -139,7 +139,7 @@ def read_health(path, start, end):
                 try:
                     when = parse_time(element.get("startDate") or "")
                     value = round(float(element.get("value") or ""))
-                except ValueError:
+                except (ValueError, OverflowError):
                     continue
                 if start <= when <= end:
                     samples.append((when, value))

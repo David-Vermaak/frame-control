@@ -89,7 +89,7 @@ class Capture:
         self.submitted = set()
         self.futures = {}
         self.new = set()  # every capture directory that appeared during our run
-        self.before = set()
+        self.before = None  # capture directories that existed before the run
         self.log = None
 
     def candidates(self):
@@ -192,7 +192,8 @@ class Capture:
 
     def discard(self):
         """Delete the eye images written so far, without reading them."""
-        self.new |= self.candidates() - self.before
+        if self.before is not None:
+            self.new |= self.candidates() - self.before
         for directory in self.new | ({self.directory} if self.directory else set()):
             if str(directory).startswith(self.PREFIX) and directory.is_dir() and not directory.is_symlink():
                 for entry in os.scandir(directory):
@@ -259,6 +260,11 @@ class Capture:
         """Remove every capture directory that appeared during the run. Eye
         images must not outlive it, so a failure to delete is an error."""
         left = []
+        if self.before is not None:
+            try:
+                self.new |= self.candidates() - self.before  # even if interrupted before the first poll
+            except OSError:
+                pass
         for directory in self.new | ({self.directory} if self.directory else set()):
             if str(directory).startswith(self.PREFIX) and directory.is_dir() and not directory.is_symlink():
                 try:
