@@ -569,6 +569,8 @@
   .store-chips button[aria-pressed=true] { background:#235779; border-color:#5287a5; color:white; }
   .store-source-select select { max-width:180px; padding:8px 26px 8px 10px; font:inherit; font-size:12px; border:0; border-radius:5px; color:var(--text); background:#1d2b3b; }
   .store-notice { color:#a8b5c2; font-size:12px; margin:12px 0; }
+  .store-heading a, .cross-link a { color:var(--link); }
+  .cross-link { margin:-6px 0 12px; }
   body:has(.page.on #appStore:not([hidden])) #offline { padding:10px 16px; background:#ffffff06; box-shadow:inset 3px 0 0 var(--dim); }
   body:has(.page.on #appStore:not([hidden])) #offline .s { display:none; }
   .store-result-count { font-size:13px; color:var(--muted); margin-bottom:14px; }
@@ -576,14 +578,24 @@
   .store-hero { position:relative; display:block; width:100%; height:270px; border:0; padding:0; border-radius:12px; overflow:hidden; text-align:left; margin:0 0 32px; isolation:isolate; }
   .store-art { position:relative; display:block; overflow:hidden; background:radial-gradient(ellipse at 75% 10%, hsl(var(--hue) 50% 40%),transparent 70%),linear-gradient(140deg,hsl(var(--hue) 35% 18%),#101827); }
   .store-art > img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; z-index:1; }
-  .art-initial { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:70px; font-weight:700; color:#ffffff45; letter-spacing:-4px; }
+  .store-art > img.art-wash { inset:-24px; width:calc(100% + 48px); height:calc(100% + 48px); z-index:0; filter:blur(26px) saturate(1.4); opacity:.55; }
+  .store-art > img.art-icon { inset:0; margin:auto; width:64px; height:64px; border-radius:15px; z-index:0; box-shadow:0 10px 28px #0007; }
+  .detail-banner > img.art-icon, .store-hero .store-art > img.art-icon { width:88px; height:88px; border-radius:20px; }
+  .store-art .art-glyph { position:absolute; inset:0; display:grid; place-items:center; color:hsl(var(--hue) 45% 72% / .38); }
+  .store-art .art-glyph svg { width:34%; max-width:84px; height:auto; }
+  .runs { font-size:11px; font-weight:500; padding:3px 8px; border-radius:10px; white-space:nowrap; }
+  .runs.works { color:#c6efb0; background:#70bb5426; } .runs.ready { color:#b7d8ec; background:#6ec9ff1a; }
+  .runs.unknown { color:#a8b5c2; background:#ffffff0d; } .runs.blocked { color:#f1c28a; background:#d9a23a22; }
   .store-hero > .store-art { position:absolute; inset:0; }
   .store-hero::after { content:""; position:absolute; inset:0; background:linear-gradient(90deg,#081421ec 0%,#08142175 48%,#08142108 80%),linear-gradient(0deg,#08142170,transparent); z-index:2; }
   .hero-copy { position:relative; z-index:3; padding:30px; max-width:550px; display:flex; align-items:flex-start; flex-direction:column; gap:12px; }
   .hero-copy .store-eyebrow { color:#c2e7ff; }
   .hero-copy strong { color:white; font-size:38px; letter-spacing:-.8px; line-height:1.1; }
-  .hero-copy > span:not(.store-eyebrow):not(.hero-cta) { color:#e0e8ef; font-size:16px; font-weight:400; max-width:380px; line-height:1.6; }
-  .hero-cta { color:white; display:inline-flex; align-items:center; background:#ffffff20; border:1px solid #ffffff40; border-radius:6px; padding:10px 18px; font-size:13px; margin-top:6px; }
+  .hero-copy .hero-sum { color:#e0e8ef; font-size:16px; font-weight:400; max-width:380px; line-height:1.6; }
+  .hero-actions { display:flex; gap:10px; margin-top:6px; }
+  .hero-actions button { height:38px; border-radius:6px; padding:0 18px; }
+  .hero-details { background:#ffffff20; color:#fff; border:1px solid #ffffff40; }
+  .store-hero { cursor:pointer; }
   .store-row { margin-bottom:34px; }
   .store-row-head { display:flex; align-items:baseline; gap:12px; margin-bottom:14px; }
   .store-row-head h2 { text-transform:none; letter-spacing:-.3px; font-size:21px; font-weight:600; color:var(--bright); margin:0; }
@@ -659,6 +671,7 @@
   .source-setting strong { display:block; font-size:14px; color:white; }
   .source-setting p { color:#a3b4c3; font-size:12px; margin:3px 0; }
   .source-setting small { color:var(--muted); font-size:10px; }
+  .source-web { font-size:12px; white-space:nowrap; }
   .source-toggle { appearance:none; width:38px; height:23px; flex:none; border-radius:15px; background:#465463; position:relative; cursor:pointer; margin:0; }
   .source-toggle::after { content:""; position:absolute; top:3px; left:3px; width:17px; height:17px; background:#fff; border-radius:50%; transition:transform .15s; }
   .source-toggle:checked { background:#208dca; }
@@ -682,7 +695,7 @@
     .store-chips { gap:5px; } .store-chips button { font-size:11px; padding:0 10px; }
     .store-hero { height:285px; border-radius:9px; margin-bottom:26px; }
     .hero-copy { padding:26px 22px; } .hero-copy strong { font-size:29px; }
-    .hero-copy > span:not(.store-eyebrow):not(.hero-cta) { font-size:13px; max-width:260px; }
+    .hero-copy .hero-sum { font-size:13px; max-width:260px; }
     .store-row-head { display:block; } .store-row-head h2 { font-size:18px; } .store-row-head p { margin-top:3px; }
     .store-card-content { padding:10px; } .store-card-title { gap:6px; } .store-card-title strong { font-size:13px; }
     .store-card-title .store-icon { width:25px; height:25px; font-size:12px; border-radius:6px; }
@@ -710,7 +723,7 @@
   <nav id="nav">
     <a href="#home" class="on" title="Headset view, status and screenshots (1)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="7" width="19" height="10" rx="4"/><circle cx="8.5" cy="12" r="1.6"/><circle cx="15.5" cy="12" r="1.6"/></svg>Home<kbd>1</kbd></a>
     <a href="#games" title="Steam games and sideloaded titles (2)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8h12a4 4 0 0 1 4 4v1a4 4 0 0 1-7 2.6h-6A4 4 0 0 1 2 13v-1a4 4 0 0 1 4-4z"/><path d="M7 11v3M5.5 12.5h3"/><circle cx="16" cy="11.5" r=".6"/><circle cx="18" cy="13.5" r=".6"/></svg>Games<kbd>2</kbd></a>
-    <a href="#android" title="Android apps and their display (3)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="9" width="14" height="11" rx="2"/><path d="M8 9a4 4 0 0 1 8 0M8 5l1.5 2M16 5l-1.5 2M9.5 13h.01M14.5 13h.01"/></svg>Android<kbd>3</kbd></a>
+    <a href="#android" title="Android apps and VR games from outside Steam (3)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="9" width="14" height="11" rx="2"/><path d="M8 9a4 4 0 0 1 8 0M8 5l1.5 2M16 5l-1.5 2M9.5 13h.01M14.5 13h.01"/></svg>Android<kbd>3</kbd></a>
     <a href="#tools" title="Files, clipboard, Linux apps, remote and power (4)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a4 4 0 0 0-5.2 5.2L3.5 17.5a2.1 2.1 0 0 0 3 3l6-6a4 4 0 0 0 5.2-5.2l-2.5 2.5-2.5-2.5z"/></svg>Tools<kbd>4</kbd></a>
     <a href="#devices" class="desk-only" title="Headsets, their addresses and the connection (5)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5a10 10 0 0 1 14 0M8.5 16a5 5 0 0 1 7 0"/><circle cx="12" cy="19.5" r="1"/><path d="M2 9a15 15 0 0 1 20 0"/></svg>Devices<kbd>5</kbd></a>
   </nav>
@@ -964,6 +977,8 @@
   <section id="getgames">
     <div class="shelf-head"><h2>Get games</h2><span class="count" id="gmCount"></span><span class="spacer"></span>
       <span class="sub" id="gmDl"></span></div>
+    <p class="sub cross-link">Your Steam library and the Steam store. Free VR games and apps from outside Steam are on
+      <a href="#android">Android</a>.</p>
     <div class="panel">
       <div class="cat-tools">
         <div class="seg" id="gmSrc" aria-label="Where to look">
@@ -986,11 +1001,11 @@
 
   <div class="page" data-page="android">
   <section id="android">
-    <div class="store-tabs" aria-label="Android sections"><button class="on" data-store-tab="browse" aria-pressed="true">Discover</button><button data-store-tab="library" aria-pressed="false">On your Frame <span id="andCount"></span></button><span class="spacer"></span><button id="sourcesOpen" class="small">Sources <span aria-hidden="true">⚙</span></button><button class="small" id="repNew" hidden>+ Report an APK</button></div>
+    <div class="store-tabs" aria-label="Android sections"><button class="on" data-store-tab="browse" aria-pressed="true">Discover</button><button data-store-tab="library" aria-pressed="false">On your Frame <span id="andCount"></span></button><span class="spacer"></span><button id="sourcesOpen" class="small" title="Choose where Discover looks for apps">Sources…</button><button class="small" id="repNew" hidden>+ Report an APK</button></div>
     <section id="appStore" aria-label="Discover apps">
-      <div class="store-toolbar"><div class="store-heading"><div><div class="store-eyebrow">A little more possibility</div><h1>Find your next favorite.</h1><p>Great games and useful apps. All in one place, all free to explore.</p></div></div>
+      <div class="store-toolbar"><div class="store-heading"><div><h1>Apps and games for the Frame</h1><p>Free Android apps and VR games from open app stores and developers' own pages, each marked with whether it runs on the Frame. Steam games are in <a href="#games">Games</a>.</p></div></div>
       <form id="sourceSearch" class="store-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg><input id="sourceQ" type="search" aria-label="Search games and apps" placeholder="Search games and apps"><button type="submit" class="small">Search</button></form></div>
-      <div class="store-filters"><div id="searchFilters" class="store-chips"><button data-filter="all" aria-pressed="true">For you</button><button data-filter="vr" aria-pressed="false">VR experiences</button><button data-filter="flat" aria-pressed="false">Flat-screen apps</button><button data-filter="installable" aria-pressed="false">Fits your Frame</button></div><label class="store-source-select"><span class="sr-only">Filter by source</span><select id="sourceFilter"><option value="">All sources</option></select></label></div>
+      <div class="store-filters"><div id="searchFilters" class="store-chips"><button data-filter="all" aria-pressed="true">All</button><button data-filter="vr" aria-pressed="false">VR</button><button data-filter="flat" aria-pressed="false">Flat-screen</button><button data-filter="installable" aria-pressed="false">Installs on the Frame</button></div></div>
       <div id="sourceStatus" class="store-notice" role="status" aria-live="polite" hidden></div>
       <div id="searchCount" class="store-result-count" aria-live="polite"></div>
       <div id="searchGrid" aria-busy="false"></div>
@@ -1260,9 +1275,9 @@
 </dialog>
 <dialog id="sourcesDialog" class="store-dialog sources-dialog" aria-labelledby="sourcesTitle">
   <button class="store-close" data-close="sourcesDialog" aria-label="Close source settings">×</button>
-  <div class="sources-intro"><div class="store-eyebrow">Your app shelves</div><h1 id="sourcesTitle">A world of apps.</h1><p>Choose where you discover games and apps. We bring them together for you.</p></div>
+  <div class="sources-intro"><h1 id="sourcesTitle">Sources</h1><p>Where Discover looks for apps. Turn a source off to hide its apps.</p></div>
   <div id="sourcesList"></div>
-  <form id="addSource" class="source-repo-form"><h2>Add a source</h2><p>Have a favorite F-Droid repository? Add its address to browse its apps here.</p><label>Repository address<input name="url" type="url" required placeholder="https://example.org/fdroid/repo"></label><details><summary>Verify this source (optional)</summary><label>Repository fingerprint<input name="fingerprint" type="text" autocomplete="off" placeholder="Paste the fingerprint from the repository owner"></label></details><button class="action">Add source</button></form>
+  <form id="addSource" class="source-repo-form"><h2>Add a source</h2><p>Add an F-Droid repository by its address to browse its apps here.</p><label>Repository address<input name="url" type="url" required placeholder="https://example.org/fdroid/repo"></label><details><summary>Verify this source (optional)</summary><label>Repository fingerprint<input name="fingerprint" type="text" autocomplete="off" placeholder="Paste the fingerprint from the repository owner"></label></details><button class="action">Add source</button></form>
   <p id="sourceError" class="store-notice" role="status" aria-live="polite"></p>
 </dialog>
 
@@ -3158,46 +3173,80 @@ loadOwned();
 const sourceState = { vr: null, installable: false, source: "", apps: [], sources: [], request: 0, detail: null, detailRequest: 0, jobs: new Map() };
 const storeName = s => String(s || "").replace(/ \(demo\)$/i, "");
 const storeHue = name => [...String(name)].reduce((n, c) => (n * 31 + c.charCodeAt(0)) >>> 0, 7) % 360;
-const storeInitial = name => [...String(name || "?")][0].toUpperCase();
+const storeInitial = name => [...String(name || "?")][0].toUpperCase();  // the small icon's stand-in
 const storeText = text => String(text || "").replace(/<[^>]*>/g, " ").replace(/&nbsp;/g, " ");
 const storeOpenSource = o => o.open_source === true || /^(MIT|Apache|[AL]?GPL|BSD|MPL|ISC|CC0|Unlicense)/i.test(o.license || "");
 function sourcePage(url) { try { const u = new URL(url); return ["https:", "http:"].includes(u.protocol) ? u.href : ""; } catch { return ""; } }
 function storeImage(path, alt, eager=false) { return /^\/source-image\/[\w-]+$/.test(path || "") ? `<img src="${esc(path)}" alt="${esc(alt)}" loading="${eager ? "eager" : "lazy"}" decoding="async">` : ""; }
+// Artwork: the banner or first screenshot. Under it (and instead of it, when there's none, or it
+// doesn't load) the app's icon on a blurred wash of itself, or failing that a VR or app glyph.
+const GLYPH_VR = `<svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><rect x="5" y="15" width="38" height="20" rx="8"/><circle cx="17" cy="25" r="3.5"/><circle cx="31" cy="25" r="3.5"/></svg>`;
+const GLYPH_APP = `<svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><rect x="8" y="8" width="13" height="13" rx="3.5"/><rect x="27" y="8" width="13" height="13" rx="3.5"/><rect x="8" y="27" width="13" height="13" rx="3.5"/><rect x="27" y="27" width="13" height="13" rx="3.5"/></svg>`;
 function storeArt(o, cls="", eager=false, path=null, alt=null) {
   const image = path || o.artwork?.banner || o.artwork?.screenshots?.[0];
-  return `<span class="store-art ${cls}" style="--hue:${storeHue(o.name)}"><span class="art-initial" aria-hidden="true">${esc(storeInitial(o.name))}</span>${storeImage(image, alt || `${o.name} artwork`, eager)}</span>`;
+  const icon = !path && /^\/source-image\/[\w-]+$/.test(o.artwork?.icon || "") ? o.artwork.icon : "";
+  const under = path ? "" : icon
+    ? `<img class="art-wash" src="${esc(icon)}" alt="" loading="lazy" decoding="async"><img class="art-icon" src="${esc(icon)}" alt="" loading="lazy" decoding="async">`
+    : `<span class="art-glyph">${o.vr ? GLYPH_VR : GLYPH_APP}</span>`;
+  return `<span class="store-art ${cls}${image ? "" : " no-image"}" style="--hue:${storeHue(o.name)}">${under}${storeImage(image, alt || `${o.name} artwork`, eager)}</span>`;
 }
 function storeIcon(o) { return `<span class="store-icon" style="--hue:${storeHue(o.name)}" aria-hidden="true">${esc(storeInitial(o.name))}${storeImage(o.artwork?.icon, "")}</span>`; }
-document.addEventListener("error", e => { if (e.target.matches?.(".store-art img, .store-icon img")) e.target.remove(); }, true);
+document.addEventListener("error", e => {
+  if (!e.target.matches?.(".store-art img, .store-icon img")) return;
+  const art = e.target.closest(".store-art");
+  e.target.remove();
+  // Nothing left to show: the glyph rather than an empty wash.
+  if (art && !art.querySelector("img") && !art.querySelector(".art-glyph")) art.insertAdjacentHTML("afterbegin", `<span class="art-glyph">${GLYPH_APP}</span>`);
+}, true);
 function sourceMark(s) { const name=storeName(s); return `<span class="offer-mark" style="--hue:${storeHue(name)}" aria-hidden="true">${esc(name === "SideQuest" ? "SQ" : name === "F-Droid" ? "Fd" : name.slice(0,2))}</span>`; }
-function sourceDescription(s) { return s.description || ({fdroid:"Independent, open-source apps",sidequest:"Discover something new in VR",itch:"Games from independent creators",github:"Direct from the people who make it"})[s.kind] || (s.name.includes("GitHub") ? "Direct from the people who make it" : s.name.includes("Droid") ? "Independent, open-source apps" : s.name.includes("SideQuest") ? "Discover something new in VR" : s.name.includes("itch") ? "Games from independent creators" : "Apps shared by this community"); }
+function sourceDescription(s) {
+  const kinds = {fdroid:"Free and open-source Android apps", itch:"Games from independent developers", github:"Releases straight from the developers",
+                 sidequest:"VR games and apps. Its terms don't allow searching it from here, so browse it on its website."};
+  return s.description || kinds[s.kind] || "Apps from this repository";
+}
 async function loadSources() {
   try {
     const {sources} = await api("/api/sources"); sourceState.sources = sources;
-    $("sourceFilter").innerHTML = `<option value="">All sources</option>` + sources.filter(s=>s.enabled).map(s=>`<option value="${esc(s.id)}">${esc(storeName(s.name))}</option>`).join("");
-    $("sourceFilter").value = sourceState.source;
-    $("sourcesList").innerHTML = sources.map(s=>`<div class="source-setting">${sourceMark(s.name)}<div class="grow"><strong>${esc(storeName(s.name))}</strong><p>${esc(sourceDescription(s))}</p><small>${esc(({official:"Official store",community:"Community",user:"Added by you"})[s.trust] || "Community")}</small>${s.builtin === false ? `<button class="small" data-remove="${esc(s.id)}" aria-label="Remove ${esc(s.name)}">Remove</button>` : ""}</div><input class="source-toggle" role="switch" type="checkbox" aria-label="Enable ${esc(storeName(s.name))}" data-enable="${esc(s.id)}" ${s.enabled ? "checked" : ""}></div>`).join("") || `<p class="store-notice">Your sources will appear here when they are available.</p>`;
+    $("sourcesList").innerHTML = sources.map(s=>`<div class="source-setting">${sourceMark(s.name)}<div class="grow"><strong>${esc(storeName(s.name))}</strong><p>${esc(sourceDescription(s))}</p><small>${esc(({official:"Official store",community:"Community",user:"Added by you"})[s.trust] || "Community")}</small>${s.builtin === false ? `<button class="small" data-remove="${esc(s.id)}" aria-label="Remove ${esc(s.name)}">Remove</button>` : ""}</div>${s.page_only ? `<a class="source-web" href="${esc(sourcePage(s.url))}" target="_blank" rel="noopener" title="Its apps can't be searched from here">Website ↗</a>` : `<input class="source-toggle" role="switch" type="checkbox" aria-label="Enable ${esc(storeName(s.name))}" data-enable="${esc(s.id)}" ${s.enabled ? "checked" : ""}>`}</div>`).join("") || `<p class="store-notice">Your sources will appear here when they are available.</p>`;
   } catch (e) { $("sourceError").textContent = e.message; }
 }
+// Will it run? Short enough for a card; the full sentence is in its tooltip and the details.
+const RUNS = { works: ["✓ Works on the Frame", "works"], ready: ["Should install", "ready"], unknown: ["Not checked yet", "unknown"], blocked: ["Won't run", "blocked"] };
+function storeRuns(o) {
+  const [text, cls] = RUNS[o.verdict?.tone] || RUNS.unknown;
+  return `<span class="runs ${cls}" title="${esc(o.verdict?.label || "Not yet checked on the Frame")}">${text}</span>`;
+}
+const storeKind = o => o.vr ? "VR" : o.vr === false ? "Flat-screen app" : "Android app";
 function storeCard(app) {
   const i=sourceState.apps.indexOf(app), o=app.offers[0];
-  return `<button class="store-card" data-app="${i}" aria-label="View ${esc(app.name)}">${storeArt(o)}<span class="store-card-content"><span class="store-card-title">${storeIcon(o)}<strong>${esc(app.name)}</strong></span><span class="store-summary">${esc(storeText(app.summary) || "A new addition to your Frame")}</span><span class="store-card-foot"><span>${o.vr ? "VR experience" : o.vr === false ? "Flat-screen app" : "Android app"}</span><b>Free</b></span></span></button>`;
+  return `<button class="store-card" data-app="${i}" aria-label="${esc(app.name)}: ${esc(o.verdict?.label || "not yet checked on the Frame")}">${storeArt(o)}<span class="store-card-content"><span class="store-card-title">${storeIcon(o)}<strong>${esc(app.name)}</strong></span><span class="store-summary">${esc(storeText(app.summary) || "From " + storeName(o.source_name))}</span><span class="store-card-foot"><span>${storeKind(o)}</span>${storeRuns(o)}</span></span></button>`;
 }
-function storeRow(title, subtitle, apps) { return apps.length ? `<section class="store-row"><div class="store-row-head"><h2>${esc(title)}</h2><p>${esc(subtitle)}</p></div><div class="store-grid">${apps.slice(0,5).map(storeCard).join("")}</div></section>` : ""; }
-function storeEmpty() {
-  return `<div class="store-empty"><svg viewBox="0 0 120 100" fill="none" aria-hidden="true"><rect x="18" y="25" width="60" height="55" rx="12" fill="currentColor" opacity=".08"/><rect x="29" y="18" width="60" height="55" rx="12" stroke="currentColor" opacity=".35"/><circle cx="61" cy="43" r="15" stroke="currentColor" stroke-width="3"/><path d="m72 55 17 18M17 12v10m-5-5h10m79-4v10m-5-5h10" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg><h2>A little further to explore.</h2><p>No apps found this time. Try a different name, clear your filters, or explore another source.</p><button class="action" id="storeReset">Explore all apps</button></div>`;
+function storeRow(title, subtitle, apps) { return apps.length ? `<section class="store-row"><div class="store-row-head"><h2>${esc(title)}</h2>${subtitle ? `<p>${esc(subtitle)}</p>` : ""}</div><div class="store-grid">${apps.slice(0,5).map(storeCard).join("")}</div></section>` : ""; }
+function storeEmpty(message) {
+  return `<div class="store-empty"><svg viewBox="0 0 120 100" fill="none" aria-hidden="true"><rect x="18" y="25" width="60" height="55" rx="12" fill="currentColor" opacity=".08"/><rect x="29" y="18" width="60" height="55" rx="12" stroke="currentColor" opacity=".35"/><circle cx="61" cy="43" r="15" stroke="currentColor" stroke-width="3"/><path d="m72 55 17 18M17 12v10m-5-5h10m79-4v10m-5-5h10" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg><h2>${message ? "Couldn't load apps" : "No apps found"}</h2><p>${message ? esc(message) : "Try another name, or clear the filters."}</p><button class="action" id="storeReset">${message ? "Try again" : "Clear filters"}</button></div>`;
 }
 function renderStore() {
   const apps=sourceState.apps, browsing=!$("sourceQ").value.trim() && sourceState.vr === null && !sourceState.installable && !sourceState.source;
   $("searchCount").textContent = browsing ? "" : `${apps.length} ${apps.length===1 ? "app" : "apps"}${$("sourceQ").value.trim() ? ` for “${$("sourceQ").value.trim()}”` : ""}`;
   if (!apps.length) { $("searchGrid").innerHTML=storeEmpty(); return; }
   if (!browsing) { $("searchGrid").innerHTML=`<div class="store-grid">${apps.map(storeCard).join("")}</div>`; return; }
-  const featured=apps.find(a=>a.offers[0].vr && a.offers[0].artwork?.banner && a.offers[0].verdict?.tone !== 'blocked') || apps.find(a=>a.offers[0].artwork?.banner) || apps[0], o=featured.offers[0];
-  const tested=apps.filter(a=>a.offers.some(o=>o.vr && o.verdict?.tone==='works'));
-  const vr=tested.length ? tested : apps.filter(a=>a.offers.some(o=>o.vr && o.verdict?.tone !== 'blocked'));
-  const popular=[...apps].sort((a,b)=>(b.offers[0].popularity||0)-(a.offers[0].popularity||0));
-  const recent=apps.filter(a=>a.offers.some(o=>o.updated)).sort((a,b)=>String(b.offers[0].updated||'').localeCompare(String(a.offers[0].updated||'')));
-  $("searchGrid").innerHTML=`<button class="store-hero" data-app="${apps.indexOf(featured)}" aria-label="Explore ${esc(featured.name)}">${storeArt(o,"",true)}<span class="hero-copy"><span class="store-eyebrow">Step into something new</span><strong>${esc(featured.name)}</strong><span>${esc(storeText(featured.summary))}</span><span class="hero-cta">Explore ${esc(featured.name)} <span aria-hidden="true">&nbsp; ↗</span></span></span></button>` + storeRow(apps.some(a=>a.offers[0].popularity) ? "Popular apps" : "Explore apps","More ways to make your Frame yours",popular) + storeRow(tested.length ? "VR that works on the Frame" : "Step into VR",tested.length ? "Experiences checked on a Frame" : "A new perspective, a whole new playground",vr) + storeRow("Recently updated","Fresh from their creators",recent);
+  // The featured app: something that runs, with real artwork, and preferably VR. It isn't repeated below.
+  const runs=a=>a.offers[0].verdict?.tone!=='blocked', art=a=>a.offers[0].artwork?.banner;
+  const featured=apps.find(a=>a.offers[0].vr && art(a) && runs(a)) || apps.find(a=>art(a) && runs(a)) || apps.find(runs) || apps[0], o=featured.offers[0];
+  const rest=apps.filter(a=>a!==featured);
+  const tested=rest.filter(a=>a.offers.some(o=>o.vr && o.verdict?.tone==='works'));
+  const vr=tested.length ? tested : rest.filter(a=>a.offers.some(o=>o.vr && o.verdict?.tone !== 'blocked'));
+  // Rows don't repeat each other either: each takes the next apps not shown yet.
+  const shown=new Set(), take=list=>{ const out=list.filter(a=>!shown.has(a)).slice(0,5); out.forEach(a=>shown.add(a)); return out; };
+  const vrRow=take(vr);
+  const likely={works:0,ready:1,unknown:2,blocked:3}, rank=a=>likely[a.offers[0].verdict?.tone] ?? 2;
+  const popular=take([...rest].sort((a,b)=>rank(a)-rank(b) || (b.offers[0].popularity||0)-(a.offers[0].popularity||0)));
+  const recent=take(rest.filter(a=>a.offers.some(o=>o.updated)).sort((a,b)=>String(b.offers[0].updated||'').localeCompare(String(a.offers[0].updated||''))));
+  const canInstall=o.downloadable && runs(featured);
+  $("searchGrid").innerHTML=`<div class="store-hero" data-app="${apps.indexOf(featured)}">${storeArt(o,"",true)}<div class="hero-copy"><span class="store-eyebrow">Featured${o.vr ? " in VR" : ""}</span><strong>${esc(featured.name)}</strong><span class="hero-sum">${esc(storeText(featured.summary))}</span><span class="hero-runs">${storeRuns(o)}</span><span class="hero-actions">${canInstall ? `<button class="action" data-hero-install="${apps.indexOf(featured)}">Install on the Frame</button>` : ""}<button class="hero-details" data-app="${apps.indexOf(featured)}">Details</button></span></div></div>` +
+    storeRow(tested.length ? "VR that works on the Frame" : "VR games and experiences", tested.length ? "Checked on a Frame" : "Made for headsets; most aren't checked on the Frame yet", vrRow) +
+    storeRow(apps.some(a=>a.offers[0].popularity) ? "Popular" : "More to try", "", popular) +
+    storeRow("Recently updated", "New versions from their developers", recent);
 }
 function storeChips() { $("searchFilters").querySelectorAll("button").forEach(b=>b.setAttribute("aria-pressed",b.dataset.filter==='all' ? sourceState.vr===null && !sourceState.installable : b.dataset.filter==='installable' ? sourceState.installable : sourceState.vr===(b.dataset.filter==='vr'))); }
 async function searchSources(quiet) {
@@ -3217,20 +3266,20 @@ async function searchSources(quiet) {
     result.sources.filter(s=>s.status==='limited').forEach(s=>notes.push(`${s.error}.`));
     const stale=result.sources.filter(s=>s.stale).map(s=>storeName(s.name));
     if(stale.length)notes.push(`Showing saved listings from ${stale.join(" and ")} while ${stale.length===1 ? "it refreshes" : "they refresh"}.`);
-    $("sourceStatus").innerHTML=notes.map(esc).join(" ")+(result.elsewhere||[]).map(x=>` <a href="${esc(x.url)}" target="_blank" rel="noopener">Browse ${esc(storeName(x.name))} ↗</a>`).join("");
-    $("sourceStatus").hidden=!notes.length && !(result.elsewhere||[]).length;
+    $("sourceStatus").textContent=notes.join(" ");
+    $("sourceStatus").hidden=!notes.length;
     clearTimeout(sourceState.retry);
     if(loading.length)sourceState.retry=setTimeout(()=>{ if(request===sourceState.request)searchSources(true); },6000);
     renderStore();await loadSources();
-  } catch(e) { if(request===sourceState.request) { $("searchGrid").innerHTML=storeEmpty();$("sourceStatus").hidden=false;$("sourceStatus").textContent="We couldn't reach the app shelves. Try again in a moment."; } }
+  } catch(e) { if(request===sourceState.request) { $("searchGrid").innerHTML=storeEmpty("Couldn't reach the app sources. Try again in a moment.");$("sourceStatus").hidden=true; } }
   finally { if(request===sourceState.request)$("searchGrid").setAttribute("aria-busy","false"); }
 }
 function currentOffer() { return sourceState.detail?.app.offers[sourceState.detail.choice]; }
-function detailBadges(o) { return `<span class="store-badge">${o.vr ? "VR experience" : o.vr===false ? "Flat-screen app" : "Android app"}</span>${o.verdict?.tone==='works' ? '<span class="store-badge works">✓ Works on Frame</span>' : ''}<span class="store-badge">Free</span>${storeOpenSource(o) ? '<span class="store-badge">Open source</span>' : ''}`; }
-function renderDetail() {
+function detailBadges(o) { return `<span class="store-badge">${storeKind(o)}</span>${storeRuns(o)}<span class="store-badge">Free</span>${storeOpenSource(o) ? '<span class="store-badge">Open source</span>' : ''}`; }
+function renderAppDetail() {
   const restoreOfferFocus=document.activeElement?.name==='storeOffer';
   const d=sourceState.detail;if(!d)return;const o=currentOffer(), images=o.artwork?.screenshots||[], page=sourcePage(o.page);
-  $("detailBody").innerHTML=storeArt(o,"detail-banner",true)+`<div class="detail-content"><div class="detail-heading">${storeIcon(o)}<div><h1 id="detailTitle">${esc(o.name)}</h1><p>${esc(o.developer || o.author || 'From '+storeName(o.source_name))}</p></div></div><div class="store-badges">${detailBadges(o)}</div><div class="detail-layout"><div><div class="detail-gallery" id="detailGallery" aria-label="App screenshots" tabindex="0">${images.map((p,i)=>storeArt(o,"",false,p,`${o.name} screenshot ${i+1}`)).join("")}</div>${images.length ? `<div class="gallery-controls"><span>${images.length} screenshots · scroll to explore</span><div><button data-gallery="-1" aria-label="Previous screenshot">←</button> <button data-gallery="1" aria-label="Next screenshot">→</button></div></div>` : ''}<h2>About this app</h2><div class="detail-description">${esc(storeText(o.description || o.summary || "Discover this app on its developer's page."))}</div>${page ? `<p><a href="${esc(page)}" target="_blank" rel="noopener noreferrer">Meet the creators ↗</a></p>` : ''}<details class="detail-technical"><summary>Technical details</summary><dl><dt>Package</dt><dd>${esc(o.package||"Unknown")}</dd><dt>Version</dt><dd>${esc(o.version||"Unknown")} (${esc(o.version_code??"unknown")})</dd><dt>Android API</dt><dd>${esc(o.min_sdk??"Unknown")}</dd><dt>Architecture</dt><dd>${esc(o.abis?.join(', ')||"Unknown / no native code")}</dd><dt>Updated</dt><dd>${esc(o.updated||"Unknown")}</dd><dt>Compatibility</dt><dd>${(o.fit?.reasons||[]).map(esc).join(' · ')||'No known installation blockers'}</dd></dl></details></div><aside class="detail-buy"><div class="detail-price">Free</div><p class="detail-small">No purchase needed.</p><p class="detail-verdict ${esc(o.verdict?.tone||'unknown')}">${esc(o.verdict?.label||'Not yet checked on the Frame')}</p><button id="detailInstall" class="action store-primary">Install</button><progress id="detailProgress" max="100" hidden aria-label="Installation progress"></progress><p id="detailInstallNote" class="detail-small" role="status" aria-live="polite"></p><h2>Get it from</h2><div id="detailOffers">${d.app.offers.map((v,j)=>`<label class="offer-choice"><input type="radio" name="storeOffer" value="${j}" ${j===d.choice?'checked':''}><span>${sourceMark(v.source_name)}</span><span><strong>${esc(storeName(v.source_name))}${j===0?' · Recommended':''}</strong><small>${v.verified===true?'✓ Verified download':'Verification not provided'}</small><small>${esc(v.version ? 'v'+v.version : 'Latest release')}${v.size!=null?' · '+(v.size/1048576).toFixed(0)+' MB':''}</small></span></label>`).join('')}</div></aside></div></div>`;
+  $("detailBody").innerHTML=storeArt(o,"detail-banner",true)+`<div class="detail-content"><div class="detail-heading">${storeIcon(o)}<div><h1 id="detailTitle">${esc(o.name)}</h1><p>${esc(o.developer || o.author || 'From '+storeName(o.source_name))}</p></div></div><div class="store-badges">${detailBadges(o)}</div><div class="detail-layout"><div><div class="detail-gallery" id="detailGallery" aria-label="App screenshots" tabindex="0">${images.map((p,i)=>storeArt(o,"",false,p,`${o.name} screenshot ${i+1}`)).join("")}</div>${images.length ? `<div class="gallery-controls"><span>${images.length} screenshots · scroll to explore</span><div><button data-gallery="-1" aria-label="Previous screenshot">←</button> <button data-gallery="1" aria-label="Next screenshot">→</button></div></div>` : ''}<h2>About this app</h2><div class="detail-description">${esc(storeText(o.description || o.summary || "Discover this app on its developer's page."))}</div>${page ? `<p><a href="${esc(page)}" target="_blank" rel="noopener noreferrer">The developer's page ↗</a></p>` : ''}<details class="detail-technical"><summary>Technical details</summary><dl><dt>Package</dt><dd>${esc(o.package||"Unknown")}</dd><dt>Version</dt><dd>${esc(o.version||"Unknown")} (${esc(o.version_code??"unknown")})</dd><dt>Android API</dt><dd>${esc(o.min_sdk??"Unknown")}</dd><dt>Architecture</dt><dd>${esc(o.abis?.join(', ')||"Unknown / no native code")}</dd><dt>Updated</dt><dd>${esc(o.updated||"Unknown")}</dd><dt>Compatibility</dt><dd>${(o.fit?.reasons||[]).map(esc).join(' · ')||'No known installation blockers'}</dd></dl></details></div><aside class="detail-buy"><div class="detail-price">Free</div><p class="detail-small">No purchase needed.</p><p class="detail-verdict ${esc(o.verdict?.tone||'unknown')}">${esc(o.verdict?.label||'Not yet checked on the Frame')}</p><button id="detailInstall" class="action store-primary">Install</button><progress id="detailProgress" max="100" hidden aria-label="Installation progress"></progress><p id="detailInstallNote" class="detail-small" role="status" aria-live="polite"></p><h2>Get it from</h2><div id="detailOffers">${d.app.offers.map((v,j)=>`<label class="offer-choice"><input type="radio" name="storeOffer" value="${j}" ${j===d.choice?'checked':''}><span>${sourceMark(v.source_name)}</span><span><strong>${esc(storeName(v.source_name))}${j===0?' · Recommended':''}</strong><small>${v.verified===true?'✓ Verified download':'Verification not provided'}</small><small>${esc(v.version ? 'v'+v.version : 'Latest release')}${v.size!=null?' · '+(v.size/1048576).toFixed(0)+' MB':''}</small></span></label>`).join('')}</div></aside></div></div>`;
   updateInstall();
   if(restoreOfferFocus)document.querySelector('#detailOffers input:checked')?.focus();
 }
@@ -3238,16 +3287,17 @@ function updateInstall() {
   const o=currentOffer();if(!o || !$("detailInstall"))return;
   const job=sourceState.jobs.get(`${o.source}:${o.id}`), blocked=o.verdict?.tone==='blocked', page=sourcePage(o.page), b=$("detailInstall");
   b.disabled=!!(job && !job.done) || !!job?.addingData || (blocked && !job?.result) || (!o.downloadable && !page);
-  b.textContent=job?.result?.game_data ? (job.addingData ? 'Adding game data…' : 'Add game data') : job?.result ? 'Open in Steam' : job && !job.done ? (job.stage||'Downloading')+(job.percent!=null?` ${Math.round(job.percent)}%`:'…') : blocked ? 'Not compatible' : o.downloadable ? (job?.error?'Try again':'Install on Frame') : 'Get from the creator ↗';
+  b.textContent=job?.result?.game_data ? (job.addingData ? 'Adding game data…' : 'Add game data') : job?.result ? 'Open in Steam' : job && !job.done ? (job.stage||'Downloading')+(job.percent!=null?` ${Math.round(job.percent)}%`:'…') : blocked ? 'Not compatible' : o.downloadable ? (job?.error?'Try again':'Install on the Frame') : 'Get from the creator ↗';
   $("detailProgress").hidden=!job || job.done;
   if(job?.percent!=null)$("detailProgress").value=job.percent;else $("detailProgress").removeAttribute("value");
-  $("detailInstallNote").textContent=job?.result?.game_data ? (job.dataError || 'Installed. It also needs its game data: open it once on the Frame, then choose Add game data.') : job?.result ? '✓ Installed. Find it in your Steam library.' : job?.error || (job && !job.done ? 'Keep exploring. We’ll take care of the installation.' : o.verdict?.tone==='works' ? 'Adds to your Steam library.' : 'Compatibility can vary. Adds to your Steam library.');
+  $("detailInstallNote").textContent=job?.result?.game_data ? (job.dataError || 'Installed. It also needs its game data: open it once on the Frame, then choose Add game data.') : job?.result ? '✓ Installed. Find it in your Steam library.' : job?.error || (job && !job.done ? 'Installing. You can close this and keep browsing.' : o.verdict?.tone==='works' ? 'Adds to your Steam library.' : 'Compatibility can vary. Adds to your Steam library.');
   $("detailOffers").querySelectorAll('input').forEach(input=>input.disabled=!!job&&!job.done);
 }
-async function openStoreApp(index) {
+async function openStoreApp(index, install=false) {
   const app=sourceState.apps[index];if(!app)return;
   sourceState.detail={app:{...app,offers:app.offers.map(o=>({...o}))},choice:0};
-  renderDetail();if(!$("appDetail").open)$("appDetail").showModal();$("appDetail").scrollTop=0;
+  renderAppDetail();if(!$("appDetail").open)$("appDetail").showModal();$("appDetail").scrollTop=0;
+  if(install)installStoreApp();  // the hero's Install: the details show its progress
   await loadOfferDetails();
 }
 async function loadOfferDetails() {
@@ -3256,7 +3306,7 @@ async function loadOfferDetails() {
     const detail=await api('/api/sources/details?'+new URLSearchParams({source:o.source,id:o.id}));
     if(request!==sourceState.detailRequest || d!==sourceState.detail)return;
     const artwork={icon:detail.artwork?.icon||o.artwork?.icon,banner:detail.artwork?.banner||o.artwork?.banner,screenshots:detail.artwork?.screenshots?.length?detail.artwork.screenshots:o.artwork?.screenshots||[]};
-    d.app.offers[d.choice]={...o,...detail,artwork};renderDetail();
+    d.app.offers[d.choice]={...o,...detail,artwork};renderAppDetail();
   } catch(e) { if(d===sourceState.detail)$("detailInstallNote").textContent="Some app details couldn't be refreshed. You can still view this listing."; }
 }
 async function installStoreApp() {
@@ -3284,11 +3334,10 @@ async function changeSource(body) {
 let storeSearchTimer;
 $("sourceQ").oninput=()=>{clearTimeout(storeSearchTimer);storeSearchTimer=setTimeout(searchSources,300);};
 $("sourceSearch").onsubmit=e=>{e.preventDefault();clearTimeout(storeSearchTimer);searchSources();};
-$("sourceFilter").onchange=e=>{sourceState.source=e.target.value;searchSources();};
 $("searchFilters").onclick=e=>{const b=e.target.closest('[data-filter]');if(!b)return;const f=b.dataset.filter;if(f==='all'){sourceState.vr=null;sourceState.installable=false;}else if(f==='installable')sourceState.installable=!sourceState.installable;else sourceState.vr=sourceState.vr===(f==='vr')?null:f==='vr';storeChips();searchSources();};
-$("searchGrid").onclick=e=>{const b=e.target.closest('[data-app]');if(b)openStoreApp(+b.dataset.app);if(e.target.closest('#storeReset')){$('sourceQ').value='';sourceState.vr=null;sourceState.installable=false;sourceState.source='';storeChips();searchSources();}};
+$("searchGrid").onclick=e=>{const h=e.target.closest('[data-hero-install]');if(h){openStoreApp(+h.dataset.heroInstall,true);return;}const b=e.target.closest('[data-app]');if(b)openStoreApp(+b.dataset.app);if(e.target.closest('#storeReset')){$('sourceQ').value='';sourceState.vr=null;sourceState.installable=false;sourceState.source='';storeChips();searchSources();}};
 $("detailBody").onclick=e=>{if(e.target.closest('#detailInstall'))installStoreApp();const b=e.target.closest('[data-gallery]');if(b)$('detailGallery').scrollBy({left:+b.dataset.gallery*$('detailGallery').clientWidth*.86,behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'});};
-$("detailBody").onchange=e=>{if(e.target.name==='storeOffer'){sourceState.detail.choice=+e.target.value;renderDetail();loadOfferDetails();}};
+$("detailBody").onchange=e=>{if(e.target.name==='storeOffer'){sourceState.detail.choice=+e.target.value;renderAppDetail();loadOfferDetails();}};
 $("sourcesOpen").onclick=()=>{loadSources();$('sourcesDialog').showModal();};
 $("sourcesList").onchange=e=>{if(e.target.matches('[data-enable]'))changeSource({action:'enable',source:e.target.dataset.enable,enabled:e.target.checked});};
 $("sourcesList").onclick=e=>{const b=e.target.closest('[data-remove]');if(b)changeSource({action:'remove',source:b.dataset.remove});};
@@ -3707,7 +3756,7 @@ $("shotsFolder").onclick = e => act($("shotsFolder").textContent, () => api("/ap
 
 // ---- Panel switcher: our UI over SteamVR's panel API ----
 let panelSeq = 0;
-async function loadPanels() {
+async function loadPanelSwitcher() {
   const seq = ++panelSeq;
   try {
     const s = await api("/api/panels", {action: "list"});
@@ -3718,7 +3767,7 @@ async function loadPanels() {
       : '<div class="sub">No open panels.</div>';
   } catch (e) { if (seq === panelSeq) failed($("panelList"), e); }
 }
-$("panelsRefresh").onclick = loadPanels;
+$("panelsRefresh").onclick = loadPanelSwitcher;
 $("panelsOpen").onclick = e => act("Open panel switcher in headset",
   () => api("/api/panels", {action: "open"}), e.currentTarget);
 $("panelList").onclick = e => {
@@ -3819,7 +3868,7 @@ function showPage() {
   document.title = page === "home" ? "Frame Control" : `${page[0].toUpperCase() + page.slice(1)} · Frame Control`;
   const section = !PAGES.includes(id) && id && $(id);
   if (section) section.scrollIntoView(); else scrollToY(0);
-  if (page === "tools") { loadMacView(); loadPanels(); }
+  if (page === "tools") { loadMacView(); loadPanelSwitcher(); }
 }
 window.addEventListener("hashchange", showPage);
 // While a text field has focus, phones hide the bottom tab bar (see body.typing in the CSS).

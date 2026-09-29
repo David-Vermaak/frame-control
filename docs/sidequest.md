@@ -65,6 +65,8 @@ flow, not evidence of an anonymous download API. It is not implemented here.
 - `search()` raises a user-readable `SourceError` with the browse URL (zero
   limit returns no rows). It does not invent app results or report a false
   “no matching games”. The aggregate search UI should surface this source error.
+  In the app, Discover doesn't link to it; the **Sources** dialog lists SideQuest
+  with a link to its website instead of an on/off switch.
 - `details()` accepts a numeric listing id and returns its canonical page link,
   `downloadable: False`, empty versions/tags/headsets and the `images` shape
   `{icon: None, banner: None, screenshots: []}`. Name is explicitly a listing id;
