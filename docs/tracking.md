@@ -213,15 +213,17 @@ How it works:
   42 and 180 BPM are combined in the frequency domain. Output is an overall
   estimate plus one estimate per second over 15-second windows. A result
   counts as **clear** only when the top patches agree and the combined signal
-  stands out from the noise. Otherwise the command exits 3 and sends nothing.
+  stands out from the noise. Otherwise the command exits 3 and sends no OSC.
+  `--log` still records the per-second estimates, so a comparison shows how
+  far off an unclear result was.
   The thresholds are provisional until checked on real wearers.
 
 **Verified on the Frame, unworn, 2026-09-29:** a 30-second run captured
 5,362 eye frames, never had more than 7 images on disk, finished 3 s after
 the capture ended and left no capture directory. It reported no clear pulse
 (exit 3), as it should with nobody wearing it. Worth knowing: the unworn
-patches agreed on a steady rhythm near 129 BPM (2.15 Hz) with low
-signal/noise (0.19). That is a camera or illumination artifact, not a pulse,
+patches agreed on a steady rhythm near 127-129 BPM (about 2.1 Hz) with low
+signal/noise (0.15-0.19), in two separate runs. That is a camera or illumination artifact, not a pulse,
 and the signal/noise gate kept it from being reported. A worn test should
 also record an unworn baseline, to rule out the same artifact.
 

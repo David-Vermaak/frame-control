@@ -11,6 +11,7 @@ complete, then deleted; the capture directory is removed on exit. No image
 leaves the Frame or outlives the run. This is an experiment, not a medical
 measurement.
 """
+from array import array
 import bisect
 import cmath
 import json
@@ -81,6 +82,7 @@ class Capture:
         self.pool = None
         self.submitted = set()
         self.futures = {}
+        self.new = set()  # every capture directory that appeared during our run
 
     def candidates(self):
         parent, stem = os.path.split(self.PREFIX)
@@ -93,23 +95,26 @@ class Capture:
         # found by watching for a new one rather than waiting for its name.
         import tempfile
         before = self.candidates()
-        if self.workers:
-            # SteamVR pins its eye tracker to cores 0-1; decoding runs beside it.
-            import concurrent.futures
-            import multiprocessing
-            self.pool = concurrent.futures.ProcessPoolExecutor(
-                self.workers, mp_context=multiprocessing.get_context("fork"))
+        process = None
         with tempfile.TemporaryFile("w+") as log:
-            process = self.runner([str(ET_BIN), "-b", "CDSP", "-w", str(ET_WEIGHTS), "--calib", str(self.seconds)],
-                                  cwd=str(ET_BIN.parent), stdout=log, stderr=subprocess.STDOUT)
             try:
+                if self.workers:
+                    # SteamVR pins its eye tracker to cores 0-1; decoding runs beside it.
+                    import concurrent.futures
+                    import multiprocessing
+                    self.pool = concurrent.futures.ProcessPoolExecutor(
+                        self.workers, mp_context=multiprocessing.get_context("fork"))
+                process = self.runner([str(ET_BIN), "-b", "CDSP", "-w", str(ET_WEIGHTS), "--calib", str(self.seconds)],
+                                      cwd=str(ET_BIN.parent), stdout=log, stderr=subprocess.STDOUT)
                 deadline = time.monotonic() + self.seconds + 30
                 while True:
-                    if not self.directory:
-                        new = self.candidates() - before
-                        if len(new) > 1:
-                            raise RuntimeError("another eye-camera capture is running")
-                        self.directory = new.pop() if new else None
+                    # Checked on every poll: a second capture directory means
+                    # we can't tell which images are ours, so stop.
+                    self.new |= self.candidates() - before
+                    if len(self.new) > 1:
+                        raise RuntimeError("another eye-camera capture is running")
+                    if not self.directory and self.new:
+                        self.directory = next(iter(self.new))
                     finished = process.poll() is not None
                     self.reduce(final=finished)
                     if finished:
@@ -124,7 +129,7 @@ class Capture:
                     raise RuntimeError(f"eye-camera capture failed ({reason})")
                 return self.frames()
             finally:
-                if process.poll() is None:
+                if process and process.poll() is None:
                     process.terminate()
                     try:
                         process.wait(timeout=5)
@@ -157,10 +162,10 @@ class Capture:
                 if self.pool:
                     self.futures[(eye, index)] = self.pool.submit(reduce_file, self.loader, path)
                 else:
-                    self.grids[eye][index] = reduce_file(self.loader, path)
+                    self.grids[eye][index] = array("f", reduce_file(self.loader, path))
         for key, future in list(self.futures.items()):
             if final or future.done():
-                self.grids[key[0]][key[1]] = future.result()
+                self.grids[key[0]][key[1]] = array("f", future.result())
                 del self.futures[key]
 
     def frames(self):
@@ -177,8 +182,11 @@ class Capture:
         return frames
 
     def remove(self):
-        if self.directory and str(self.directory).startswith(self.PREFIX):
-            shutil.rmtree(self.directory, ignore_errors=True)
+        """Remove every capture directory that appeared during the run. Eye
+        images must not outlive it, so a failure to delete is an error."""
+        for directory in self.new | ({self.directory} if self.directory else set()):
+            if str(directory).startswith(self.PREFIX) and directory.is_dir() and not directory.is_symlink():
+                shutil.rmtree(directory)
 
 
 # --------------------------------------------------------------- analysis ---
@@ -283,7 +291,7 @@ def snr(spec, bpm, width=4.0):
     """Power near the pulse and its first harmonic against the rest of the band."""
     near = sum(p for f, p in spec if abs(f - bpm) <= width or abs(f - 2 * bpm) <= width)
     rest = sum(p for f, p in spec) - near
-    return near / rest if rest > 0 else float("inf")
+    return near / rest if near > 0 and rest > 0 else 0.0
 
 
 def normalised(spec):
@@ -308,7 +316,7 @@ def estimate(times, patches, rate=RATE, share=0.2, window=WINDOW):
     for name, values in patches.items():
         if usable(values):
             signal = clean(resample(times, values, rate), rate)
-            if signal is not None:
+            if signal is not None and any(signal):  # flat patches carry no rhythm
                 cleaned[name] = signal
     if not cleaned or len(next(iter(cleaned.values()))) < rate * 8:
         raise ValueError("need at least 8 seconds of usable eye-camera frames")
@@ -352,7 +360,12 @@ def analyse(frames):
         if not eye_frames:
             continue
         eye_times = [t for t, _ in eye_frames]
-        nearest = [min(bisect.bisect_left(eye_times, t), len(eye_times) - 1) for t in times]
+        nearest = []
+        for t in times:
+            i = bisect.bisect_left(eye_times, t)
+            if i == len(eye_times) or (i > 0 and t - eye_times[i - 1] <= eye_times[i] - t):
+                i -= 1
+            nearest.append(i)
         for k in range(len(eye_frames[0][1])):
             patches[f"{eye}{k}"] = [eye_frames[i][1][k] for i in nearest]
     return estimate(times, patches)

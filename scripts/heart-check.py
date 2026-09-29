@@ -118,32 +118,39 @@ def read_csv(path):
                 continue
             try:
                 when, bpm = parse_time(row[0]), int(float(row[1]))
+                flags = int(float(row[2])) if len(row) > 2 and row[2].strip() else None
             except ValueError:
                 continue  # header or unparseable line
-            if len(row) > 2 and row[2].strip():
-                flags = int(row[2])
-                if flags & 4 and not flags & 2:
-                    bpm = None  # contact supported and not detected: no reading
+            if flags is not None and flags & 4 and not flags & 2:
+                bpm = None  # contact supported and not detected: no reading
             samples.append((when, bpm))
     return sorted(samples, key=lambda s: s[0])
 
 
 def read_health(path, start, end):
     """Heart-rate records from an Apple Health export between start and end."""
-    if zipfile.is_zipfile(path):
-        archive = zipfile.ZipFile(path)
-        name = next(n for n in archive.namelist() if n.endswith("/export.xml") or n == "export.xml")
-        source = archive.open(name)
-    else:
-        source = open(path, "rb")
     samples = []
-    with source:
+    def scan(source):
         for _, element in ElementTree.iterparse(source):
             if element.tag == "Record" and element.get("type") == "HKQuantityTypeIdentifierHeartRate":
-                when = parse_time(element.get("startDate"))
+                try:
+                    when = parse_time(element.get("startDate") or "")
+                    value = round(float(element.get("value") or ""))
+                except ValueError:
+                    continue
                 if start <= when <= end:
-                    samples.append((when, round(float(element.get("value")))))
+                    samples.append((when, value))
             element.clear()
+    if zipfile.is_zipfile(path):
+        with zipfile.ZipFile(path) as archive:
+            names = [n for n in archive.namelist() if n.endswith("/export.xml") or n == "export.xml"]
+            if not names:
+                raise ValueError("no export.xml in that archive; use Health's Export All Health Data")
+            with archive.open(names[0]) as source:
+                scan(source)
+    else:
+        with open(path, "rb") as source:
+            scan(source)
     return sorted(samples)
 
 
@@ -154,9 +161,10 @@ def read_any(path, start=None, end=None):
     return read_csv(path)
 
 
-def value_at(samples, when, hold):
-    """Our reading at a moment: the latest sample no older than `hold` seconds."""
-    times = [s[0] for s in samples]
+def value_at(samples, when, hold, times=None):
+    """Our reading at a moment: the latest sample no older than `hold` seconds.
+    `times` is the samples' time column, if the caller has already built it."""
+    times = times if times is not None else [s[0] for s in samples]
     i = bisect.bisect_right(times, when) - 1
     if i < 0 or when - times[i] > hold:
         return None
@@ -173,10 +181,11 @@ def compare(ours, reference, max_lag=10.0, hold=5.0):
     if not real or not any(b is not None for _, b in ours):
         raise ValueError("both recordings need at least one reading")
     best = None
+    ours_times = [t for t, _ in ours]
     steps = int(max_lag * 4)
     for step in range(-steps, steps + 1):
         lag = step / 4
-        pairs = [(value_at(ours, t + lag, hold), b) for t, b in real]
+        pairs = [(value_at(ours, t + lag, hold, ours_times), b) for t, b in real]
         pairs = [(o, r) for o, r in pairs if o is not None]
         if not pairs:
             continue
@@ -249,8 +258,8 @@ def main(argv=None):
     ours = read_csv(args.ours)
     if not ours:
         parser.error("our recording has no readings")
-    reference = read_any(args.reference, ours[0][0] - 60, ours[-1][0] + 60)
     try:
+        reference = read_any(args.reference, ours[0][0] - 60, ours[-1][0] + 60)
         result = compare(ours, reference, args.max_lag)
     except ValueError as error:
         print(str(error))

@@ -79,6 +79,24 @@ class Estimate(unittest.TestCase):
         self.assertAlmostEqual(series[0][0], pulse.WINDOW, delta=0.1)
         self.assertEqual(len(series), 20 - int(pulse.WINDOW) + 1)
 
+    def test_flat_patches_do_not_rank_first(self):
+        times, values = synthetic(72, 16)
+        values["flat"] = [100.0] * len(times)
+        result = pulse.estimate(times, values)
+        self.assertAlmostEqual(result["bpm"], 72, delta=1.5)
+        self.assertEqual(pulse.snr([(60.0, 0.0), (61.0, 0.0)], 60), 0.0)
+
+    def test_analyse_uses_nearest_frame(self):
+        times, values = synthetic(72, 4, patches=4, seconds=10)
+        # Right-eye frames 1 ms before each left frame: nearest is that frame.
+        frames = [(t, "left", [values[k][i] for k in range(4)]) for i, t in enumerate(times)]
+        frames += [(t - 0.001, "right", [float(i)] * 4) for i, t in enumerate(times)]
+        seen = {}
+        original = pulse.estimate
+        with patch.object(pulse, "estimate", lambda t, p: seen.update(p) or original(t, p)):
+            pulse.analyse(frames)
+        self.assertEqual(seen["right0"][:5], [0.0, 0.0, 1.0, 1.0, 2.0])
+
     def test_fft_matches_dft(self):
         signal = [math.sin(i) + (i % 3) for i in range(16)]
         fast = pulse.fft(signal)
@@ -213,6 +231,22 @@ class CaptureLifecycle(unittest.TestCase):
         self.assertEqual(tool.returncode, -15)       # capture tool stopped
         self.assertFalse(self.directory.exists())    # no image left behind
 
+    def test_second_capture_directory_stops_and_removes_both(self):
+        foreign = self.root / "etcalib_foreign"
+        class Racing(FakeCaptureTool):
+            def poll(self):
+                if self.polls == 2:
+                    foreign.mkdir()
+                    (foreign / "left_0.png").write_bytes(b"png")
+                return super().poll()
+        tool = Racing(self.directory)
+        with self.assertRaises(RuntimeError) as raised:
+            self.capture(tool)
+        self.assertIn("another eye-camera capture", str(raised.exception))
+        self.assertFalse(self.directory.exists())
+        self.assertFalse(foreign.exists())  # no eye image outlives the run
+        self.assertTrue((self.root / "etcalib_older").exists())
+
     def test_only_removes_capture_directories(self):
         capture = pulse.Capture(20)
         capture.directory = self.root
@@ -291,6 +325,16 @@ class HeartCheck(unittest.TestCase):
             ours = [(start + i + 1.0, 71) for i in range(60)]
             result = check.compare(ours, samples)
             self.assertLessEqual(result["mean_abs_error"], 1)
+
+    def test_unusual_flags_and_missing_export(self):
+        path = self.write("ref.csv", "time,bpm,flags\n1000,70,6.0\n1001,71,yes\n1002,72,4\n")
+        self.assertEqual(check.read_csv(path), [(1000.0, 70), (1002.0, None)])
+        with tempfile.TemporaryDirectory() as directory:
+            archive = Path(directory) / "other.zip"
+            with zipfile.ZipFile(archive, "w") as z:
+                z.writestr("notes.txt", "x")
+            with self.assertRaises(ValueError):
+                check.read_any(archive, 0, 1)
 
     def test_time_formats(self):
         self.assertEqual(check.parse_time("1700000000.5"), 1700000000.5)
