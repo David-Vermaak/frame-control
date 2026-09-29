@@ -81,8 +81,12 @@ class Media(unittest.TestCase):
             write_status(path, **values)
 
         class FakeOverlay:
+            created = 0
+
             def create(self, *a, **k):
-                return len(calls)
+                # Handles in creation order: surround 0, then screen 1 (theatre).
+                FakeOverlay.created += 1
+                return FakeOverlay.created - 1
 
             def call(self, *a):
                 pass
