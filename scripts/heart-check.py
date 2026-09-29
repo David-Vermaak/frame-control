@@ -118,9 +118,12 @@ def read_csv(path):
                 continue
             try:
                 when, bpm = parse_time(row[0]), int(float(row[1]))
-                flags = int(float(row[2])) if len(row) > 2 and row[2].strip() else None
             except ValueError:
                 continue  # header or unparseable line
+            try:
+                flags = int(float(row[2])) if len(row) > 2 else None
+            except ValueError:
+                flags = None  # an unrecognised flag leaves the reading as it is
             if flags is not None and flags & 4 and not flags & 2:
                 bpm = None  # contact supported and not detected: no reading
             samples.append((when, bpm))
@@ -261,8 +264,8 @@ def main(argv=None):
     try:
         reference = read_any(args.reference, ours[0][0] - 60, ours[-1][0] + 60)
         result = compare(ours, reference, args.max_lag)
-    except ValueError as error:
-        print(str(error))
+    except (ValueError, OSError, ElementTree.ParseError, zipfile.BadZipFile) as error:
+        print(f"Could not compare: {error}")
         return 1
     return 0 if report(result, args.tolerance) else 1
 

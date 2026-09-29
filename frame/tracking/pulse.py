@@ -70,6 +70,8 @@ class Capture:
     NAME = re.compile(r"^(left|right)_(\d+)\.png$")
     # Only SteamVR's own capture directories are read and removed.
     PREFIX = "/tmp/etcalib_"
+    # Printed by the capture tool; its output is only flushed when it exits.
+    WRITING = re.compile(r"Writing capture to: (/tmp/etcalib_[\w-]+)")
     # About five seconds of frames (~65 MB in RAM-backed /tmp). If reduction
     # falls further behind than this, the capture stops rather than letting
     # eye images pile up.
@@ -127,18 +129,42 @@ class Capture:
                 if process.returncode or not self.directory:
                     reason = "cameras unavailable" if "Failed to" in text else f"exit {process.returncode}"
                     raise RuntimeError(f"eye-camera capture failed ({reason})")
+                named = self.written(log)
+                if named and named != self.directory:
+                    raise RuntimeError("the capture wrote somewhere else; not using those images")
                 return self.frames()
             finally:
-                if process and process.poll() is None:
-                    process.terminate()
+                # Each step runs even if an earlier one failed: eye images must
+                # be removed whatever else went wrong.
+                failed = False
+                for step in (lambda: self.stop(process),
+                             lambda: self.pool and self.pool.shutdown(wait=True, cancel_futures=True)):
                     try:
-                        process.wait(timeout=5)
-                    except subprocess.TimeoutExpired:
-                        process.kill()
-                        process.wait()
-                if self.pool:
-                    self.pool.shutdown(wait=True, cancel_futures=True)
+                        step()
+                    except Exception:
+                        failed = True
+                named = self.written(log)
+                if named:
+                    self.new.add(named)  # ours by the tool's own account
                 self.remove()
+                if failed:
+                    raise RuntimeError("the eye-camera capture did not stop cleanly")
+
+    @staticmethod
+    def stop(process):
+        if process and process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait()
+
+    def written(self, log):
+        """The directory the capture tool reported, once its output is flushed."""
+        log.seek(0)
+        match = self.WRITING.search(log.read())
+        return Path(match.group(1)) if match else None
 
     def reduce(self, final=False):
         """Reduce and delete every complete image; an image is complete once a
@@ -184,9 +210,15 @@ class Capture:
     def remove(self):
         """Remove every capture directory that appeared during the run. Eye
         images must not outlive it, so a failure to delete is an error."""
+        left = []
         for directory in self.new | ({self.directory} if self.directory else set()):
             if str(directory).startswith(self.PREFIX) and directory.is_dir() and not directory.is_symlink():
-                shutil.rmtree(directory)
+                try:
+                    shutil.rmtree(directory)
+                except OSError:
+                    left.append(str(directory))
+        if left:
+            raise RuntimeError("could not delete eye images in " + ", ".join(sorted(left)))
 
 
 # --------------------------------------------------------------- analysis ---
@@ -291,7 +323,9 @@ def snr(spec, bpm, width=4.0):
     """Power near the pulse and its first harmonic against the rest of the band."""
     near = sum(p for f, p in spec if abs(f - bpm) <= width or abs(f - 2 * bpm) <= width)
     rest = sum(p for f, p in spec) - near
-    return near / rest if near > 0 and rest > 0 else 0.0
+    if near <= 0:
+        return 0.0
+    return near / rest if rest > 0 else float("inf")
 
 
 def normalised(spec):

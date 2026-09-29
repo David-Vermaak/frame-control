@@ -134,6 +134,7 @@ class FakeCaptureTool:
         self.polls = 0
         self.returncode = None
         self.stdout = None
+        self.announce = None  # a different directory to report, if set
 
     def __call__(self, command, cwd, stdout, stderr):
         self.command = command
@@ -160,6 +161,9 @@ class FakeCaptureTool:
                                   "tsMono": 100 + i / 90, "valid": i != 2} for eye in ("left", "right")}
                            for i in range(self.frames)]}
         (self.directory / "meta.json").write_text(json.dumps(meta))
+        # The real tool's buffered output only appears once it exits.
+        self.stdout.write(f"Writing capture to: {self.announce or self.directory}\nCaptured images\n")
+        self.stdout.flush()
         self.returncode = 0
         return 0
 
@@ -190,6 +194,7 @@ class CaptureLifecycle(unittest.TestCase):
         class TestCapture(pulse.Capture):
             # A temporary directory stands in for /tmp/etcalib_*.
             PREFIX = str(self.root / "etcalib_")
+            WRITING = __import__("re").compile(r"Writing capture to: (\S+)")
         capture = TestCapture(20, runner=tool, loader=self.loader, workers=0)
         with patch.object(pulse.time, "sleep", lambda s: None):
             return capture, capture.run()
@@ -221,6 +226,7 @@ class CaptureLifecycle(unittest.TestCase):
         tool = Stalled(self.directory)
         class TestCapture(pulse.Capture):
             PREFIX = str(self.root / "etcalib_")
+            WRITING = __import__("re").compile(r"Writing capture to: (\S+)")
             MAX_BACKLOG = 50
         capture = TestCapture(20, runner=tool, loader=self.loader, workers=0)
         capture.reduce = lambda final=False, original=capture.reduce: (
@@ -246,6 +252,35 @@ class CaptureLifecycle(unittest.TestCase):
         self.assertFalse(self.directory.exists())
         self.assertFalse(foreign.exists())  # no eye image outlives the run
         self.assertTrue((self.root / "etcalib_older").exists())
+
+    def test_images_elsewhere_are_not_used_but_are_removed(self):
+        tool = FakeCaptureTool(self.directory)
+        tool.announce = self.root / "etcalib_reported"
+        tool.announce.mkdir()
+        (tool.announce / "left_0.png").write_bytes(b"png")
+        with self.assertRaises(RuntimeError) as raised:
+            self.capture(tool)
+        self.assertIn("somewhere else", str(raised.exception))
+        self.assertFalse(tool.announce.exists())
+        self.assertFalse(self.directory.exists())
+
+    def test_cleanup_tries_every_directory(self):
+        capture = pulse.Capture(20)
+        capture.PREFIX = str(self.root / "etcalib_")
+        first, second = self.root / "etcalib_a", self.root / "etcalib_b"
+        for directory in (first, second):
+            directory.mkdir()
+            (directory / "left_0.png").write_bytes(b"png")
+        capture.new = {first, second}
+        real = pulse.shutil.rmtree
+        def flaky(path):
+            if Path(path) == first:
+                raise OSError("busy")
+            real(path)
+        with patch.object(pulse.shutil, "rmtree", flaky), self.assertRaises(RuntimeError) as raised:
+            capture.remove()
+        self.assertIn("etcalib_a", str(raised.exception))
+        self.assertFalse(second.exists())
 
     def test_only_removes_capture_directories(self):
         capture = pulse.Capture(20)
@@ -328,7 +363,7 @@ class HeartCheck(unittest.TestCase):
 
     def test_unusual_flags_and_missing_export(self):
         path = self.write("ref.csv", "time,bpm,flags\n1000,70,6.0\n1001,71,yes\n1002,72,4\n")
-        self.assertEqual(check.read_csv(path), [(1000.0, 70), (1002.0, None)])
+        self.assertEqual(check.read_csv(path), [(1000.0, 70), (1001.0, 71), (1002.0, None)])
         with tempfile.TemporaryDirectory() as directory:
             archive = Path(directory) / "other.zip"
             with zipfile.ZipFile(archive, "w") as z:
