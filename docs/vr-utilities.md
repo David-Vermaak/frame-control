@@ -26,7 +26,7 @@ it twice reuses the existing process.
 | Compositor CPU | OpenVR compositor render CPU milliseconds, not game CPU time. |
 | System CPU | `/proc/stat` busy-time delta across the sample, with guest time counted once and iowait treated as idle. |
 | GPU clock | `3d00000.gpu/cur_freq`, converted from Hz to MHz; frequency is not load. |
-| Hottest sensor / battery | Existing thermal-zone and battery sysfs reads from `frame_status.py`. |
+| Hottest sensor / battery | Existing thermal-zone and battery sysfs reads from `frame_status.py`. In the headset HUD only: the app shows them once, in the battery menu at the top. |
 
 OpenVR uses background application mode, which does not start SteamVR or keep
 it running. This mode also returned live timing in a read-only device probe.

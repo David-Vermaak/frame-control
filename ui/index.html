@@ -27,8 +27,10 @@
   }
   * { box-sizing: border-box; }
   [hidden] { display: none !important; }  /* class display rules would otherwise win */
-  html { scroll-behavior: smooth; scroll-padding-top: calc(76px + env(safe-area-inset-top)); }
-  body { margin: 0; color: var(--text); min-height: 100vh; padding-bottom: calc(46px + env(safe-area-inset-bottom));
+  /* On a computer the header and the Activity bar are the window's chrome: the page scrolls in #scroll
+     between them, so neither covers anything. Phones scroll the window (see the phone rules below). */
+  body { margin: 0; color: var(--text); height: 100vh; display: flex; flex-direction: column; overflow: hidden;
+         padding-bottom: calc(42px + env(safe-area-inset-bottom));
          font: 14px/1.45 "Motiva Sans", -apple-system, "Segoe UI", Arial, sans-serif;
          background: radial-gradient(1400px 700px at 15% -15%, #2a475e 0%, transparent 60%),
                      linear-gradient(180deg, var(--bg) 0%, #16202d 40%, var(--bg-deep) 100%) fixed; }
@@ -38,13 +40,14 @@
   ::-webkit-scrollbar-track { background: transparent; }
 
   /* ---- top bar (Steam's STORE / LIBRARY / COMMUNITY strip) ---- */
-  header { position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 30px;
+  #scroll { flex: 1; min-height: 0; overflow: auto; scroll-behavior: smooth; scroll-padding-top: 12px; }
+  header { position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 30px; flex: none; min-width: 0;
            height: calc(64px + env(safe-area-inset-top)); padding: env(safe-area-inset-top) calc(28px + env(safe-area-inset-right)) 0 calc(28px + env(safe-area-inset-left)); background: rgba(23, 29, 37, .94); backdrop-filter: blur(12px);
            box-shadow: 0 1px 0 rgba(255,255,255,.04), 0 6px 18px rgba(0,0,0,.35); }
-  .brand { display: flex; align-items: center; gap: 11px; color: var(--bright); text-decoration: none; }
+  .brand { display: flex; align-items: center; gap: 11px; color: var(--bright); text-decoration: none; flex: none; }
   .brand svg { width: 30px; height: 30px; }
   .brand b { font-weight: 700; font-size: 15px; letter-spacing: 2.5px; }
-  nav { display: flex; gap: 4px; height: 100%; }
+  nav { display: flex; gap: 4px; height: 100%; flex: none; }
   nav a { display: flex; align-items: center; padding: 0 13px; height: 100%; color: var(--text); text-decoration: none;
           font-weight: 500; font-size: 15px; letter-spacing: 1.2px; text-transform: uppercase;
           border-bottom: 3px solid transparent; transition: color .15s; }
@@ -58,10 +61,17 @@
   .dot.off { background: var(--bad); }
 
   main { max-width: 1480px; margin: 0 auto; padding: 22px calc(28px + env(safe-area-inset-right)) 30px calc(28px + env(safe-area-inset-left)); display: flex; flex-direction: column; gap: 26px; }
-  .grid-top { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(330px, 1fr); gap: 22px; }
+  .grid-top { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(330px, 1fr); gap: 22px; align-items: start; }
   .grid-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 22px; }
-  @media (max-width: 1150px) { .grid-top, .grid-3 { grid-template-columns: 1fr; } header { gap: 16px; padding: env(safe-area-inset-top) calc(18px + env(safe-area-inset-right)) 0 calc(18px + env(safe-area-inset-left)); } nav a { padding: 0 10px; } }
-  @media (max-width: 820px) { .brand b { display: none; } }
+  /* The header gives way as the window narrows: the wordmark goes, then the tabs tighten, then the
+     connection pill drops its second line. It fits down to the app's 760 px minimum, with room for
+     the macOS window buttons the app adds on the left. */
+  header > button:not(.pill), header > .chip { flex: none; }
+  header > button:not(.pill):not(.chip) { width: 36px; padding: 0; justify-content: center; }
+  @media (max-width: 1250px) { .brand b { display: none; } }
+  @media (max-width: 1150px) { .grid-top, .grid-3 { grid-template-columns: 1fr; } header { gap: 14px; padding: env(safe-area-inset-top) calc(18px + env(safe-area-inset-right)) 0 calc(18px + env(safe-area-inset-left)); } nav a { padding: 0 10px; } }
+  @media (max-width: 960px) { header { gap: 10px; } nav { gap: 0; } nav a { padding: 0 8px; font-size: 13px; letter-spacing: .4px; }
+    .brand, #refreshAll { display: none; } .pill .pt span { display: none; } }
   nav svg { display: none; }
   html { -webkit-text-size-adjust: 100%; }
   body { -webkit-tap-highlight-color: transparent; }
@@ -87,7 +97,7 @@
   .wait::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--dim); flex: none; }
 
   /* ---- connection pill, its details dialog, and the Devices tab (frame_link.py) ---- */
-  .pill { height: 40px; padding: 0 12px; gap: 9px; max-width: 420px; min-width: 190px; flex: 0 1 auto; background: var(--btn); }
+  .pill { height: 40px; padding: 0 12px; gap: 9px; max-width: 320px; min-width: 0; flex: 0 1 auto; background: var(--btn); }
   .pill .dot { flex: none; }
   .pill .dot.wait { background: var(--warn); box-shadow: 0 0 6px rgba(217,162,58,.7); animation: pulse 1s ease-in-out infinite; }
   @keyframes pulse { 50% { opacity: .35; } }
@@ -149,8 +159,9 @@
   /* ---- panels and section headers ---- */
   .panel { background: linear-gradient(180deg, rgba(42,47,56,.72) 0%, rgba(30,35,41,.9) 100%);
            border-radius: 4px; padding: 18px; box-shadow: 0 8px 24px rgba(0,0,0,.25); min-width: 0; }
-  .shelf-head { display: flex; align-items: baseline; gap: 12px; margin: 0 0 14px; }
-  .shelf-head h2 { margin: 0; font-size: 13px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: var(--text); }
+  /* Buttons in a heading row wrap onto a line of their own rather than squeeze the heading. */
+  .shelf-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px 12px; margin: 0 0 14px; }
+  .shelf-head h2 { margin: 0; font-size: 13px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: var(--text); white-space: nowrap; }
   .shelf-head .count { color: var(--muted); font-size: 13px; }
   .shelf-head .spacer { flex: 1; }
   .sub { color: var(--muted); font-size: 12.5px; }
@@ -179,6 +190,11 @@
                                border-radius: 3px; padding: 9px 11px; font: inherit; }
   textarea { resize: vertical; min-height: 76px; }
   input:focus, textarea:focus { outline: none; border-color: var(--blue); background: rgba(0,0,0,.4); }
+  /* Every drop-down dark, like the fields; the panels' own rules below still size them. */
+  select { background: rgba(0,0,0,.28); color: var(--text); border: 1px solid transparent; border-radius: 3px;
+           padding: 7px 8px; font: inherit; font-size: 13px; max-width: 100%; min-width: 0; }
+  select:focus { outline: none; border-color: var(--blue); }
+  option { background: #1e2329; color: var(--text); }
   .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 
   /* ---- headset view ---- */
@@ -223,14 +239,18 @@
   @keyframes spin { to { transform: rotate(360deg); } }
   .toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
 
-  /* ---- device ---- */
-  .battery { display: flex; gap: 16px; align-items: center; padding: 16px; border-radius: 3px; background: rgba(0,0,0,.22); }
-  .battery svg { width: 74px; height: 38px; flex: none; }
-  .battery .pct { font-size: 34px; font-weight: 300; color: var(--bright); line-height: 1; font-variant-numeric: tabular-nums; }
-  .battery .state { font-weight: 700; font-size: 13px; letter-spacing: 1.2px; text-transform: uppercase; margin-top: 6px; }
-  .battery .state.charging { color: var(--green-hi); } .battery .state.full { color: var(--green); }
-  .battery .state.low { color: var(--bad); } .battery .state.draining { color: var(--muted); }
-  .battery .detail { color: var(--muted); font-size: 12.5px; margin-top: 2px; }
+  /* ---- the headset's details: a menu under the battery chip ---- */
+  .pop { position: fixed; inset: auto; margin: 0; width: min(390px, calc(100vw - 24px)); max-height: calc(100vh - 90px); overflow: auto;
+         padding: 16px; border: 1px solid rgba(255,255,255,.1); border-radius: 6px; background: #1e2329; color: var(--text);
+         box-shadow: 0 20px 60px rgba(0,0,0,.6); -webkit-app-region: no-drag; }
+  .pop .shelf-head { margin-bottom: 10px; }
+  .pop .stats { margin-top: 12px; }
+  .pop .chips { margin-top: 12px; }
+  .batt .state { font-weight: 700; font-size: 12.5px; letter-spacing: 1.2px; text-transform: uppercase; }
+  .batt .state.charging { color: var(--green-hi); } .batt .state.full { color: var(--green); }
+  .batt .state.low { color: var(--bad); } .batt .state.draining { color: var(--text); }
+  .batt .detail { color: var(--muted); font-size: 12.5px; margin-top: 2px; }
+  button.chip { height: 32px; padding: 0 12px; font-size: 13px; }
   .stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1px; margin-top: 14px; border-radius: 3px; overflow: hidden; }
   .stat { background: rgba(0,0,0,.18); padding: 10px 12px; min-width: 0; }
   .stat .k { color: var(--muted); font-size: 11px; letter-spacing: 1px; text-transform: uppercase; }
@@ -433,11 +453,14 @@
   /* ---- phones, upright or on their side: tabs move to a bottom bar, as in iOS apps. Every edge keeps clear of
      the safe area (notch or Dynamic Island, rounded corners, home indicator); env() is zero on desktops. ---- */
   @media (max-width: 640px), (max-height: 500px) and (hover: none) {
-    html { scroll-padding-top: calc(64px + env(safe-area-inset-top)); }
+    html { scroll-behavior: smooth; scroll-padding-top: calc(64px + env(safe-area-inset-top)); }
+    body { height: auto; display: block; overflow: visible; }
+    #scroll { overflow: visible; }
     /* No blur here: it would make the header the containing block of the fixed tab bar. */
     header { height: calc(52px + env(safe-area-inset-top)); padding: env(safe-area-inset-top) calc(14px + env(safe-area-inset-right)) 0 calc(14px + env(safe-area-inset-left)); gap: 10px;
              backdrop-filter: none; background: rgb(23, 29, 37); }
     .brand svg { width: 26px; height: 26px; }
+    .brand { display: flex; } #refreshAll { display: inline-flex; } .pill .pt span { display: block; }  /* the tabs are at the bottom here */
     header .chip { height: 30px; padding: 0 10px; }
     nav { position: fixed; left: 0; right: 0; bottom: 0; z-index: 25; gap: 0;
           height: calc(58px + env(safe-area-inset-bottom)); padding: 0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
@@ -648,7 +671,7 @@
   <div class="spacer"></div>
   <button class="pill" id="conn" role="status" aria-live="polite" title="Connection details"><span class="dot wait"></span><span class="pt"><b>Connecting…</b><span></span></span></button>
   <select class="devsel desk-only" id="devSel" aria-label="Headset" title="Switch headset" hidden></select>
-  <span class="chip" id="battChip" title="Battery">—</span>
+  <button class="chip" id="battChip" title="Battery and headset details" popovertarget="devPop" aria-haspopup="dialog" hidden>—</button>
   <button id="reportBtn" data-report title="Report a problem, with diagnostics" aria-label="Report a problem">
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M12 3l10 18H2z"/><path d="M12 10v5M12 18v.5"/></svg>
   </button>
@@ -656,7 +679,21 @@
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
   </button>
 </header>
+<div class="pop" id="devPop" popover role="dialog" aria-labelledby="devPopTitle">
+  <div class="shelf-head"><h2 id="devPopTitle">Headset</h2><span class="count" id="devName"></span><span class="spacer"></span><span class="sub" id="updated"></span></div>
+  <div class="batt"><div class="state draining" id="battState">&nbsp;</div><div class="detail" id="battDetail">&nbsp;</div></div>
+  <div class="stats">
+    <div class="stat"><div class="k">Storage free</div><div class="v" id="sDisk">—</div><div class="meter"><i id="mDisk"></i></div></div>
+    <div class="stat"><div class="k">Memory used</div><div class="v" id="sMem">—</div><div class="meter"><i id="mMem"></i></div></div>
+    <div class="stat"><div class="k">Temperature</div><div class="v" id="sTemp">—</div><div class="d" id="dTemp">&nbsp;</div></div>
+    <div class="stat"><div class="k">Wi-Fi</div><div class="v" id="sWifi">—</div><div class="d" id="dWifi">&nbsp;</div></div>
+    <div class="stat"><div class="k">Uptime</div><div class="v" id="sUp">—</div><div class="d" id="dUp">&nbsp;</div></div>
+    <div class="stat"><div class="k">SteamOS</div><div class="v" id="sOs">—</div><div class="d" id="dOs">&nbsp;</div></div>
+  </div>
+  <div class="chips" id="services" aria-label="Running on the headset"></div>
+</div>
 
+<div id="scroll">
 <main>
   <div class="notice" id="updateBar" hidden>
     <div class="grow" id="updateText"></div>
@@ -747,29 +784,7 @@
     </section>
 
     <section class="panel" id="device">
-      <div class="shelf-head"><h2>Device</h2><span class="count" id="devName"></span><span class="spacer"></span><span class="sub" id="updated"></span></div>
-      <div class="battery">
-        <svg viewBox="0 0 74 38" aria-hidden="true">
-          <rect x="1.5" y="1.5" width="64" height="35" rx="5" fill="none" stroke="#8f98a0" stroke-width="3"/>
-          <rect x="67" y="12" width="5.5" height="14" rx="2" fill="#8f98a0"/>
-          <rect id="battFill" x="6" y="6" width="0" height="26" rx="2.5" fill="#59bf40"/>
-          <path id="battBolt" d="M37 5 L27 21 H34 L31 33 L42 16 H35 Z" fill="#fff" stroke="#1e2329" stroke-width="1.6" stroke-linejoin="round" visibility="hidden"/>
-        </svg>
-        <div style="min-width:0">
-          <div class="pct" id="battPct">—</div>
-          <div class="state draining" id="battState">&nbsp;</div>
-          <div class="detail" id="battDetail">&nbsp;</div>
-        </div>
-      </div>
-      <div class="stats">
-        <div class="stat"><div class="k">Storage free</div><div class="v" id="sDisk">—</div><div class="meter"><i id="mDisk"></i></div></div>
-        <div class="stat"><div class="k">Memory used</div><div class="v" id="sMem">—</div><div class="meter"><i id="mMem"></i></div></div>
-        <div class="stat"><div class="k">Temperature</div><div class="v" id="sTemp">—</div><div class="d" id="dTemp">&nbsp;</div></div>
-        <div class="stat"><div class="k">Wi-Fi</div><div class="v" id="sWifi">—</div><div class="d" id="dWifi">&nbsp;</div></div>
-        <div class="stat"><div class="k">Uptime</div><div class="v" id="sUp">—</div><div class="d" id="dUp">&nbsp;</div></div>
-        <div class="stat"><div class="k">SteamOS</div><div class="v" id="sOs">—</div><div class="d" id="dOs">&nbsp;</div></div>
-      </div>
-      <div class="chips" id="services"></div>
+      <div class="shelf-head"><h2>Volume</h2></div>
       <div class="vol">
         <button class="small" id="muteBtn" aria-label="Mute">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z"/><path id="volWaves" d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="2"/></svg>
@@ -783,7 +798,7 @@
   <section class="panel" id="vrTools">
     <div class="shelf-head"><h2>VR comfort and performance</h2><span class="spacer"></span><span class="sub" id="vrUpdated">Waiting for the Frame</span></div>
     <div class="stats" id="vrMetrics"></div>
-    <div class="hint">Compositor FPS measures SteamVR output, not game FPS. Application FPS is unavailable when no app supplies timing. GPU time is render time, not GPU utilisation. Temperature is the hottest readable sensor.</div>
+    <div class="hint">Compositor FPS measures SteamVR output, not game FPS. Application FPS is unavailable when no app supplies timing. GPU time is render time, not GPU utilisation. Battery and temperature are in the battery menu at the top.</div>
     <div class="chips">
       <button class="small" id="hudStart">Open HUD in headset</button>
       <button class="small" id="hudStop">Close HUD</button>
@@ -1154,6 +1169,7 @@
   </div>
   </div>
 </main>
+</div>
 <div class="dropzone" id="dropzone" hidden><div><b>Drop to send to the Frame</b>
   <span class="sub">Files go to <code>~/Downloads</code>; <code>.apk</code> files install as Android apps;
   a game's <code>.zip</code>, folder or <code>.exe</code> becomes a Steam library title.</span></div></div>
@@ -1344,6 +1360,9 @@ function esc(s) { return String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;",
 function gb(n) { return n >= 1e12 ? (n/1e12).toFixed(2) + " TB" : n >= 1e9 ? (n/1e9).toFixed(1) + " GB" : (n/1e6).toFixed(0) + " MB"; }
 function dur(s) { const d = Math.floor(s/86400), h = Math.floor(s%86400/3600), m = Math.floor(s%3600/60);
                   return d ? `${d}d ${h}h` : h ? `${h}h ${m}m` : `${m}m`; }
+// What scrolls: #scroll on a computer, where the header and Activity bar stay put; the window on phones.
+function scroller() { return getComputedStyle($("scroll")).overflowY === "visible" ? document.scrollingElement : $("scroll"); }
+function scrollToY(y) { scroller().scrollTo({ top: y, behavior: "instant" }); }
 function meter(el, pct, warnAt, badAt) {
   el.style.width = Math.max(0, Math.min(100, pct)) + "%";
   el.className = pct >= badAt ? "bad" : pct >= warnAt ? "warn" : "";
@@ -1464,7 +1483,7 @@ function setOnline(ok, why) {
   if (!ok) {
     $("offMsg").textContent = why || "Can't reach the Frame";
     setConn(false, "Offline");
-    $("battChip").hidden = true;
+    $("battChip").hidden = true; closeDevPop();
     if (was !== false) { log(why || "Can't reach the Frame", "e"); schedule(); }
     if (window.connBanner) window.connBanner();
   } else if (was === false) {
@@ -1512,7 +1531,7 @@ function renderPerformance(s) {
   const values = [["Compositor FPS", p.compositorFps, ""], ["Compositor period", p.frameMs, " ms"],
     ["Application FPS", p.appFps, ""], ["Render GPU time", p.gpuMs, " ms"],
     ["Compositor CPU", p.compositorCpuMs, " ms"], ["System CPU", p.cpuPercent, "%"],
-    ["GPU clock", p.gpuMHz, " MHz"], ["Hottest sensor", s?.temp, "°C"], ["Battery", s?.battery?.percent, "%"]];
+    ["GPU clock", p.gpuMHz, " MHz"]];
   $("vrMetrics").innerHTML = values.map(([label, v, unit]) => `<div class="stat"><div class="k">${label}</div><div class="v">${Number.isFinite(v) ? v.toFixed(1) + unit : "Unavailable"}</div></div>`).join("");
   $("vrUpdated").textContent = s ? `Sampled ${new Date(s.time * 1000).toLocaleTimeString()} · refreshes with status` : "No live sample";
 }
@@ -1644,10 +1663,6 @@ function battery(b, power) {
   const draining = !full && !charging && !idle && (!power || b?.status === "Discharging" || b?.watts < 0);
   const low = !charging && !full && pct != null && pct <= 15;
   const color = full || charging ? "#59bf40" : low ? "#d94126" : pct != null && pct <= 30 ? "#d9a23a" : "#dcdedf";
-  $("battFill").setAttribute("width", pct == null ? 0 : (55 * Math.min(100, Math.max(0, pct)) / 100).toFixed(1));
-  $("battFill").setAttribute("fill", color);
-  $("battBolt").setAttribute("visibility", charging ? "visible" : "hidden");
-  $("battPct").textContent = pct == null ? "—" : `${pct}%`;
 
   let label, cls, detail = [];
   if (!b) { label = "Battery unknown"; cls = "draining"; }
@@ -1672,13 +1687,25 @@ function battery(b, power) {
   const chipPct = pct == null ? 0 : Math.min(100, Math.max(0, pct));
   $("battChip").innerHTML = pct == null ? "—" :
     `<svg width="22" height="12" viewBox="0 0 22 12" aria-hidden="true"><rect x=".75" y=".75" width="18" height="10.5" rx="2" fill="none" stroke="#8f98a0" stroke-width="1.5"/><rect x="19.8" y="3.5" width="1.8" height="5" rx=".6" fill="#8f98a0"/><rect x="2.5" y="2.5" width="${(14.5 * chipPct / 100).toFixed(1)}" height="7" rx="1" fill="${color}"/></svg>${bolt}<span>${pct}%</span>`;
-  $("battChip").title = label;
+  $("battChip").title = `${label}. Click for the headset's details.`;
+  $("battChip").setAttribute("aria-label", `Battery ${pct}%, ${label}. Headset details`);
   $("battChip").hidden = pct == null;
+  if (pct == null) closeDevPop();
 }
+// hidePopover throws where the menu isn't open (and doesn't exist in older browsers).
+function closeDevPop() { try { $("devPop").hidePopover(); } catch {} }
+// The battery chip's menu opens under the chip, right-aligned with it.
+$("devPop").addEventListener("beforetoggle", e => {
+  if (e.newState !== "open") return;
+  const r = $("battChip").getBoundingClientRect();
+  $("devPop").style.top = `${Math.round(r.bottom + 8)}px`;
+  $("devPop").style.right = `${Math.max(12, Math.round(innerWidth - r.right))}px`;
+});
 
 function render(s) {
   renderPerformance(s);
   battery(s.battery, s.power);
+  $("devPopTitle").textContent = window.connName || "Headset";
   $("devName").textContent = `${s.hostname} · ${s.ip ?? "no IP"}`;
   $("updated").textContent = new Date(s.time * 1000).toLocaleTimeString();
   const h = s.disk.home;
@@ -2695,7 +2722,7 @@ function showApkAlternatives(reason, result, dev = window.connDevice) {
     }, dev));
     if (res) $("apkAltDlg").close(); else { b.disabled = false; b.textContent = "Install"; }
     await loadAndroid();
-    if (cat.apps) { const y = window.scrollY; filterCatalog(); window.scrollTo(0, y); }
+    if (cat.apps) { const y = scroller().scrollTop; filterCatalog(); scrollToY(y); }
     if (res && res.app) await offerTest(res.app);
   };
   if (!$("apkAltDlg").open) $("apkAltDlg").showModal();
@@ -2929,7 +2956,7 @@ function renderChips() {
 }
 
 function filterGames(keepScroll) {
-  const y = window.scrollY;
+  const y = scroller().scrollTop;
   if (gm.src === "owned") {
     if (!gm.owned) return;
     const terms = gm.q.toLowerCase().split(/\s+/).filter(Boolean);
@@ -2945,7 +2972,7 @@ function filterGames(keepScroll) {
   $("gmGrid").innerHTML = ""; gm.shown = 0; moreGames(n);
   if (!gm.results.length) $("gmGrid").innerHTML = `<div class="sub">${gm.src === "store" && !gm.storeQ
     ? "Type a name and press Enter to search the Steam store." : "Nothing matches. Try turning on more ratings above."}</div>`;
-  if (keepScroll) window.scrollTo(0, y);
+  if (keepScroll) scrollToY(y);
 }
 
 function price(p) {
@@ -3300,7 +3327,7 @@ document.body.addEventListener("click", async e => {
     if (action === "probe") { loadCatalog(); loadReports(); }
   }
   loadAndroid();
-  if (cat.apps) { const y = window.scrollY; filterCatalog(); window.scrollTo(0, y); }
+  if (cat.apps) { const y = scroller().scrollTop; filterCatalog(); scrollToY(y); }
 });
 loadCatalog();
 
@@ -3695,7 +3722,7 @@ function showPage() {
   document.querySelectorAll("nav a").forEach(a => a.classList.toggle("on", a.getAttribute("href") === "#" + page));
   document.title = page === "home" ? "Frame Control" : `${page[0].toUpperCase() + page.slice(1)} · Frame Control`;
   const section = !PAGES.includes(id) && id && $(id);
-  if (section) section.scrollIntoView(); else window.scrollTo(0, 0);
+  if (section) section.scrollIntoView(); else scrollToY(0);
   if (page === "tools") { loadMacView(); loadPanels(); }
 }
 window.addEventListener("hashchange", showPage);
@@ -4286,6 +4313,7 @@ function onConnection(s) {
   renderPill(); renderConnDlg();
   const devId = s.device && s.device.id;
   window.connDevice = devId || null;
+  window.connName = s.device ? s.device.name : null;
   if (link.device !== null && devId !== link.device) {
     log(`Now using ${s.device.name}`, "ok");
     state = null;
@@ -4315,7 +4343,7 @@ function onConnection(s) {
     if ($("wiDlg").open && !wi.job && !wi.starting) $("wiDlg").close();
     $("dispSel").innerHTML = "<option>Loading…</option>"; $("dispSel").disabled = true; $("dispCtl").hidden = true;
     link.reload = true;     // everything on the page was the other headset's
-    $("battChip").hidden = true;
+    $("battChip").hidden = true; closeDevPop();
   }
   if (s.phase !== link.phase || devId !== link.device) {
     if (s.phase === "connected") {
