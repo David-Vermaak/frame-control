@@ -164,7 +164,6 @@ Astra (xhigh), 2026-09-28.
 - **Off the LAN:** a sleeping Frame's Tailscale can't receive anything, so
   something awake on the LAN has to send the packet (for example the
   EdgeRouter's `etherwake`, already used for lxso2, or the Mac).
-
 - **Staying on instead of sleeping:** what draws power and heat while idle, the
   controls, and the step-by-step plan are in
   [power-and-heat.md](power-and-heat.md).
