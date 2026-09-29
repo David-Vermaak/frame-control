@@ -10,9 +10,11 @@ Env:   FRAME_ALIAS (default frame)
        FRAME_LOCAL=1   run on the Frame itself (the iPhone app starts it there over SSH)
        FRAME_UI_KEY    required X-Frame-UI value (the iPhone app passes a fresh one)
        FRAME_DEVICE    what to call the device the page runs on (e.g. iPhone)
+       FRAME_CLIENT    a stable id for that device (keyboard-and-trackpad pairing is kept per id)
 """
 import argparse
 import base64
+import hashlib
 import http.client
 import json
 import os
@@ -62,6 +64,8 @@ if LOCAL:
     os.environ["PATH"] = f"{HERE / 'local-bin'}{os.pathsep}{os.environ.get('PATH', '')}"
 UI_KEY = os.environ.get("FRAME_UI_KEY") or "1"
 DEVICE = os.environ.get("FRAME_DEVICE") or "phone"
+# What the Frame's KDE Connect calls this device (keyboard and trackpad).
+INPUT_NAME = DEVICE if LOCAL else socket.gethostname().split(".")[0]
 FRAME = os.environ.get("FRAME_ALIAS", "frame")
 if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", FRAME):
     sys.exit(f"FRAME_ALIAS must be a plain host alias, not {FRAME!r}")
@@ -520,6 +524,322 @@ def clipboard(body):
         if not isinstance(text, str) or not text:
             raise Failure("nothing to send", 400)
     return {"message": ssh(PASTE_CMD, stdin=text, timeout=30).strip()}
+
+
+# ---- keyboard and pointer (KDE Connect on the Frame, see frame_input_agent.py) ----
+
+INPUT_FLAGS = ("singleclick", "doubleclick", "middleclick", "rightclick", "singlehold", "singlerelease",
+               "scroll", "ctrl", "alt", "shift", "super")
+INPUT_MOVE_LIMIT = 2000  # pixels per event
+INPUT_TEXT_LIMIT = 500  # characters per event
+INPUT_BATCH_LIMIT = 200  # events per request
+
+
+def input_event(event):
+    """A KDE Connect remote-input body with only the fields it knows, in range."""
+    if not isinstance(event, dict):
+        raise Failure("each input event must be an object", 400)
+    out = {}
+    for name in ("dx", "dy"):
+        value = event.get(name)
+        if value is None:
+            continue
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or value != value:
+            raise Failure(f"{name} must be a number", 400)
+        out[name] = max(-INPUT_MOVE_LIMIT, min(INPUT_MOVE_LIMIT, round(float(value), 2)))
+    for name in INPUT_FLAGS:
+        if event.get(name) is True:
+            out[name] = True
+    key = event.get("key")
+    if key is not None:
+        if not isinstance(key, str) or not 0 < len(key) <= INPUT_TEXT_LIMIT:
+            raise Failure(f"key must be text of 1 to {INPUT_TEXT_LIMIT} characters", 400)
+        out["key"] = key
+    special = event.get("specialKey")
+    if special is not None:
+        # KDE Connect's numbering: 1 Backspace … 14 Escape, 21-32 F1-F12.
+        if isinstance(special, bool) or not isinstance(special, int) or not 1 <= special <= 32:
+            raise Failure("specialKey must be a whole number from 1 to 32", 400)
+        out["specialKey"] = special
+    if not set(out) - {"ctrl", "alt", "shift", "super"}:
+        raise Failure("input event has nothing to do", 400)
+    return out
+
+
+def input_client():
+    """A stable id for this device, so KDE Connect on the Frame keeps its pairing apart.
+
+    The iPhone app passes one (FRAME_CLIENT). A computer makes one the first time
+    and keeps it: host names alone can clash (desk.home and desk.office).
+    """
+    if os.environ.get("FRAME_CLIENT"):
+        return os.environ["FRAME_CLIENT"]
+    if LOCAL:
+        return DEVICE
+    path = frame_host.data_dir("input-client-id")
+    try:
+        saved = path.read_text().strip()
+        if re.fullmatch(r"[A-Za-z0-9_-]{4,64}", saved):
+            return saved
+    except OSError:
+        pass
+    made = (re.sub(r"[^A-Za-z0-9-]", "", INPUT_NAME)[:24] or "computer") + "-" + secrets.token_hex(4)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(made)
+    except OSError:
+        pass  # still works this time; it pairs again next time
+    return made
+
+
+# KDE Connect for the Frame, as Frame Control ships it (frame/kdeconnect/NOTICE.md).
+KDECONNECT = HERE.parent / "frame" / "kdeconnect"
+KDECONNECT_HOME = ".local/share/frame-control/kdeconnect"
+
+
+def kdeconnect_packages():
+    """[(file, sha256), ...] from frame/kdeconnect/packages.json; [] if it's missing."""
+    try:
+        manifest = json.loads((KDECONNECT / "packages.json").read_text())
+        return [(p["file"], p["sha256"]) for p in manifest["packages"]]
+    except (OSError, ValueError, KeyError, TypeError):
+        return []
+
+
+def kdeconnect_stamp(packages):
+    """What the agent writes once these are unpacked (frame_input_agent.stamp)."""
+    return "".join(f"{sha}  {name}\n" for name, sha in packages)
+
+
+def file_sha256(path):
+    digest = hashlib.sha256()
+    with open(path, "rb") as f:
+        for block in iter(lambda: f.read(1 << 20), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+class InputAgent:
+    """frame_input_agent.py running on the Frame, fed events over one long-lived ssh.
+
+    Before starting it, copies KDE Connect to the Frame if it isn't there yet. The
+    agent unpacks it, pairs, and reports its state ({"state": "off" | "installing" |
+    "starting" | "pairing" | "ready" | "error"}).
+    """
+
+    def __init__(self, source=HERE / "frame_input_agent.py", packages=None):
+        self.source, self.proc, self.lock = source, None, threading.Lock()
+        self.packages = kdeconnect_packages() if packages is None else packages
+        # generation counts stop()s; launching is the generation a launch is under way for.
+        self.status, self.launching, self.generation = {"state": "off"}, None, 0
+
+    def command(self, folder=""):
+        code = base64.b64encode(self.source.read_bytes()).decode()
+        client = input_client()
+        return ("python3 -u -c " + shlex.quote(
+            f"import base64;exec(compile(base64.b64decode('{code}'),'frame_input_agent','exec'))")
+            + f" {shlex.quote(client)} {shlex.quote(INPUT_NAME)} {shlex.quote(folder)}"
+            + f" {shlex.quote(json.dumps(self.packages, separators=(',', ':')))}")
+
+    def deliver(self, report, force=False):
+        """Where the agent finds the packages on the Frame, copying them there first if needed.
+
+        On the Frame itself (the iPhone app) they came with the bundle. Otherwise they
+        go over the SSH connection, unless the Frame already has them unpacked (`force`:
+        the agent found it didn't after all).
+        """
+        if LOCAL:
+            return str(KDECONNECT / "packages")
+        if not self.packages:
+            return ""  # nothing to copy (the agent says so if it needed them)
+        if not force:
+            # Bytes, so Windows doesn't turn the stamp's line ends into CRLF.
+            have = ssh(f"{{ test -x /usr/lib/kdeconnectd || cmp -s - {KDECONNECT_HOME}/root/.frame-control-packages; }}"
+                       " && echo yes || true", stdin=kdeconnect_stamp(self.packages).encode(), text=False, timeout=20)
+            if have.strip() == b"yes":
+                return ""
+        # A folder of its own: a cancelled start's agent may still be cleaning up another.
+        folder = f"{KDECONNECT_HOME}/incoming/{secrets.token_hex(8)}"
+        ssh(f"mkdir -p {folder}", timeout=20)
+        try:
+            for name, sha in self.packages:
+                path = KDECONNECT / "packages" / name
+                if not path.is_file() or file_sha256(path) != sha:
+                    raise Failure(f"{name} is missing or damaged in this copy of Frame Control"
+                                  " (a build runs app/build/fetch-deps.js to add it)", 500)
+                report(f"Copying KDE Connect to the Frame ({name.rsplit('-', 3)[0]})")
+                quoted = shlex.quote(name)
+                ssh(f"cd {folder} && cat > {quoted}.part && mv {quoted}.part {quoted}",
+                    stdin=path.read_bytes(), text=False, timeout=600)
+        except (Failure, OSError):
+            self.discard(folder)  # a partial copy is no use to anyone
+            raise
+        return f"~/{folder}"
+
+    def discard(self, folder):
+        """Remove a copy no agent will take over (best effort; agents tidy up old ones too)."""
+        folder = folder.removeprefix("~/")
+        if folder.startswith(f"{KDECONNECT_HOME}/incoming/") and not LOCAL:
+            try:
+                ssh(f"rm -rf {folder}", timeout=20)
+            except (Failure, OSError):
+                pass  # never let tidying up get in the way of reporting and retrying
+
+    def start(self):
+        with self.lock:
+            if self.launching == self.generation or (self.proc and self.proc.poll() is None):
+                return
+            # (A launch from before a stop() may still be finishing; it ends itself.)
+            self.launching, self.status = self.generation, {"state": "starting"}
+            generation = self.generation
+        threading.Thread(target=self._launch, args=(generation,), daemon=True).start()
+
+    def _launch(self, generation, force=False):
+        try:
+            self._launch_once(generation, force)
+        except Exception as e:  # whatever went wrong, never leave it stuck "starting"
+            with self.lock:
+                if self.launching == generation:
+                    self.launching = None
+                if self.generation == generation and self.status.get("state") in ("starting", "installing"):
+                    self.status = {"state": "error", "message": f"Couldn't start the keyboard and trackpad: {e}"}
+
+    def _launch_once(self, generation, force):
+        def report(message):
+            with self.lock:
+                if self.generation == generation:
+                    self.status = {"state": "installing", "message": message}
+        folder = ""
+        try:
+            errors = tempfile.TemporaryFile()
+            ensure_master()
+            folder = self.deliver(report, force)
+            with self.lock:
+                stopped = self.generation != generation
+            if stopped:  # turned off while copying
+                raise Failure("stopped")
+            proc = subprocess.Popen([*SSH, FRAME, self.command(folder)], stdin=subprocess.PIPE,
+                                    stdout=subprocess.PIPE, stderr=errors)
+        except (Failure, OSError) as e:
+            self.discard(folder)  # no agent will take the copy over
+            message = str(e)
+            friendly = unreachable(message)
+            with self.lock:
+                if self.launching == generation:
+                    self.launching = None
+                if self.generation == generation:
+                    self.status = {"state": "error", "message": friendly or message,
+                                   **({"offline": True} if friendly else {})}
+            return
+        _live_tunnels.add(proc)
+        with self.lock:
+            if self.launching == generation:
+                self.launching = None
+            stale = self.generation != generation
+            if not stale:
+                self.proc = proc
+        if stale:  # turned off meanwhile
+            proc.terminate()
+        wanted, heard = self._watch(proc, errors, retry=not force)
+        if not heard:
+            # The agent never started (or was stopped first), so it can't tidy the copy up.
+            self.discard(folder)
+        if wanted and not force:
+            # It needed the packages after all (another device changed what's
+            # installed after we looked): copy them and start once more.
+            with self.lock:
+                # Unless a start() already took over (it launches, and copies if still needed).
+                if self.proc is not proc or self.generation != generation or self.launching is not None:
+                    return
+                self.proc, self.launching, self.status = None, generation, {"state": "starting"}
+            self._launch(generation, force=True)
+
+    def _watch(self, proc, errors, retry=False):
+        """Follow the agent's status until it exits. Returns whether it asked for the
+        packages (`retry`: the caller will send them, so that isn't an error yet), and
+        whether it said anything at all (then it holds its copy and tidies it up)."""
+        wanted = heard = False
+        for line in proc.stdout:
+            try:
+                status = json.loads(line)
+            except ValueError:
+                continue
+            if isinstance(status, dict) and isinstance(status.get("state"), str):
+                heard = True
+                if status["state"] == "need-packages":
+                    wanted = True
+                    continue
+                with self.lock:
+                    if self.proc is proc:
+                        self.status = status
+        proc.wait()
+        _live_tunnels.discard(proc)
+        try:
+            errors.seek(0)
+            detail = strip_ansi(errors.read().decode(errors="replace")).strip()
+        except OSError:
+            detail = ""
+        with self.lock:
+            if self.proc is proc and self.status.get("state") != "error" and not (wanted and retry):
+                message = detail.splitlines()[-1] if detail else "The connection to the Frame ended"
+                if wanted:
+                    message = "KDE Connect didn't reach the Frame"
+                friendly = unreachable(message)
+                self.status = {"state": "error", "message": friendly or message, **({"offline": True} if friendly else {})}
+        return wanted, heard
+
+    def send(self, events):
+        """Forward events if the agent is ready; start it if it isn't running.
+
+        Returns the state, with "sent" saying whether the events went; if not,
+        the page keeps them and sends them again once the state is "ready".
+        """
+        with self.lock:
+            proc, ready = self.proc, self.status.get("state") == "ready"
+        sent = False
+        if not (proc and proc.poll() is None):
+            self.start()
+        elif ready and events:
+            try:
+                proc.stdin.write((json.dumps(events) + "\n").encode())
+                proc.stdin.flush()
+                sent = True
+            except (BrokenPipeError, OSError, ValueError):
+                pass  # _watch reports how it ended
+        with self.lock:
+            return {**self.status, "sent": sent}
+
+    def stop(self):
+        with self.lock:
+            proc, self.proc, self.status = self.proc, None, {"state": "off"}
+            self.generation += 1
+        if proc and proc.poll() is None:
+            proc.terminate()
+
+
+_input = InputAgent()
+
+
+def licenses():
+    """The notices and licence texts for what Frame Control ships (the About dialog)."""
+    found = [("Third-party notices", HERE.parent / "THIRD_PARTY_NOTICES.md"), ("KDE Connect for the Frame", KDECONNECT / "NOTICE.md"),
+             ("Frame Control (MIT)", HERE.parent / "LICENSE")]
+    found += [(f"{p.parent.name}: {p.stem}", p) for p in sorted((KDECONNECT / "LICENSES").glob("*/*.txt"))]
+    notices = []
+    for title, path in found:
+        try:
+            notices.append({"title": title, "text": path.read_text(errors="replace")})
+        except OSError:
+            pass
+    return notices
+
+
+def remote_input(body):
+    """{"events": [...]} sends keyboard and pointer events; {} (or none yet) just starts the agent."""
+    events = body.get("events", [])
+    if not isinstance(events, list) or len(events) > INPUT_BATCH_LIMIT:
+        raise Failure(f"events must be a list of at most {INPUT_BATCH_LIMIT}", 400)
+    return _input.send([input_event(e) for e in events])
 
 
 def flatpak(body):
@@ -1427,6 +1747,7 @@ def agent_approval(body):
 
 POST = {"/api/media": media, "/api/agent/call": agent_call, "/api/agent/approval": agent_approval,
         "/api/assistant/chat": assistant_chat, "/api/android/display": android_display, "/api/android": android, "/api/titles": titles, "/api/launch": launch, "/api/steam": steam, "/api/volume": set_volume, "/api/clipboard": clipboard,
+        "/api/input": remote_input,
         "/api/flatpak": flatpak, "/api/open": open_thing, "/api/shots/save": save_shots,
         "/api/webinstall/check": webinstall_check, "/api/webinstall/start": webinstall_start,
         "/api/webinstall/cancel": webinstall_cancel,
@@ -1558,6 +1879,10 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json({"titles": frame_titles.list_titles()})
             elif path == "/api/titles/job":
                 self.send_json(title_job(url.query))
+            elif path == "/api/licenses":
+                self.send_json({"notices": licenses()})
+            elif path == "/api/input":
+                self.send_json(_input.send([]) if parse_qs(url.query).get("start") == ["1"] else dict(_input.status))
             elif path == "/api/job":
                 self.send_json(job_status(url.query))
             elif path == "/api/android/displays":

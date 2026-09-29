@@ -1,0 +1,86 @@
+{
+  "about": "KDE Connect for the Steam Frame, as Valve builds it for the Frame's SteamOS (aarch64), and the libraries it needs that the Frame lacks. See NOTICE.md.",
+  "release": "https://github.com/saphid/frame-control/releases/download/kdeconnect-frame-24.02.2-1/",
+  "packages": [
+    {
+      "name": "kdeconnect",
+      "version": "24.02.2-1",
+      "file": "kdeconnect-24.02.2-1-aarch64.pkg.tar.zst",
+      "sha256": "4cd88498f3dcd9563009f84022aeb9b60344b8afbcd1d3c5aeddc4d09727ef9d",
+      "size": 1390996,
+      "licenses": [
+        "GPL-2.0-or-later"
+      ],
+      "source": "https://github.com/saphid/frame-control/releases/download/kdeconnect-frame-24.02.2-1/kdeconnect-24.02.2-1.src.tar.gz",
+      "source_sha256": "6e4b8e51f71a5492178231fa94d6cb858d7e752c51ea2b02208179f370e0733d",
+      "upstream": "https://download.kde.org/stable/release-service/24.02.2/src/kdeconnect-kde-24.02.2.tar.xz"
+    },
+    {
+      "name": "kcontacts",
+      "version": "6.1.0-1",
+      "file": "kcontacts-6.1.0-1-aarch64.pkg.tar.zst",
+      "sha256": "247c9dd8f8b781e69f818c96170756556a0b0bb75187ad88627217a5f924f90a",
+      "size": 838848,
+      "licenses": [
+        "LGPL-2.0-or-later"
+      ],
+      "source": "https://github.com/saphid/frame-control/releases/download/kdeconnect-frame-24.02.2-1/kcontacts-6.1.0-1.src.tar.gz",
+      "source_sha256": "b3a1058e0eb13f6221de23835a128b166885d3b5f2a2126deafd62e556853316",
+      "upstream": "https://download.kde.org/stable/frameworks/6.1/kcontacts-6.1.0.tar.xz"
+    },
+    {
+      "name": "kpeople",
+      "version": "6.1.0-1",
+      "file": "kpeople-6.1.0-1-aarch64.pkg.tar.zst",
+      "sha256": "68d1e680f1fa6b25bc1e8c9d9b2ab3bfe53a74c2b507da0f437a82c58a542942",
+      "size": 464354,
+      "licenses": [
+        "LGPL-2.1-or-later"
+      ],
+      "source": "https://github.com/saphid/frame-control/releases/download/kdeconnect-frame-24.02.2-1/kpeople-6.1.0-1.src.tar.gz",
+      "source_sha256": "3ad93d2709dbea0b3ca4fbcfbd6052f739aff3d6053de03347593d1261bd5268",
+      "upstream": "https://download.kde.org/stable/frameworks/6.1/kpeople-6.1.0.tar.xz"
+    },
+    {
+      "name": "modemmanager-qt",
+      "version": "6.1.0-1",
+      "file": "modemmanager-qt-6.1.0-1-aarch64.pkg.tar.zst",
+      "sha256": "8e918c0c2c84ed4bb2383f3de9288a2cf25cc52a26d749b63df962a3d2cc6d73",
+      "size": 627059,
+      "licenses": [
+        "LGPL-2.1-only",
+        "LGPL-3.0-only"
+      ],
+      "source": "https://github.com/saphid/frame-control/releases/download/kdeconnect-frame-24.02.2-1/modemmanager-qt-6.1.0-1.src.tar.gz",
+      "source_sha256": "4004dfe8d537399e6a7a0cea0b0ec8a4c995ab34cc75a15fb97a12c315555b09",
+      "upstream": "https://download.kde.org/stable/frameworks/6.1/modemmanager-qt-6.1.0.tar.xz"
+    },
+    {
+      "name": "pulseaudio-qt",
+      "version": "1.4.0-3",
+      "file": "pulseaudio-qt-1.4.0-3-aarch64.pkg.tar.zst",
+      "sha256": "b57b91b3cc2b6e80e69a80a7cd93ea0dc4f22b5d54a5ac25540c854e31de92ce",
+      "size": 303766,
+      "licenses": [
+        "LGPL-2.1-only",
+        "LGPL-3.0-only"
+      ],
+      "source": "https://github.com/saphid/frame-control/releases/download/kdeconnect-frame-24.02.2-1/pulseaudio-qt-1.4.0-3.src.tar.gz",
+      "source_sha256": "032490884260eeb5a66d98215926fa7ae7d678f6bf93cafe4be19c0cfa5459da",
+      "upstream": "https://download.kde.org/stable/pulseaudio-qt/pulseaudio-qt-1.4.0.tar.xz"
+    },
+    {
+      "name": "libfakekey",
+      "version": "0.3-2",
+      "file": "libfakekey-0.3-2-aarch64.pkg.tar.zst",
+      "sha256": "a7563b1dcc3702f9ab9c7c07587fdc312119461c545ae5aee693e6a829e8206a",
+      "size": 6804,
+      "licenses": [
+        "LGPL-2.0-or-later"
+      ],
+      "source": "https://github.com/saphid/frame-control/releases/download/kdeconnect-frame-24.02.2-1/libfakekey-0.3-2.src.tar.gz",
+      "source_sha256": "0e8e989660b80ec2fe2569bde5710102841bd76f981acdb1e4b72d4d8d2b4da3",
+      "upstream": "https://git.yoctoproject.org/libfakekey/tag/?h=0.3"
+    }
+  ]
+}

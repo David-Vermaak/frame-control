@@ -83,6 +83,16 @@
         ]
       },
       {
+        "from": "../frame/kdeconnect",
+        "to": "frame/kdeconnect",
+        "filter": [
+          "packages.json",
+          "NOTICE.md",
+          "LICENSES/**/*",
+          "packages/*.pkg.tar.zst"
+        ]
+      },
+      {
         "from": "../apk-catalog",
         "to": "apk-catalog",
         "filter": [
@@ -104,6 +114,14 @@
         "filter": [
           "**/*"
         ]
+      },
+      {
+        "from": "../THIRD_PARTY_NOTICES.md",
+        "to": "THIRD_PARTY_NOTICES.md"
+      },
+      {
+        "from": "../LICENSE",
+        "to": "LICENSE"
       }
     ],
     "mac": {

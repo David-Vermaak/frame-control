@@ -11,6 +11,8 @@ const { contextBridge, ipcRenderer, webUtils } = require("electron");
 contextBridge.exposeInMainWorld("frameApp", {
   readClipboard: () => ipcRenderer.invoke("clipboard:read"),
   setUpConnection: () => ipcRenderer.invoke("connection:setup"),
+  // While the keyboard-and-trackpad panel holds the keyboard, ⌘W, ⌘R and the rest go to the Frame.
+  captureKeys: (on) => ipcRenderer.send("keys:capture", !!on),
   pathForFile: (file) => { try { return webUtils.getPathForFile(file) || ""; } catch { return ""; } },
   // Updates (app/updater.js): the page shows a banner and an Update button.
   update: {

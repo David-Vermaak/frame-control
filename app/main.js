@@ -249,6 +249,7 @@ function fromUi(e) {
 
 ipcMain.handle("clipboard:read", (e) => fromUi(e) ? clipboard.readText() : "");
 ipcMain.handle("connection:setup", (e) => { if (fromUi(e)) setUpConnection(); });
+ipcMain.on("keys:capture", (e, on) => { if (fromUi(e)) win.webContents.setIgnoreMenuShortcuts(on === true); });
 ipcMain.handle("update:get", (e) => fromUi(e) ? publicUpdate() : null);
 ipcMain.handle("update:check", (e) => fromUi(e) ? checkForUpdate({ manual: true }).then(publicUpdate) : null);
 ipcMain.handle("update:install", (e) => { if (fromUi(e)) installUpdate(); });
