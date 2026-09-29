@@ -56,6 +56,9 @@ import frame_store  # noqa: E402
 import frame_telemetry  # noqa: E402
 import frame_titles  # noqa: E402
 import frame_webinstall  # noqa: E402
+import frame_vr  # noqa: E402
+import frame_utilities  # noqa: E402
+import frame_compat_db  # noqa: E402
 
 frame_host.trust_bundled_cas()
 
@@ -545,6 +548,27 @@ def steam(body):
         raise
     frame_telemetry.install_finished("steam", True, steam_appid=appid)
     return res
+
+
+def vr(body):
+    try:
+        action = frame_vr.validate(body)
+    except ValueError as e:
+        raise Failure(str(e), 400)
+    sources = {name: (HERE / (name + '.py')).read_text() for name in ('frame_status', 'frame_vr')}
+    script = "import sys, types, json, os\n"
+    for name, source in sources.items():
+        script += f"m = types.ModuleType({name!r}); sys.modules[{name!r}] = m\nexec({source!r}, m.__dict__)\n"
+    # Only the optional HUD needs files: its terminal child survives this SSH call.
+    if action == 'hud-start':
+        script += "m.ROOT.mkdir(parents=True, exist_ok=True, mode=0o700)\n"
+        for name, source in sources.items():
+            script += f"p = m.ROOT / {name + '.py'!r}; t = p.with_suffix('.' + str(os.getpid()) + '.tmp')\nt.write_text({source!r}); os.replace(t, p)\n"
+    script += f"try:\n print(json.dumps(m.dispatch({body!r})))\nexcept Exception as e:\n print(json.dumps({{'error': str(e)}}))\n"
+    result = json.loads(ssh('python3 -', stdin=script, timeout=20))
+    if result.get('error'):
+        raise Failure(result['error'])
+    return result
 
 
 def steam_search(query):
@@ -2050,6 +2074,7 @@ def source_manage(body):
 
 
 POST = {
+    "/api/vr": vr,
     "/api/comfort": comfort, "/api/media": media, "/api/agent/call": agent_call,
     "/api/agent/approval": agent_approval, "/api/assistant/chat": assistant_chat,
     "/api/input": remote_input, "/api/touch": remote_touch,
@@ -2228,6 +2253,8 @@ class Handler(BaseHTTPRequestHandler):
                                 "shared": frame_catalog.compat_db.shared()})
             elif path == "/api/android/catalog":
                 self.send_json({"apps": frame_catalog.catalog()})
+            elif path == "/api/vr/utilities":
+                self.send_json(frame_utilities.catalogue(steam_frame("utilities")["utilities"], frame_compat_db.load()))
             elif path == "/api/macview":
                 self.send_json(macview_state(parse_qs(url.query)))
             elif path == "/api/telemetry":
