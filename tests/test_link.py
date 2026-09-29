@@ -56,7 +56,8 @@ class Probe(unittest.TestCase):
             self.assertEqual(res["ip"], "127.0.0.1")
             self.assertIsInstance(res["rtt_ms"], float)
             self.assertEqual(seen, ["resolving", "trying"])
-        self.assertEqual(fl.probe("127.0.0.1", port, timeout=2)["state"], "refused")  # closed now
+        # Closed now. Windows retries a refused connect for about 2 s before saying so.
+        self.assertEqual(fl.probe("127.0.0.1", port, timeout=6 if os.name == "nt" else 2)["state"], "refused")
         self.assertEqual(fl.probe("frame-control-test.invalid", 22, timeout=2)["state"], "unresolved")
 
     def test_failed_probes_read_like_ssh(self):
