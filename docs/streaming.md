@@ -123,10 +123,13 @@ two fingers to scroll, two-finger tap to right-click) plus a text field that
 types on the Frame. On a computer, clicking the pad passes your mouse and
 keyboard through to the Frame until you press Esc (⌘ is sent as Ctrl on a Mac).
 
-It goes through **KDE Connect**, the first-party route (KDE makes the Frame's
-desktop): Frame Control's server runs [`ui/frame_input_agent.py`](../ui/frame_input_agent.py)
-on the Frame, which talks KDE Connect's own LAN protocol to the Frame's
-`kdeconnectd` as if it were a phone. KDE Connect does the typing and clicking.
+Since Control (below), the pad goes through **gamescope's own input socket**
+([`ui/frame_touch.py`](../ui/frame_touch.py)), so it reaches whichever panel has
+focus, Steam's own menus included, and needs nothing installed on the Frame.
+Only characters that aren't on a US keyboard (accents, emoji) go through
+**KDE Connect** as below; it starts the first time you type one. (Before
+Control, everything went through KDE Connect, which is why the notes below
+describe it in detail.)
 
 **Verified 2026-09-28** (SteamOS 0.4.1, build 20260925.6191901):
 

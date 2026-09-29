@@ -600,10 +600,9 @@
         <button data-pad-key="12" title="Enter">Enter</button>
       </span>
     </div>
-    <div class="hint">Types and points in apps on the Frame, such as Chromium or the desktop's Linux apps; Steam's own VR menus
-      don't take it. It works through KDE Connect, which comes with Frame Control: the first time, it copies Valve's build
-      for the Frame (3.6 MB, 18 MB unpacked) into your home folder there and pairs with it. No internet needed, and nothing
-      else to install. <a href="#" data-about>Licences</a></div>
+    <div class="hint">Types and points in whichever panel has focus in the headset, through Valve's own input path: nothing to
+      install and no internet needed. Accents and emoji go through KDE Connect, which comes with Frame Control and starts
+      the first time you type one (it copies Valve's build for the Frame, 3.6 MB, into your home folder there). <a href="#" data-about>Licences</a></div>
   </section>
 
   <section id="shots">
@@ -3006,10 +3005,10 @@ const typesText = el => el?.matches?.('textarea, input:not([type=range], [type=c
 document.addEventListener("focusin", e => document.body.classList.toggle("typing", !!typesText(e.target)));
 document.addEventListener("focusout", () => document.body.classList.remove("typing"));
 
-// ---- keyboard and trackpad: events go to KDE Connect on the Frame (see ui/frame_input_agent.py) ----
+// ---- keyboard and trackpad: events go to the Frame through gamescope (ui/frame_touch.py); accents and emoji through KDE Connect ----
 const pad = { state: "off", queue: [], sending: false, poll: null, captured: false };
 const PAD_STATES = {
-  off: "", starting: "Connecting…", installing: "Setting up KDE Connect on the Frame (first time only)…",
+  off: "", starting: "Connecting…", installing: "Setting up (first time only)…",
   pairing: "Pairing with KDE Connect…", ready: "On",
 };
 // KDE Connect's specialKey numbers (plugins/mousepad in its source).
@@ -3027,7 +3026,7 @@ function padShow(status) {
   $("padOn").hidden = ready || busy;
   $("padOn").textContent = pad.state === "error" ? "Try again" : "Turn on";
   $("padArea").classList.toggle("off", !ready);
-  $("padHint").textContent = pad.state === "error" ? status.message || "Couldn't reach KDE Connect on the Frame."
+  $("padHint").textContent = pad.state === "error" ? status.message || "Couldn't reach the Frame."
     : !ready ? (busy ? PAD_STATES[pad.state] : "Turn on to use this as a trackpad for the Frame.")
     : TOUCH ? "Drag to move the pointer · tap to click · two fingers to scroll · two-finger tap to right-click"
     : pad.captured ? "Your mouse and keyboard now control the Frame. Press Esc to stop."

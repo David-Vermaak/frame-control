@@ -630,3 +630,38 @@ class PageQueue(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PadEvents(unittest.TestCase):
+    """The trackpad and key row go through gamescope; accents and emoji go the KDE Connect way."""
+
+    @classmethod
+    def setUpClass(cls):
+        import server
+        cls.pad = staticmethod(server.pad_events)
+
+    def test_moves_clicks_and_scroll(self):
+        out, extra = self.pad([{"dx": 3, "dy": -2}, {"singleclick": True}, {"singlehold": True},
+                               {"singlerelease": True}, {"scroll": True, "dy": 1}, {"rightclick": True}])
+        self.assertEqual(out[0], {"dx": 3, "dy": -2})
+        self.assertEqual(out[1:3], [{"button": "left", "down": True}, {"button": "left", "down": False}])
+        self.assertEqual(out[3:5], [{"button": "left", "down": True}, {"button": "left", "down": False}])
+        self.assertEqual(out[5], {"scroll": [0, -15]})  # up = content follows the finger
+        self.assertEqual(out[6:], [{"button": "right", "down": True}, {"button": "right", "down": False}])
+        self.assertEqual(extra, "")
+
+    def test_keys_and_modifiers(self):
+        out, _ = self.pad([{"specialKey": 12}, {"specialKey": 1, "ctrl": True}, {"key": "c", "ctrl": True}])
+        self.assertEqual(out[:2], [{"key": 28, "down": True}, {"key": 28, "down": False}])
+        self.assertEqual([e["key"] for e in out[2:6]], [29, 14, 14, 29])  # Ctrl+Backspace
+        self.assertEqual([(e["key"], e["down"]) for e in out[6:]],
+                         [(29, True), (46, True), (46, False), (29, False)])  # Ctrl+C
+
+    def test_text_and_accents(self):
+        out, extra = self.pad([{"key": "Hi "}, {"key": "café 😀"}])
+        self.assertEqual(out, [{"text": "Hi caf "}])
+        self.assertEqual(extra, "é😀")
+
+    def test_shifted_key_with_modifier(self):
+        out, _ = self.pad([{"key": "A", "ctrl": True}])
+        self.assertEqual([e["key"] for e in out], [29, 42, 30, 30, 42, 29])

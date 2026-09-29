@@ -51,6 +51,7 @@ import frame_report  # noqa: E402
 import frame_store  # noqa: E402
 import frame_telemetry  # noqa: E402
 import frame_titles  # noqa: E402
+import frame_touch  # noqa: E402
 import frame_webinstall  # noqa: E402
 
 frame_host.trust_bundled_cas()
@@ -847,12 +848,87 @@ def licenses():
     return notices
 
 
+# KDE Connect's specialKey numbers -> Linux key codes (KEY_BACKSPACE, KEY_TAB, ...).
+PAD_KEYS = {1: 14, 2: 15, 4: 105, 5: 103, 6: 106, 7: 108, 8: 104, 9: 109, 10: 102, 11: 107, 12: 28, 13: 111, 14: 1,
+            **{21 + i: code for i, code in enumerate([59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 87, 88])}}
+PAD_MODS = (("ctrl", 29), ("alt", 56), ("shift", 42), ("super", 125))
+PAD_CLICKS = {"singleclick": "left", "rightclick": "right", "middleclick": "middle"}
+PAD_NOTCH = 15  # scroll units for one wheel notch
+
+
+def pad_events(events):
+    """The trackpad's and key row's events as (gamescope events, text for KDE Connect).
+
+    Gamescope's own input reaches every panel and needs nothing installed, but types only
+    US-keyboard characters; accents and emoji go the KDE Connect way.
+    """
+    ascii_keys = frame_touch.ASCII
+    out, extra = [], []
+
+    def tap(code, mods):
+        down = [{"key": c, "down": True} for c in mods]
+        out.extend(down + [{"key": code, "down": True}, {"key": code, "down": False}]
+                   + [{"key": c, "down": False} for c in reversed(mods)])
+    for e in events:
+        mods = [code for name, code in PAD_MODS if e.get(name)]
+        if "dx" in e or "dy" in e:
+            if not e.get("scroll"):
+                out.append({k: e[k] for k in ("dx", "dy") if k in e})
+        if e.get("scroll"):
+            out.append({"scroll": [0, -(e.get("dy") or 0) * PAD_NOTCH]})
+        for flag, button in PAD_CLICKS.items():
+            if e.get(flag):
+                out += [{"button": button, "down": True}, {"button": button, "down": False}]
+        if e.get("doubleclick"):
+            out += [{"button": "left", "down": d} for d in (True, False, True, False)]
+        if e.get("singlehold"):
+            out.append({"button": "left", "down": True})
+        if e.get("singlerelease"):
+            out.append({"button": "left", "down": False})
+        if "specialKey" in e and e["specialKey"] in PAD_KEYS:
+            tap(PAD_KEYS[e["specialKey"]], mods)
+        if "key" in e:
+            for ch in e["key"]:
+                if ch not in ascii_keys:
+                    extra.append(ch)
+                elif mods:
+                    code, shifted = ascii_keys[ch]
+                    tap(code, mods + ([42] if shifted and 42 not in mods else []))
+                else:
+                    if out and "text" in out[-1] and len(out[-1]["text"]) < 100:
+                        out[-1]["text"] += ch
+                    else:
+                        out.append({"text": ch})
+    return out, "".join(extra)
+
+
 def remote_input(body):
     """{"events": [...]} sends keyboard and pointer events; {} (or none yet) just starts the agent."""
     events = body.get("events", [])
     if not isinstance(events, list) or len(events) > INPUT_BATCH_LIMIT:
         raise Failure(f"events must be a list of at most {INPUT_BATCH_LIMIT}", 400)
-    return _input.send([input_event(e) for e in events])
+    events = [input_event(e) for e in events]
+    touch, accents = pad_events(events)
+    status = _touch.send(touch)
+    if accents:
+        _accents.append(accents)
+    _send_accents(status.get("sent") or not touch)
+    return status
+
+
+_accents = []  # accents and emoji waiting for KDE Connect, which starts the first time they're typed
+
+
+def _send_accents(wanted):
+    """Type what gamescope can't through KDE Connect, starting it if needed; kept until it's up."""
+    if not _accents or not wanted:
+        return
+    status = _input.send([{"key": "".join(_accents)}])
+    if status.get("sent"):
+        _accents.clear()
+    elif status.get("state") == "error":
+        _accents.clear()  # not coming; don't hold them forever
+    del _accents[:-50]
 
 
 # ---- touch: the headset's panels, through gamescope's own input (frame_touch.py) ----
@@ -2008,7 +2084,7 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/api/touch":
                 self.send_json(_touch.send([]) if parse_qs(url.query).get("start") == ["1"] else dict(_touch.status))
             elif path == "/api/input":
-                self.send_json(_input.send([]) if parse_qs(url.query).get("start") == ["1"] else dict(_input.status))
+                self.send_json(_touch.send([]) if parse_qs(url.query).get("start") == ["1"] else dict(_touch.status))
             elif path == "/api/job":
                 self.send_json(job_status(url.query))
             elif path == "/api/android/displays":
