@@ -647,6 +647,12 @@
         <span class="desk-only">You can also drop files anywhere in this window.</span>
         <input type="file" id="fileInput" multiple hidden>
       </div>
+      <label class="sub" for="apkDisplay">Android display</label>
+      <select id="apkDisplay" aria-label="Android app display mode">
+        <option value="auto">Automatic (detect VR)</option>
+        <option value="flat">Flat screen</option>
+        <option value="vr">VR app</option>
+      </select>
       <div class="progress" id="prog"><i></i></div>
       <div class="shelf-head" style="margin-top:18px"><h2>Clipboard</h2></div>
       <textarea id="clipText" placeholder="Text to put on the Frame's clipboard…"></textarea>
@@ -1522,6 +1528,7 @@ function upload(file, mode) {
     xhr.setRequestHeader("X-Frame-UI", UI_KEY);
     xhr.setRequestHeader("X-Filename", encodeURIComponent(file.name));
     xhr.setRequestHeader("X-Mode", mode);
+    if (mode === "apk") xhr.setRequestHeader("X-APK-Display", $("apkDisplay").value);
     const bar = $("prog").firstElementChild;
     $("prog").style.display = "block"; bar.style.width = "0";
     xhr.upload.onprogress = e => { if (e.lengthComputable) bar.style.width = (100 * e.loaded / e.total) + "%"; };

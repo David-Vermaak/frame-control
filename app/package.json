@@ -67,6 +67,14 @@
         ]
       },
       {
+        "from": "../frame/openxr-compat",
+        "to": "frame/openxr-compat",
+        "filter": [
+          "XrApiLayer_FRAME_compat.json",
+          "prebuilt/**/*.so"
+        ]
+      },
+      {
         "from": "../frame/devkit-utils",
         "to": "frame/devkit-utils",
         "filter": [

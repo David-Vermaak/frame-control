@@ -1,0 +1,110 @@
+
+Elf file type is DYN (Shared object file)
+Entry point 0x0
+There are 9 program headers, starting at offset 64
+
+Program Headers:
+  Type           Offset   VirtAddr           PhysAddr           FileSiz  MemSiz   Flg Align
+  PHDR           0x000040 0x0000000000000040 0x0000000000000040 0x0001f8 0x0001f8 R   0x8
+  LOAD           0x000000 0x0000000000000000 0x0000000000000000 0x0169e0 0x0169e0 R E 0x4000
+  LOAD           0x0169e0 0x000000000001a9e0 0x000000000001a9e0 0x000a90 0x001620 RW  0x4000
+  LOAD           0x017470 0x000000000001f470 0x000000000001f470 0x000068 0x000bc0 RW  0x4000
+  DYNAMIC        0x017048 0x000000000001b048 0x000000000001b048 0x0001c0 0x0001c0 RW  0x8
+  GNU_RELRO      0x0169e0 0x000000000001a9e0 0x000000000001a9e0 0x000a90 0x001620 R   0x1
+  GNU_EH_FRAME   0x004fb4 0x0000000000004fb4 0x0000000000004fb4 0x00070c 0x00070c R   0x4
+  GNU_STACK      0x000000 0x0000000000000000 0x0000000000000000 0x000000 0x000000 RW  0x0
+  NOTE           0x000238 0x0000000000000238 0x0000000000000238 0x0000bc 0x0000bc R   0x4
+
+ Section to Segment mapping:
+  Segment Sections...
+   00
+   01     .note.android.ident .note.gnu.build-id .dynsym .gnu.version .gnu.version_r .gnu.hash .dynstr .rela.dyn .rela.plt .gcc_except_table .rodata .eh_frame_hdr .eh_frame .text __lcxx_override .plt
+   02     .data.rel.ro .fini_array .init_array .dynamic .got .got.plt .relro_padding
+   03     .data .bss
+   04     .dynamic
+   05     .data.rel.ro .fini_array .init_array .dynamic .got .got.plt .relro_padding
+   06     .eh_frame_hdr
+   07
+   08     .note.android.ident .note.gnu.build-id
+   None   .comment .shstrtab
+Dynamic section at offset 0x17048 contains 28 entries:
+  Tag                Type           Name/Value
+  0x0000000000000001 (NEEDED)       Shared library: [liblog.so]
+  0x0000000000000001 (NEEDED)       Shared library: [libm.so]
+  0x0000000000000001 (NEEDED)       Shared library: [libdl.so]
+  0x0000000000000001 (NEEDED)       Shared library: [libc.so]
+  0x000000000000000e (SONAME)       Library soname: [libXrApiLayer_FRAME_compat.so]
+  0x000000000000001e (FLAGS)        BIND_NOW
+  0x000000006ffffffb (FLAGS_1)      NOW
+  0x0000000000000007 (RELA)         0xae8
+  0x0000000000000008 (RELASZ)       5424 (bytes)
+  0x0000000000000009 (RELAENT)      24 (bytes)
+  0x000000006ffffff9 (RELACOUNT)    225
+  0x0000000000000017 (JMPREL)       0x2018
+  0x0000000000000002 (PLTRELSZ)     1080 (bytes)
+  0x0000000000000003 (PLTGOT)       0x1b2f0
+  0x0000000000000014 (PLTREL)       RELA
+  0x0000000000000006 (SYMTAB)       0x2f8
+  0x000000000000000b (SYMENT)       24 (bytes)
+  0x0000000000000005 (STRTAB)       0x838
+  0x000000000000000a (STRSZ)        681 (bytes)
+  0x000000006ffffef5 (GNU_HASH)     0x818
+  0x0000000000000019 (INIT_ARRAY)   0x1b030
+  0x000000000000001b (INIT_ARRAYSZ) 24 (bytes)
+  0x000000000000001a (FINI_ARRAY)   0x1b020
+  0x000000000000001c (FINI_ARRAYSZ) 16 (bytes)
+  0x000000006ffffff0 (VERSYM)       0x778
+  0x000000006ffffffe (VERNEED)      0x7d8
+  0x000000006fffffff (VERNEEDNUM)   2
+  0x0000000000000000 (NULL)         0x0
+
+Symbol table '.dynsym' contains 48 entries:
+   Num:    Value          Size Type    Bind   Vis       Ndx Name
+     0: 0000000000000000     0 NOTYPE  LOCAL  DEFAULT   UND
+     1: 0000000000000000     0 FUNC    GLOBAL DEFAULT   UND __cxa_finalize@LIBC
+     2: 0000000000000000     0 FUNC    GLOBAL DEFAULT   UND __cxa_atexit@LIBC
+     3: 0000000000000000     0 FUNC    GLOBAL DEFAULT   UND strcmp@LIBC
+     4: 0000000000000000     0 FUNC    GLOBAL DEFAULT   UND __android_log_print
+     5: 0000000000000000     0 FUNC    GLOBAL DEFAULT   UND __stack_chk_fail@LIBC
+     6: 0000000000000000     0 FUNC    GLOBAL DEFAULT   UND memmove@LIBC
+     7: 0000000000000000     0 FUNC    GLOBAL DEFAULT   UND strlen@LIBC
+     8: 0000000000000000     0 FUNC    GLOBAL DEFAULT   UND memcpy@LIBC
+     9: 0000000000000000     0 FUNC    GLOBAL DEFAULT   UND __strcpy_chk@LIBC
+    10: 0000000000000000     0 FUNC    GLOBAL DEFAULT   UND memset@LIBC
+    11: 0000000000000000     0 FUNC    GLOBAL DEFAULT   UND memcmp@LIBC
+    12: 0000000000000000     0 FUNC    GLOBAL DEFAULT   UND pthread_mutex_lock@LIBC
+    13: 0000000000000000     0 FUNC    GLOBAL DEFAULT   UND pthread_mutex_unlock@LIBC
+    14: 0000000000000000     0 FUNC    GLOBAL DEFAULT   UND __errno@LIBC
+    15: 0000000000000000     0 FUNC    GLOBAL DEFAULT   UND snprintf@LIBC
+    16: 0000000000000000     0 FUNC    GLOBAL DEFAULT   UND pthread_mutex_destroy@LIBC
+    17: 0000000000000000     0 FUNC    GLOBAL DEFAULT   UND strerror_r@LIBC
+    18: 0000000000000000     0 FUNC    GLOBAL DEFAULT   UND abort@LIBC
+    19: 0000000000000000     0 FUNC    GLOBAL DEFAULT   UND pthread_getspecific@LIBC
+    20: 0000000000000000     0 FUNC    GLOBAL DEFAULT   UND pthread_setspecific@LIBC
+    21: 0000000000000000     0 FUNC    GLOBAL DEFAULT   UND pthread_key_create@LIBC
+    22: 0000000000000000     0 FUNC    GLOBAL DEFAULT   UND syscall@LIBC
+    23: 0000000000000000     0 OBJECT  GLOBAL DEFAULT   UND __sF@LIBC
+    24: 0000000000000000     0 FUNC    GLOBAL DEFAULT   UND fwrite@LIBC
+    25: 0000000000000000     0 FUNC    GLOBAL DEFAULT   UND vfprintf@LIBC
+    26: 0000000000000000     0 FUNC    GLOBAL DEFAULT   UND fputc@LIBC
+    27: 0000000000000000     0 FUNC    GLOBAL DEFAULT   UND vasprintf@LIBC
+    28: 0000000000000000     0 FUNC    GLOBAL DEFAULT   UND android_set_abort_message@LIBC
+    29: 0000000000000000     0 FUNC    GLOBAL DEFAULT   UND openlog@LIBC
+    30: 0000000000000000     0 FUNC    GLOBAL DEFAULT   UND syslog@LIBC
+    31: 0000000000000000     0 FUNC    GLOBAL DEFAULT   UND closelog@LIBC
+    32: 0000000000000000     0 FUNC    GLOBAL DEFAULT   UND malloc@LIBC
+    33: 0000000000000000     0 FUNC    GLOBAL DEFAULT   UND free@LIBC
+    34: 0000000000000000     0 FUNC    GLOBAL DEFAULT   UND posix_memalign@LIBC
+    35: 0000000000000000     0 FUNC    GLOBAL DEFAULT   UND realloc@LIBC
+    36: 0000000000000000     0 FUNC    GLOBAL DEFAULT   UND pthread_once@LIBC
+    37: 0000000000000000     0 FUNC    GLOBAL DEFAULT   UND pthread_key_delete@LIBC
+    38: 0000000000000000     0 FUNC    GLOBAL DEFAULT   UND getauxval@LIBC
+    39: 0000000000000000     0 FUNC    GLOBAL DEFAULT   UND __system_property_get@LIBC
+    40: 0000000000000000     0 FUNC    GLOBAL DEFAULT   UND strncmp@LIBC
+    41: 0000000000000000     0 FUNC    GLOBAL DEFAULT   UND fprintf@LIBC
+    42: 0000000000000000     0 FUNC    GLOBAL DEFAULT   UND fflush@LIBC
+    43: 0000000000000000     0 FUNC    GLOBAL DEFAULT   UND pthread_rwlock_wrlock@LIBC
+    44: 0000000000000000     0 FUNC    GLOBAL DEFAULT   UND pthread_rwlock_unlock@LIBC
+    45: 0000000000000000     0 FUNC    GLOBAL DEFAULT   UND dl_iterate_phdr@LIBC
+    46: 0000000000000000     0 FUNC    GLOBAL DEFAULT   UND pthread_rwlock_rdlock@LIBC
+    47: 00000000000081a0   284 FUNC    GLOBAL DEFAULT    14 xrNegotiateLoaderApiLayerInterface

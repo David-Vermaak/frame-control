@@ -1,0 +1,21 @@
+{
+  "file_format_version": "1.0.0",
+  "api_layer": {
+    "name": "XR_APILAYER_FRAME_compat",
+    "library_path": "libXrApiLayer_FRAME_compat.so",
+    "api_version": "1.1",
+    "implementation_version": "1",
+    "description": "Steam Frame OpenXR 1.1 to 1.0 compatibility",
+    "disable_environment": "DISABLE_FRAME_XR_COMPAT",
+    "instance_extensions": [
+      {
+        "name": "XR_KHR_android_thread_settings",
+        "extension_version": "6"
+      },
+      {
+        "name": "XR_OCULUS_android_session_state_enable",
+        "extension_version": "1"
+      }
+    ]
+  }
+}

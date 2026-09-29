@@ -10,7 +10,8 @@ import zipfile
 
 # android: attribute resource ids; names can be stripped by shrinkers, ids can't.
 ATTR = {0x01010001: 'label', 0x01010002: 'icon', 0x01010003: 'name',
-        0x0101021b: 'versionCode', 0x0101021c: 'versionName', 0x0101020c: 'minSdkVersion'}
+        0x01010024: 'value', 0x0101021b: 'versionCode', 0x0101021c: 'versionName', 0x0101020c: 'minSdkVersion',
+        0x01010202: 'targetActivity'}
 T_REF, T_STRING, T_INT_DEC, T_INT_HEX = 0x01, 0x03, 0x10, 0x11
 # APKs can come from websites (install links), so nothing read from one may be
 # unbounded. zipfile stops at a member's declared size, so checking it is enough.
@@ -215,8 +216,11 @@ def apk_info(path):
         if 'AndroidManifest.xml' not in names:
             raise ApkError('not an APK: no AndroidManifest.xml')
         try:
-            elements = manifest_elements(_read(z, 'AndroidManifest.xml', MAX_MANIFEST))
+            manifest_data = _read(z, 'AndroidManifest.xml', MAX_MANIFEST)
+            elements = manifest_elements(manifest_data)
             res = Resources(_read(z, 'resources.arsc', MAX_ARSC) if 'resources.arsc' in names else b'')
+            from frame_apk_vr import detection
+            vr_info = detection(manifest_data, names)
         except (struct.error, IndexError, zipfile.BadZipFile) as e:
             raise ApkError(f'could not read the APK manifest: {e}')
         tags = {}
@@ -236,6 +240,7 @@ def apk_info(path):
             'min_sdk': min_sdk[1] if min_sdk and min_sdk[0] in (T_INT_DEC, T_INT_HEX) else None,
             'icon_png': None,
         }
+        info.update(vr_info)
         try:
             info['icon_png'] = _icon_png(z, names, _icons(app.get('icon'), res))
         except Exception:  # noqa: BLE001 - any unreadable icon just means no icon
