@@ -168,7 +168,9 @@ class FakeCaptureTool:
         return 0
 
     def terminate(self):
-        self.returncode = -15
+        raise AssertionError("the capture tool must never be signalled")
+
+    kill = terminate
 
     def wait(self, timeout=None):
         return self.returncode
@@ -194,7 +196,6 @@ class CaptureLifecycle(unittest.TestCase):
         class TestCapture(pulse.Capture):
             # A temporary directory stands in for /tmp/etcalib_*.
             PREFIX = str(self.root / "etcalib_")
-            WRITING = __import__("re").compile(r"Writing capture to: (\S+)")
         capture = TestCapture(20, runner=tool, loader=self.loader, workers=0)
         with patch.object(pulse.time, "sleep", lambda s: None):
             return capture, capture.run()
@@ -215,9 +216,12 @@ class CaptureLifecycle(unittest.TestCase):
             self.capture(tool)
         self.assertIn("cameras unavailable", str(raised.exception))
 
-    def test_backlog_stops_capture_and_removes_images(self):
+    def test_backlog_abandons_capture_and_removes_images(self):
         class Stalled(FakeCaptureTool):
             def poll(self):
+                if self.polls > 8:
+                    self.returncode = 0  # the bounded run ends by itself
+                    return 0
                 for i in range(20):
                     for eye in ("left", "right"):
                         (self.directory / f"{eye}_{self.polls * 20 + i}.png").write_bytes(b"png")
@@ -226,7 +230,6 @@ class CaptureLifecycle(unittest.TestCase):
         tool = Stalled(self.directory)
         class TestCapture(pulse.Capture):
             PREFIX = str(self.root / "etcalib_")
-            WRITING = __import__("re").compile(r"Writing capture to: (\S+)")
             MAX_BACKLOG = 50
         capture = TestCapture(20, runner=tool, loader=self.loader, workers=0)
         capture.reduce = lambda final=False, original=capture.reduce: (
@@ -234,7 +237,7 @@ class CaptureLifecycle(unittest.TestCase):
         with patch.object(pulse.time, "sleep", lambda s: None), self.assertRaises(RuntimeError) as raised:
             capture.run()
         self.assertIn("fell behind", str(raised.exception))
-        self.assertEqual(tool.returncode, -15)       # capture tool stopped
+        self.assertEqual(tool.returncode, 0)         # left to end by itself, never signalled
         self.assertFalse(self.directory.exists())    # no image left behind
 
     def test_second_capture_directory_stops_and_removes_both(self):
@@ -262,6 +265,37 @@ class CaptureLifecycle(unittest.TestCase):
             self.capture(tool)
         self.assertIn("somewhere else", str(raised.exception))
         self.assertFalse(tool.announce.exists())
+        self.assertFalse(self.directory.exists())
+
+    def test_interrupt_during_cleanup_still_removes_images(self):
+        class Stubborn(FakeCaptureTool):
+            interrupts = 0
+            def poll(self):
+                if self.polls == 2 and self.interrupts < 2:
+                    self.interrupts += 1
+                    raise KeyboardInterrupt  # Ctrl-C mid-capture, and again while waiting
+                return super().poll()
+        tool = Stubborn(self.directory)
+        with self.assertRaises(KeyboardInterrupt):
+            self.capture(tool)
+        self.assertEqual(tool.returncode, 0)         # still let finish, never signalled
+        self.assertFalse(self.directory.exists())
+
+    def test_overrunning_tool_is_killed_as_a_last_resort(self):
+        class Hung(FakeCaptureTool):
+            killed = False
+            def poll(self):
+                (self.directory / "left_0.png").write_bytes(b"png")
+                return None if not self.killed else -9
+            def kill(self):
+                self.killed = True
+        tool = Hung(self.directory)
+        clock = iter(range(0, 10000, 20))
+        with patch.object(pulse.time, "monotonic", lambda: next(clock)), \
+                self.assertRaises(RuntimeError) as raised:
+            self.capture(tool)
+        self.assertIn("may need a reboot", str(raised.exception))
+        self.assertTrue(tool.killed)
         self.assertFalse(self.directory.exists())
 
     def test_cleanup_tries_every_directory(self):
@@ -370,6 +404,15 @@ class HeartCheck(unittest.TestCase):
                 z.writestr("notes.txt", "x")
             with self.assertRaises(ValueError):
                 check.read_any(archive, 0, 1)
+
+    def test_compare_reports_bad_input_without_traceback(self):
+        good = self.write("ref.csv", "1000,70\n")
+        shown = io.StringIO()
+        with patch("sys.stdout", shown):
+            self.assertEqual(check.main(["compare", str(good.parent / "missing.csv"), str(good)]), 1)
+            self.assertEqual(check.main(["compare", str(self.write("ours.csv", "1000,inf\n1001,70\n")),
+                                         str(self.write("bad.xml", "<not closed"))]), 1)
+        self.assertEqual(shown.getvalue().count("Could not compare"), 2)
 
     def test_time_formats(self):
         self.assertEqual(check.parse_time("1700000000.5"), 1700000000.5)

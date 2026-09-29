@@ -118,11 +118,11 @@ def read_csv(path):
                 continue
             try:
                 when, bpm = parse_time(row[0]), int(float(row[1]))
-            except ValueError:
+            except (ValueError, OverflowError):
                 continue  # header or unparseable line
             try:
                 flags = int(float(row[2])) if len(row) > 2 else None
-            except ValueError:
+            except (ValueError, OverflowError):
                 flags = None  # an unrecognised flag leaves the reading as it is
             if flags is not None and flags & 4 and not flags & 2:
                 bpm = None  # contact supported and not detected: no reading
@@ -258,13 +258,13 @@ def main(argv=None):
         count = listen(args.port, args.address, args.out, args.seconds)
         print(f"Received {count} readings.")
         return 0 if count else 3
-    ours = read_csv(args.ours)
-    if not ours:
-        parser.error("our recording has no readings")
     try:
+        ours = read_csv(args.ours)
+        if not ours:
+            raise ValueError("our recording has no readings")
         reference = read_any(args.reference, ours[0][0] - 60, ours[-1][0] + 60)
         result = compare(ours, reference, args.max_lag)
-    except (ValueError, OSError, ElementTree.ParseError, zipfile.BadZipFile) as error:
+    except (ValueError, OSError, csv.Error, ElementTree.ParseError, zipfile.BadZipFile) as error:
         print(f"Could not compare: {error}")
         return 1
     return 0 if report(result, args.tolerance) else 1

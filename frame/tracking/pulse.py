@@ -71,7 +71,7 @@ class Capture:
     # Only SteamVR's own capture directories are read and removed.
     PREFIX = "/tmp/etcalib_"
     # Printed by the capture tool; its output is only flushed when it exits.
-    WRITING = re.compile(r"Writing capture to: (/tmp/etcalib_[\w-]+)")
+    WRITING = re.compile(r"Writing capture to: (\S+)")
     # About five seconds of frames (~65 MB in RAM-backed /tmp). If reduction
     # falls further behind than this, the capture stops rather than letting
     # eye images pile up.
@@ -85,6 +85,8 @@ class Capture:
         self.submitted = set()
         self.futures = {}
         self.new = set()  # every capture directory that appeared during our run
+        self.before = set()
+        self.log = None
 
     def candidates(self):
         parent, stem = os.path.split(self.PREFIX)
@@ -96,9 +98,10 @@ class Capture:
         # failure messages. It is block-buffered, so the capture directory is
         # found by watching for a new one rather than waiting for its name.
         import tempfile
-        before = self.candidates()
+        self.before = before = self.candidates()
         process = None
         with tempfile.TemporaryFile("w+") as log:
+            self.log = log
             try:
                 if self.workers:
                     # SteamVR pins its eye tracker to cores 0-1; decoding runs beside it.
@@ -136,29 +139,70 @@ class Capture:
             finally:
                 # Each step runs even if an earlier one failed: eye images must
                 # be removed whatever else went wrong.
-                failed = False
-                for step in (lambda: self.stop(process),
-                             lambda: self.pool and self.pool.shutdown(wait=True, cancel_futures=True)):
+                # Ctrl-C and SIGTERM (raised as KeyboardInterrupt) are held
+                # until the images are gone, then re-raised.
+                interrupted, failed = None, None
+                for step in (lambda: self.finish(process),
+                             lambda: self.pool and self.pool.shutdown(wait=True, cancel_futures=True),
+                             self.adopt_reported):
                     try:
                         step()
-                    except Exception:
-                        failed = True
-                named = self.written(log)
-                if named:
-                    self.new.add(named)  # ours by the tool's own account
+                    except BaseException as error:
+                        if isinstance(error, Exception):
+                            failed = failed or error
+                        else:
+                            interrupted = interrupted or error
+                self.log = None
                 self.remove()
+                if interrupted:
+                    raise interrupted
                 if failed:
-                    raise RuntimeError("the eye-camera capture did not stop cleanly")
+                    raise RuntimeError(f"the eye-camera capture did not stop cleanly: {failed}")
 
-    @staticmethod
-    def stop(process):
-        if process and process.poll() is None:
-            process.terminate()
+    def finish(self, process):
+        """Let the capture tool end by itself, deleting its images meanwhile.
+
+        Never signal it: stopping the tool early leaves the headset's eye
+        camera stuck streaming until the DSP service restarts (verified on the
+        Frame with SIGTERM). Its run is bounded by `seconds`, so waiting is
+        short. Only if it overruns by a wide margin is it killed."""
+        if not process:
+            return
+        interrupted = None
+        give_up = time.monotonic() + self.seconds + 30
+        while True:
             try:
-                process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                process.kill()
-                process.wait()
+                if process.poll() is not None:
+                    break
+                self.discard()
+                if time.monotonic() > give_up:
+                    process.kill()
+                    process.wait()
+                    raise RuntimeError("the eye-camera capture had to be killed; "
+                                       "the eye cameras may need a reboot to stream again")
+                time.sleep(0.05)
+            except KeyboardInterrupt as error:  # keep cleaning up until it ends
+                interrupted = interrupted or error
+        if interrupted:
+            raise interrupted
+
+    def discard(self):
+        """Delete the eye images written so far, without reading them."""
+        self.new |= self.candidates() - self.before
+        for directory in self.new | ({self.directory} if self.directory else set()):
+            if str(directory).startswith(self.PREFIX) and directory.is_dir() and not directory.is_symlink():
+                for entry in os.scandir(directory):
+                    if self.NAME.match(entry.name):
+                        try:
+                            os.unlink(entry.path)
+                        except OSError:
+                            pass
+
+    def adopt_reported(self):
+        """The directory the tool reported is ours by its own account."""
+        named = self.written(self.log)
+        if named and str(named).startswith(self.PREFIX):
+            self.new.add(named)
 
     def written(self, log):
         """The directory the capture tool reported, once its output is flushed."""
@@ -177,7 +221,7 @@ class Capture:
             if match:
                 pending[match.group(1)].append((int(match.group(2)), entry.path))
         if sum(len(files) for files in pending.values()) > self.MAX_BACKLOG:
-            raise RuntimeError("eye-image processing fell behind; capture stopped")
+            raise RuntimeError("eye-image processing fell behind; capture abandoned")
         for eye, files in pending.items():
             files.sort()
             ready = files if final else files[:-1]

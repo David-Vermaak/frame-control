@@ -201,9 +201,9 @@ How it works:
   while the headset is worn and tracking.
 - **Privacy.** Each image is reduced to a 16×16 grid of patch averages as
   soon as it is complete, then deleted. Three worker processes do this beside
-  the capture. If more than 900 images (about five seconds) ever wait, the
-  capture stops rather than letting eye images accumulate. The capture directory is removed on
-  exit, even after errors. No image is kept or leaves the Frame. The estimate
+  the capture. If more than 900 images (about five seconds) ever wait, we stop
+  reading them and delete them undecoded until the capture ends, and report
+  an error. The capture directory is removed on exit, even after errors. No image is kept or leaves the Frame. The estimate
   is printed only with `--show`, and sent or saved only with `--osc` or
   `--log`, as for the strap.
 - **Estimate.** Patch traces are averaged down to 15 Hz and turned into
@@ -226,6 +226,16 @@ patches agreed on a steady rhythm near 127-129 BPM (about 2.1 Hz) with low
 signal/noise (0.15-0.19), in two separate runs. That is a camera or illumination artifact, not a pulse,
 and the signal/noise gate kept it from being reported. A worn test should
 also record an unworn baseline, to rule out the same artifact.
+
+**Do not interrupt the capture. Verified on the Frame, 2026-09-29:** sending
+SIGTERM to `eyetracking --calib` left the DSP service's eye camera (OV6211)
+stuck "streaming": its log had no "Stopping streaming" line, and every later
+request failed with "Failed to start streaming". Head tracking kept working.
+Clearing it needs the DSP service restarted or the Frame rebooted, so `pulse`
+never signals the tool. After Ctrl-C or a failure it keeps deleting images
+until the tool ends by itself (at most the `--seconds` plus a few seconds),
+and only kills a tool that overruns by 30 s, with a warning that the eye
+cameras may need a reboot. So an interrupted run can take a while to return.
 
 **Verified on synthetic data** (unit tests): a 0.3% brightness pulse in a
 third of the patches, with noise, drift, blinks and eye movement, is
