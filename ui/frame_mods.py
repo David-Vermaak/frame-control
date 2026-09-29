@@ -8,22 +8,26 @@ Usage: python3 - status APPID     # can UEVR run here, is it installed, is the g
 Prints one JSON object. Errors are {"error": "..."} with exit status 1.
 
 Verified 2026-09-29 on SteamOS 0.4.1 (build 20260925.6191901), Proton 11.0
-ARM64 and SteamVR 2.18.1 with Gravitas (1067310): UEVR 1.05's injector runs in
-the game's own Wine session, and after OpenVR + Inject the game loads
-UEVRBackend.dll and SteamVR counts frame submits for it. Stereo image, head
-tracking and controls were not seen: the headset was unworn (docs/mods.md).
+ARM64 and SteamVR 2.18.1 with Gravitas (1067310): after injection the game has
+UEVRBackend.dll loaded and SteamVR counts frame submits for it. Stereo image,
+head tracking and controls were not seen: the headset was unworn (docs/mods.md).
 
-Nothing here is bundled. UEVR comes from praydog's GitHub release, and the
-Windows .NET 6 runtime it needs from Microsoft's release metadata URLs, each
-checked against a pinned hash. Files live in <prefix>/drive_c/frame-control,
-never in the game's own folder, and a receipt records what to remove.
+UEVR's own injector (a .NET WPF app) is not used. Under Wine and FEX it hung
+or ignored input in about one session in four, and gamescope keeps real input
+away from it. Instead the official Windows embeddable Python runs INJECT_PY in
+the game's Wine session, doing what the injector does on Inject.
+
+Nothing here is bundled. UEVR comes from praydog's GitHub release and Python
+from python.org, each checked against a pinned hash. Files live in
+<prefix>/drive_c/frame-control, never in the game's own folder, and a receipt
+records what to remove.
 """
+import fcntl
 import hashlib
 import json
 import os
 import re
 import shutil
-import signal
 import subprocess
 import sys
 import time
@@ -35,33 +39,120 @@ HOME = Path.home()
 STEAM = HOME / ".local/share/Steam"
 CACHE = HOME / ".cache/frame-control/mods"
 RECEIPTS = HOME / ".local/share/frame-control/mods"
+LOCK = Path("/tmp/frame-control-mods.lock")  # tmpfs: gone at reboot, never left in ~
 VRCMD = "/opt/steamvr/bin/linuxarm64/vrcmd"
 MANAGED = "frame-control"  # drive_c/<this> inside the game's prefix
 
 UEVR = {"version": "1.05", "dir": "uevr-1.05",
         "url": "https://github.com/praydog/UEVR/releases/download/1.05/UEVR.zip",
         "sha256": "af4f2f91306802d7ee4e8497d483a547ac8e9a3067dbafb81324100524215d3c"}
-# UEVRInjector.exe is a .NET 6 WPF app; Proton ships no .NET. These are the
-# win-x64 ZIPs listed in builds.dotnet.microsoft.com/dotnet/release-metadata/6.0/releases.json.
-DOTNET = {"version": "6.0.36", "dir": "dotnet-6.0.36", "files": [
-    ("https://builds.dotnet.microsoft.com/dotnet/Runtime/6.0.36/dotnet-runtime-6.0.36-win-x64.zip",
-     "935db5c6cee19f2c016e67168bfae7b491044735de76c673abb3b125dd325fd5e779d7efe12ba80178d46689ae70a25e558a3fa846417d44c5f4ca256e7f4bf2"),
-    ("https://builds.dotnet.microsoft.com/dotnet/WindowsDesktop/6.0.36/windowsdesktop-runtime-6.0.36-win-x64.zip",
-     "cee88fef07643dceb3d34ea71b64eeae85b8e39e7042bc4d35bc3a1f1df29373681dc48e31c01c9f593ec412699f6762b6fc5817433283c89df35a27ce8885bf")]}
-MAX_UNPACKED = 600 << 20  # the three archives unpack to about 190 MB
+# Windows x64 embeddable Python, to run INJECT_PY. Hash from python.org's
+# release-file API (sha256_sum).
+PYTHON = {"version": "3.14.7", "dir": "python-3.14.7",
+          "url": "https://www.python.org/ftp/python/3.14.7/python-3.14.7-embed-amd64.zip",
+          "sha256": "d297e5ff019966817ad8502465176139f2d3d840fa4ed84b13bed399a6ab1f15"}
+MAX_UNPACKED = 200 << 20  # the two archives unpack to about 50 MB
+MAX_DOWNLOAD = 50 << 20  # each archive is 7–13 MB
 
-# UEVR 1.05's injector window (625 px wide), in window coordinates. Under
-# gamescope the full-screen game keeps the pointer and focus, so real clicks
-# can't reach the injector; XSendEvent to its window does. It doesn't restore
-# its saved runtime choice under Wine, and --attach didn't inject, so choose
-# OpenVR (SteamVR's own API) and press Inject every time.
-INJECTOR_WIDTH = 625
-CLICK_OPENVR, CLICK_INJECT = (125, 137), (365, 113)
-# The game's environment the injector needs to join its Wine session. Not
+# The game's environment a second program needs to join its Wine session. Not
 # WINESERVERSOCKET and friends: those are inherited file descriptors.
 GAME_ENV = re.compile(r"(WINEPREFIX|WINEDLLPATH|WINEDLLOVERRIDES|WINEFSYNC|WINEDEBUG|PATH|DISPLAY|"
                       r"XDG_RUNTIME_DIR|PROTON_VR_RUNTIME|FEX_APP_CONFIG|FEX_APP_CONFIG_LOCATION|"
                       r"SteamAppId|SteamGameId|STEAM_COMPAT_DATA_PATH|WINE_LARGE_ADDRESS_AWARE)=")
+
+
+# Runs under Windows Python in the game's Wine session: the steps of UEVR
+# 1.05's frontend (UEVR/MainWindow.xaml.cs Inject_Clicked, UEVR/Injector.cs)
+# with "Nullify VR plugins" on and the OpenVR runtime. Prints one JSON line.
+INJECT_PY = r"""
+import ctypes, json, os, sys
+from ctypes import wintypes as W
+exe, uevr, profile = sys.argv[1:4]
+k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+k32.OpenProcess.restype = W.HANDLE
+k32.VirtualAllocEx.restype = ctypes.c_void_p
+k32.VirtualAllocEx.argtypes = [W.HANDLE, ctypes.c_void_p, ctypes.c_size_t, W.DWORD, W.DWORD]
+k32.WriteProcessMemory.argtypes = [W.HANDLE, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t, ctypes.c_void_p]
+k32.CreateRemoteThread.restype = W.HANDLE
+k32.CreateRemoteThread.argtypes = [W.HANDLE, ctypes.c_void_p, ctypes.c_size_t, ctypes.c_void_p, ctypes.c_void_p,
+                                   W.DWORD, ctypes.c_void_p]
+k32.GetModuleHandleW.restype = W.HMODULE
+k32.GetProcAddress.restype = ctypes.c_void_p
+k32.GetProcAddress.argtypes = [W.HMODULE, ctypes.c_char_p]
+k32.LoadLibraryW.restype = W.HMODULE
+k32.CreateToolhelp32Snapshot.restype = W.HANDLE
+
+class Entry(ctypes.Structure):  # PROCESSENTRY32W
+    _fields_ = [("size", W.DWORD), ("usage", W.DWORD), ("pid", W.DWORD), ("heap", ctypes.c_void_p),
+                ("module", W.DWORD), ("threads", W.DWORD), ("parent", W.DWORD), ("prio", ctypes.c_long),
+                ("flags", W.DWORD), ("name", W.WCHAR * 260)]
+
+class Module(ctypes.Structure):  # MODULEENTRY32W
+    _fields_ = [("size", W.DWORD), ("mid", W.DWORD), ("pid", W.DWORD), ("glbl", W.DWORD), ("proc", W.DWORD),
+                ("base", ctypes.c_void_p), ("bytes", W.DWORD), ("handle", W.HMODULE),
+                ("name", W.WCHAR * 256), ("path", W.WCHAR * 260)]
+
+def fail(msg):
+    print(json.dumps({"error": msg})); sys.exit(1)
+
+def find_pid():
+    snap = k32.CreateToolhelp32Snapshot(2, 0)  # TH32CS_SNAPPROCESS
+    e = Entry(); e.size = ctypes.sizeof(e)
+    ok = k32.Process32FirstW(snap, ctypes.byref(e))
+    while ok:
+        if e.name.lower() == exe.lower():
+            k32.CloseHandle(snap); return e.pid
+        ok = k32.Process32NextW(snap, ctypes.byref(e))
+    k32.CloseHandle(snap)
+
+def module_base(pid, path):
+    snap = k32.CreateToolhelp32Snapshot(0x18, pid)  # TH32CS_SNAPMODULE | SNAPMODULE32
+    m = Module(); m.size = ctypes.sizeof(m)
+    ok = k32.Module32FirstW(snap, ctypes.byref(m))
+    while ok:
+        if m.path.lower() == path.lower():
+            k32.CloseHandle(snap); return m.base
+        ok = k32.Module32NextW(snap, ctypes.byref(m))
+    k32.CloseHandle(snap)
+
+def remote_call(proc, fn, arg=None, wait_ms=10000):
+    t = k32.CreateRemoteThread(proc, None, 0, fn, arg, 0, None)
+    if not t:
+        fail(f"CreateRemoteThread failed ({ctypes.get_last_error()})")
+    k32.WaitForSingleObject(t, wait_ms); k32.CloseHandle(t)
+
+def inject(proc, pid, name):
+    path = os.path.join(uevr, name)
+    data = ctypes.create_unicode_buffer(path)
+    mem = k32.VirtualAllocEx(proc, None, ctypes.sizeof(data), 0x3000, 0x04)  # commit|reserve, read/write
+    if not mem or not k32.WriteProcessMemory(proc, mem, data, ctypes.sizeof(data), None):
+        fail(f"couldn't write into {exe} ({ctypes.get_last_error()})")
+    remote_call(proc, k32.GetProcAddress(k32.GetModuleHandleW("kernel32.dll"), b"LoadLibraryW"), mem)
+    base = module_base(pid, path)
+    if not base:
+        fail(f"{name} didn't load into {exe}")
+    return path, base
+
+pid = find_pid()
+if not pid:
+    fail(f"{exe} isn't running")
+proc = k32.OpenProcess(0x1F0FFF, False, pid)  # PROCESS_ALL_ACCESS
+if not proc:
+    fail(f"couldn't open {exe} ({ctypes.get_last_error()})")
+path, base = inject(proc, pid, "UEVRPluginNullifier.dll")
+local = k32.LoadLibraryW(path)
+offset = k32.GetProcAddress(local, b"nullify") - local  # same DLL, same layout in both processes
+remote_call(proc, base + offset, wait_ms=2000)
+inject(proc, pid, "openvr_api.dll")
+# The frontend saves the runtime choice in the per-game config before UEVRBackend reads it.
+os.makedirs(profile, exist_ok=True)
+cfg = os.path.join(profile, "config.txt")
+lines = open(cfg).read().splitlines() if os.path.exists(cfg) else []
+lines = [l for l in lines if not l.startswith("Frontend_RequestedRuntime=")] + ["Frontend_RequestedRuntime=openvr_api.dll"]
+open(cfg, "w").write("\n".join(lines) + "\n")
+inject(proc, pid, "UEVRBackend.dll")
+print(json.dumps({"pid": pid}))
+"""
 
 
 class Fail(Exception):
@@ -173,8 +264,11 @@ def fetch(url, digest, algo):
         part = path.with_suffix(path.suffix + ".part")
         try:
             with urllib.request.urlopen(url, timeout=60) as r, open(part, "wb") as f:
-                shutil.copyfileobj(r, f, 1 << 20)
-        except OSError as e:
+                for block in iter(lambda: r.read(1 << 20), b""):
+                    if f.tell() + len(block) > MAX_DOWNLOAD:
+                        raise Fail(f"{url} is bigger than expected; stopped the download")
+                    f.write(block)
+        except (OSError, Fail) as e:
             part.unlink(missing_ok=True)
             raise Fail(f"download failed: {url}: {e}")
         part.rename(path)
@@ -217,7 +311,7 @@ def install(appid):
     if read_receipt(appid):
         return {"message": f"UEVR {UEVR['version']} is already installed for {g['name']}", **status(appid)}
     archives = [(fetch(UEVR["url"], UEVR["sha256"], "sha256"), UEVR["dir"])]
-    archives += [(fetch(url, digest, "sha512"), DOTNET["dir"]) for url, digest in DOTNET["files"]]
+    archives.append((fetch(PYTHON["url"], PYTHON["sha256"], "sha256"), PYTHON["dir"]))
     base = managed_dir(g)
     dirs = user_dirs(g, exe)
     fresh = [str(d) for d in (dirs["profile"].parent, base) if not d.exists()]  # remove on uninstall if empty
@@ -227,9 +321,13 @@ def install(appid):
         budget = MAX_UNPACKED
         for archive, sub in archives:
             budget = unpack(archive, stage / sub, budget)
-        if not (stage / UEVR["dir"] / "UEVRInjector.exe").is_file():
-            raise Fail("UEVR.zip has no UEVRInjector.exe")
-        for sub in (UEVR["dir"], DOTNET["dir"]):
+        for need in (stage / UEVR["dir"] / "UEVRBackend.dll", stage / PYTHON["dir"] / "python.exe"):
+            if not need.is_file():
+                raise Fail(f"the download has no {need.name}")
+        if game_pid(exe.name):  # it may have started during the download
+            raise Fail(f"{g['name']} started; quit it first")
+        (stage / PYTHON["dir"] / "frame_inject.py").write_text(INJECT_PY)
+        for sub in (UEVR["dir"], PYTHON["dir"]):
             shutil.rmtree(base / sub, ignore_errors=True)
             (stage / sub).rename(base / sub)
     finally:
@@ -241,13 +339,13 @@ def install(appid):
                 pass
     receipt = {"appid": appid, "mod": "UEVR", "version": UEVR["version"], "exe": exe.name,
                "installed": int(time.time()), "prefix": str(g["prefix"]),
-               "remove": [str(base / UEVR["dir"]), str(base / DOTNET["dir"])],
+               "remove": [str(base / UEVR["dir"]), str(base / PYTHON["dir"])],
                # Parents that didn't exist yet (UEVR makes UnrealVRMod), deepest first.
                "remove_if_empty": fresh,
                # UEVR creates these on first injection. Remove them on uninstall
                # only if they weren't there before, so earlier settings survive.
                "remove_if_created": {k: str(v) for k, v in dirs.items() if not v.exists()},
-               "sources": [UEVR["url"]] + [u for u, _ in DOTNET["files"]]}
+               "sources": [UEVR["url"], PYTHON["url"]]}
     RECEIPTS.mkdir(parents=True, exist_ok=True)
     tmp = receipt_path(appid).with_suffix(".tmp")
     tmp.write_text(json.dumps(receipt, indent=1))
@@ -265,55 +363,22 @@ def x11_windows(display):
     return [(int(m[1], 16), m[2], int(m[3])) for m in re.finditer(r'(0x[0-9a-f]+) "([^"]*)":.*?\)\s+(\d+)x\d+', out)]
 
 
-def x_click(display, window, points):
-    """Send ButtonPress/Release straight to a window (gamescope blocks real input to it)."""
-    import ctypes as C
-    x11 = C.CDLL("libX11.so.6")
-    x11.XOpenDisplay.restype = C.c_void_p
-
-    class Button(C.Structure):
-        _fields_ = [("type", C.c_int), ("serial", C.c_ulong), ("send_event", C.c_int), ("display", C.c_void_p),
-                    ("window", C.c_ulong), ("root", C.c_ulong), ("subwindow", C.c_ulong), ("time", C.c_ulong),
-                    ("x", C.c_int), ("y", C.c_int), ("x_root", C.c_int), ("y_root", C.c_int),
-                    ("state", C.c_uint), ("button", C.c_uint), ("same_screen", C.c_int)]
-
-    class Event(C.Union):
-        _fields_ = [("xbutton", Button), ("pad", C.c_long * 24)]
-
-    d = x11.XOpenDisplay(display.encode())
-    if not d:
-        raise Fail(f"can't open X display {display}")
-    d = C.c_void_p(d)
-    root = x11.XDefaultRootWindow(d)
-    ox, oy, child = C.c_int(), C.c_int(), C.c_ulong()
-    x11.XTranslateCoordinates(d, C.c_ulong(window), C.c_ulong(root), 0, 0, C.byref(ox), C.byref(oy), C.byref(child))
-    for x, y in points:
-        for kind, mask, state in ((4, 1 << 2, 0), (5, 1 << 3, 1 << 8)):  # press, then release with Button1 held
-            e = Event()
-            b = e.xbutton
-            b.type, b.send_event, b.window, b.root, b.x, b.y = kind, 1, window, root, x, y
-            b.x_root, b.y_root, b.state, b.button, b.same_screen = x + ox.value, y + oy.value, state, 1, 1
-            x11.XSendEvent(d, C.c_ulong(window), 1, C.c_long(mask), C.byref(e))
-            x11.XFlush(d)
-            time.sleep(0.15)
-        time.sleep(1.5)
-    x11.XCloseDisplay(d)
-
-
 def frame_submits(appid):
     """SteamVR's count of frames the app has submitted, or None if it isn't a scene app."""
     try:
         stats = json.loads(subprocess.run([VRCMD, "--stats"], capture_output=True, text=True, timeout=15).stdout)
     except (OSError, ValueError, subprocess.TimeoutExpired):
         return None
-    return next((s.get("frame_submits") for s in stats if s.get("key") == f"steam.app.{appid}"), None)
+    if not isinstance(stats, list):
+        return None
+    return next((s.get("frame_submits") for s in stats if isinstance(s, dict) and s.get("key") == f"steam.app.{appid}"), None)
 
 
 def wait(what, seconds, check, step=2):
     end = time.time() + seconds
     while time.time() < end:
         v = check()
-        if v:
+        if v is not None and v is not False:  # 0 frames is still an answer
             return v
         time.sleep(step)
     raise Fail(f"timed out waiting for {what}")
@@ -332,64 +397,43 @@ def start(appid):
         subprocess.Popen(["steam", f"steam://rungameid/{appid}"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                          env={**os.environ, "DISPLAY": os.environ.get("DISPLAY", ":0")}, start_new_session=True)
         pid = wait(f"{g['name']} to start", 120, lambda: game_pid(exe))
-    env = dict(line.split("=", 1) for line in open(f"/proc/{pid}/environ").read().split("\0")
-               if GAME_ENV.match(line))
-    display = env.get("DISPLAY")
-    if not display or "WINEPREFIX" not in env:
-        raise Fail(f"{exe} doesn't look like a Proton game process")
-    # The game needs its D3D11 window before UEVR can hook it. Proton's own
-    # helper windows ("Steam", "Default IME", …) are small.
-    wait("the game window", 90, lambda: any(w[2] >= 640 and w[1] != "UEVR" for w in x11_windows(display)))
-    time.sleep(10)
-    root = f"C:\\{MANAGED}\\{DOTNET['dir']}"
-    # Our own environment (HOME and the rest) under the game's Wine settings:
-    # with only the game's variables, fontconfig had no cache directory.
-    env = {**os.environ, **env, "DOTNET_ROOT": root, "DOTNET_ROOT_X64": root}
-    # The .NET injector sometimes dies at startup under Wine and FEX (an
-    # AccessViolationException, 2026-09-29), so give it a few tries.
-    for attempt in range(3):
-        before = {w[0] for w in x11_windows(display) if w[1] == "UEVR"}
-        log = open(CACHE / f"injector-{appid}.log", "w") if CACHE.is_dir() else subprocess.DEVNULL
-        injector = subprocess.Popen(["wine", f"C:\\{MANAGED}\\{UEVR['dir']}\\UEVRInjector.exe"], env=env,
-                                    stdout=log, stderr=log, stdin=subprocess.DEVNULL, start_new_session=True,
-                                    cwd=str(Path(r["prefix"]) / "drive_c" / MANAGED / UEVR["dir"]))
-        try:
-            win = wait("the UEVR injector window", 90,
-                       lambda: injector.poll() is not None or next(
-                           (w for w in x11_windows(display) if w[1] == "UEVR" and w[0] not in before), None))
-        except Fail:
-            os.killpg(injector.pid, signal.SIGKILL)
-            raise
-        if win is not True:
-            break
-    else:
-        raise Fail(f"the UEVR injector crashed on start {attempt + 1} times; "
-                   f"its log is in ~/.cache/frame-control/mods/injector-{appid}.log")
     try:
-        # It maps at a default size, then WPF lays it out (seen: 960 px, then 625).
-        try:
-            wait("the UEVR window's layout", 30,
-                 lambda: any(w[0] == win[0] and w[2] == INJECTOR_WIDTH for w in x11_windows(display)), step=1)
-        except Fail:
-            width = next((w[2] for w in x11_windows(display) if w[0] == win[0]), "?")
-            raise Fail(f"the UEVR window is {width} px wide, not {INJECTOR_WIDTH}; "
-                       "its layout changed, so not clicking blind") from None
-        time.sleep(5)  # let it fill its process list
-        x_click(display, win[0], [CLICK_OPENVR, CLICK_INJECT])
-        try:
-            wait("UEVRBackend.dll to load in the game", 45, lambda: loaded(pid, "UEVRBackend.dll"))
-        except Fail:
-            raise Fail(f"UEVR didn't inject into {exe}. Its log is in ~/.cache/frame-control/mods/injector-{appid}.log") from None
+        environ = Path(f"/proc/{pid}/environ").read_text(errors="replace")
+    except OSError:
+        raise Fail(f"{exe} exited") from None
+    game_env = dict(line.split("=", 1) for line in environ.split("\0") if GAME_ENV.match(line))
+    display = game_env.get("DISPLAY")
+    if not display or "WINEPREFIX" not in game_env:
+        raise Fail(f"{exe} doesn't look like a Proton game process")
+    # UEVR hooks the game's D3D11/12 device, so wait for its window. Proton's
+    # own helper windows ("Steam", "Default IME", …) are small.
+    wait("the game window", 90, lambda: any(w[2] >= 640 for w in x11_windows(display)))
+    time.sleep(10)
+    # Our own environment (HOME and the rest) under the game's Wine settings.
+    env = {**os.environ, **game_env}
+    base = f"C:\\{MANAGED}"
+    profile = f"C:\\users\\steamuser\\AppData\\Roaming\\UnrealVRMod\\{Path(exe).stem}"
+    try:
+        out = subprocess.run(["wine", f"{base}\\{PYTHON['dir']}\\python.exe", f"{base}\\{PYTHON['dir']}\\frame_inject.py",
+                              exe, f"{base}\\{UEVR['dir']}", profile], env=env, capture_output=True, text=True,
+                             timeout=120, stdin=subprocess.DEVNULL,
+                             cwd=str(Path(r["prefix"]) / "drive_c" / MANAGED))
+    except subprocess.TimeoutExpired:
+        raise Fail("the injection step didn't finish in 2 minutes") from None
+    reply = next((json.loads(l) for l in reversed(out.stdout.splitlines()) if l.startswith("{")), None)
+    if not reply or "error" in reply:
+        raise Fail("UEVR injection failed: " + (reply or {}).get("error", (out.stderr.strip().splitlines() or ["no output"])[-1]))
+    try:
+        wait("UEVRBackend.dll to load in the game", 20, lambda: loaded(pid, "UEVRBackend.dll"))
     except Fail:
-        os.killpg(injector.pid, signal.SIGKILL)  # don't leave an injector window behind a failed start
-        raise
+        raise Fail(f"the injection reported success but {exe} has no UEVRBackend.dll") from None
     submits = None
     try:
         submits = wait("SteamVR frames", 30, lambda: frame_submits(appid))
     except Fail:
         pass
-    return {"message": f"UEVR injected into {g['name']}" + ("; SteamVR is receiving its frames" if submits else
-                                                            "; SteamVR hasn't reported frames from it yet"),
+    return {"message": f"UEVR injected into {g['name']}" + ("; SteamVR is receiving its frames" if submits is not None
+                                                            else "; SteamVR hasn't reported frames from it yet"),
             "frame_submits": submits, **status(appid)}
 
 
@@ -400,6 +444,8 @@ def uninstall(appid):
     if game_pid(r["exe"]):
         raise Fail("the game is running; quit it first")
     prefix = os.path.realpath(r["prefix"])
+    if not prefix.endswith(f"/steamapps/compatdata/{appid}/pfx"):
+        raise Fail(f"receipt names a prefix that isn't app {appid}'s: {r['prefix']}")
     targets = list(r.get("remove", [])) + list(r.get("remove_if_created", {}).values())
     for t in targets:  # a receipt only ever points inside this game's prefix
         real = os.path.realpath(t)
@@ -426,7 +472,17 @@ def uninstall(appid):
 def main(argv):
     if len(argv) != 2 or argv[0] not in ("status", "install", "start", "uninstall") or not argv[1].isdigit():
         raise Fail("usage: status|install|start|uninstall APPID")
-    return {"status": status, "install": install, "start": start, "uninstall": uninstall}[argv[0]](int(argv[1]))
+    action = {"status": status, "install": install, "start": start, "uninstall": uninstall}[argv[0]]
+    if action is status:
+        return status(int(argv[1]))
+    # One change at a time, or an uninstall could delete what an install is moving in.
+    LOCK.parent.mkdir(parents=True, exist_ok=True)
+    with open(LOCK, "w") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            raise Fail("another mod action is still running on the Frame; try again when it finishes") from None
+        return action(int(argv[1]))
 
 
 if __name__ == "__main__":
@@ -434,4 +490,7 @@ if __name__ == "__main__":
         print(json.dumps(main(sys.argv[1:])))
     except Fail as e:
         print(json.dumps({"error": str(e)}))
+        sys.exit(1)
+    except Exception as e:  # still one JSON object, for the server to show
+        print(json.dumps({"error": f"{type(e).__name__}: {e}"}))
         sys.exit(1)

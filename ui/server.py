@@ -436,7 +436,7 @@ def steam(body):
 
 
 # Downloads are about 70 MB; starting waits for the game, the injector and SteamVR.
-MOD_TIMEOUT = {"status": 40, "install": 600, "start": 360, "uninstall": 60}
+MOD_TIMEOUT = {"status": 40, "install": 600, "start": 900, "uninstall": 60}
 
 
 def mods(body):

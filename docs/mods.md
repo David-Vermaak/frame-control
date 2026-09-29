@@ -26,7 +26,7 @@ means an upstream source describes it; “inferred” means it still needs a tes
 | Game / build | Mod or content | Evidence and support status | Next check |
 |---|---|---|---|
 | Half-Life 2: VR Mod – Episode One, Steam 2177750, build 25413453 | Official Steam community mod, shared base depot 658920 build 25413418 | **Verified: startup only.** Already installed; launched through Proton ARM64. The stereo headset capture showed its first-time setup, and SteamVR loaded `bindings_frame.json`. Gameplay, controller interaction, fresh installation and removal are unverified. | Complete first-time setup and play a level before offering a tested install shortcut. |
-| Gravitas, Steam 1067310, Windows, Unreal Engine 4 | UEVR 1.05, from Frame Control | **Verified 2026-09-29: installs, injects, SteamVR receives frames, removes cleanly.** Through the app's UI: install, then three cold **Play in VR** runs (54–58 s each) all loaded `UEVRBackend.dll` into the game, and SteamVR's compositor counted frame submits for `steam.app.1067310`. Remove restored the prefix to its pre-install file listing. **Not seen:** the stereo image, head tracking and controls (headset unworn). | Wear the headset: check the image, tracking, UEVR's in-headset menu and controller input. |
+| Gravitas, Steam 1067310, Windows, Unreal Engine 4 | UEVR 1.05, from Frame Control | **Verified 2026-09-29: installs, injects, SteamVR receives frames, removes cleanly.** Nine cold **Play in VR** runs (33–35 s each), then the full cycle again from the app's UI, all loaded `UEVRBackend.dll` into the game, with UEVR logging `Hooked DirectX 11` and `Requested runtime: openvr_api.dll`. SteamVR's compositor counted frame submits for `steam.app.1067310`. Remove restored the prefix to its pre-install file listing. **Not seen:** the stereo image, head tracking and controls (headset unworn). | Wear the headset: check the image, tracking, UEVR's in-headset menu and controller input. |
 | Beat Saber, Steam 620980, Windows / Proton | Basic custom songs; later SongCore and version-matched mods | **Verified: absent from the 868-game library returned by this Frame.** Store metadata lists Windows, not Linux. **Documented:** the PC game reads basic maps from `Beat Saber_Data/CustomLevels` without a mod manager. Playback on Frame is unverified. | An already-owned, legitimately installed copy is required. Do not buy it as part of this task. |
 | Beat Saber, claimed native ARM64 build | Custom songs / native mods | **Inferred: unverified.** The research mentions this build but supplies no verified official distributable or tested layout. CPU architecture alone does not identify Android versus Linux, the game version or the mod ABI. | Establish official provenance, ownership, binary type and version before touching files. Do not apply Quest patches to an unidentified build. |
 | Beat Saber, Alex's Quest 2 copy | Custom songs / Android mods | **Documented: owner-reported copy on Quest 2.** Not reachable on 2026-09-29 (no device on `adb` from the Mac). No APK, version or installed mods inspected; no Frame playback verified. A Quest copy is a Meta store purchase; copying it to another headset would need its entitlement check to pass there, which this work won't work around. This does not establish ownership of the Steam build. | When the Quest is available, inspect the owned copy's version and supported transfer path, then test Lepton/OpenXR compatibility without bypassing entitlement checks. |
@@ -56,41 +56,46 @@ like `frame_steam.py`.
   with Gravitas, and HL2 VR is correctly refused). The game needs a Proton
   prefix, so it must have been played once.
 - **Install.** Downloads praydog's [UEVR 1.05 release](https://github.com/praydog/UEVR/releases/tag/1.05)
-  and Microsoft's Windows x64 .NET 6.0.36 and Windows Desktop runtimes (the
-  injector is a .NET 6 WPF app, and Proton ships no .NET). Each file is
-  checked against its pinned SHA-256 (UEVR) or SHA-512 (.NET, from Microsoft's
-  release metadata) before use. Archives are unpacked into a staging folder,
-  rejecting entries that escape it, symlinks and oversized contents, and
-  then moved into `<prefix>/drive_c/frame-control/`. Nothing goes into the
+  and python.org's [Windows x64 embeddable Python 3.14.7](https://www.python.org/downloads/release/python-3147/).
+  Each is checked against a pinned SHA-256; Python's comes from python.org's
+  release-file API. Archives are unpacked into a staging folder, rejecting
+  entries that escape it, symlinks and oversized contents, then moved into
+  `<prefix>/drive_c/frame-control/` (about 47 MB). Nothing goes into the
   game's own folder. A receipt in `~/.local/share/frame-control/mods/` lists
   what to remove, including UEVR's own settings folders only if they didn't
-  exist before. Install and remove refuse while the game is running.
+  exist before. Install and remove refuse while the game is running, and only
+  one mod action runs at a time.
 - **Play in VR.** Launches the game through Steam if it isn't running and
-  waits for its window. It then starts `UEVRInjector.exe` with the game's own
-  Proton, prefix and Wine settings, read from the game process, so both are in
-  one Wine session. It presses **OpenVR** and **Inject**, confirms that
-  `UEVRBackend.dll` is mapped into the game, and reads SteamVR's frame count
-  for the app (`vrcmd --stats`).
+  waits for its window. It then runs a short script under that Python, with
+  the game's Proton, prefix and Wine settings read from the game process, so
+  both share one Wine session. The script repeats what UEVR's own injector does
+  when you press Inject with OpenVR chosen: load `UEVRPluginNullifier.dll` and
+  call its `nullify`, load `openvr_api.dll`, set `Frontend_RequestedRuntime` in
+  UEVR's per-game `config.txt`, then load `UEVRBackend.dll`. Each load is a
+  `LoadLibraryW` remote thread, as in the frontend's `Injector.cs`. `start`
+  then checks that `UEVRBackend.dll` is mapped into the game and reads
+  SteamVR's frame count for the app (`vrcmd --stats`).
 - **Remove.** Deletes what the receipt lists, then the download cache once
   no game uses it. Verified: the prefix's file listing matched its
   pre-install state afterwards.
 
-Things found on the way (verified 2026-09-29):
+Why not UEVR's own injector (verified 2026-09-29):
 
-- Under gamescope, the full-screen game keeps the pointer and focus, and
-  XTest clicks, raising or refocusing the injector window don't change that.
-  So in the headset you couldn't click the injector yourself, and Frame
-  Control sends X `ButtonPress`/`ButtonRelease` events straight to the
-  injector's window instead. The positions are for UEVR 1.05's layout; the
-  window first maps at 960 px wide and settles at 625 px. `start` refuses to
-  click if it doesn't settle at that width.
-- The injector's `--attach=<process>` didn't inject under Wine. It also
-  didn't restore the OpenVR choice it had saved, so Frame Control chooses
-  OpenVR every time.
-- With only the game's variables (no `HOME`), the injector hit an
-  `AccessViolationException` in .NET at startup. With the normal environment
-  underneath, all four later starts worked. `start` also retries a
-  crashed injector up to three times.
+- It's a .NET 6 WPF app, so it needs Microsoft's .NET runtimes (about 70 MB
+  of downloads) in the prefix.
+- Under gamescope, the full-screen game keeps the pointer and focus. XTest
+  clicks, raising or refocusing the injector window don't change that, so in
+  the headset you can't click it. Sending X `ButtonPress`/`ButtonRelease`
+  events straight to its window does work.
+- `--attach=<process>` didn't inject under Wine, and it didn't restore its
+  saved OpenVR choice.
+- Driven that way, it injected in 6 of 8 cold starts. In a bad session every
+  new injector ignored input or never showed its window, even after
+  relaunching. Its process list reads each process's main window title, a
+  cross-process window message; a window that isn't answering would block its
+  UI thread (inferred from the frontend's source, not proven). Without a
+  `HOME` it also died in .NET at startup.
+- Frame Control's own script injected in 9 of 9 cold starts, in 33–35 s.
 - UEVR's DirectX 12 probing logs errors before it settles on DirectX 11 for
   Gravitas, and some of its Unreal engine scans fail on this older UE4 game.
   Neither stopped the injection.
@@ -152,7 +157,11 @@ same, and none of it is built for them:
 - [UEVR 1.05 official release](https://github.com/praydog/UEVR/releases/tag/1.05)
   and [author's usage instructions](https://github.com/praydog/UEVR#getting-started).
 - [Microsoft .NET 6 release metadata](https://builds.dotnet.microsoft.com/dotnet/release-metadata/6.0/releases.json),
-  including the SHA-512 hashes used for the test runtimes.
+  including the SHA-512 hashes used for the injector tests.
+- [UEVR frontend source](https://github.com/praydog/UEVR-Frontend): `UEVR/MainWindow.xaml.cs`
+  (`Inject_Clicked`) and `UEVR/Injector.cs`, the steps `frame_inject.py` follows.
+- [python.org release-file API](https://www.python.org/api/v2/downloads/release_file/) for the
+  embeddable Python's `sha256_sum`.
 - [OpenComposite's OpenXR branch](https://gitlab.com/znixian/OpenOVR/-/tree/openxr),
   including per-game installation and the need to preserve original DLLs.
 - [R.E.A.L. author post referenced by the research](https://www.patreon.com/realvr/posts/but-wheres-link-165840151)

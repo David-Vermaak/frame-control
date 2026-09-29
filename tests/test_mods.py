@@ -64,17 +64,15 @@ class FakeLibrary(unittest.TestCase):
         self.addCleanup(p.stop)
         self.downloads = {frame_mods.UEVR["url"]: zip_bytes({"UEVRInjector.exe": b"MZ", "UEVRBackend.dll": b"MZ",
                                                              "openvr_api.dll": b"MZ"})}
-        for url, _ in frame_mods.DOTNET["files"]:
-            self.downloads[url] = zip_bytes({"shared/Microsoft.NETCore.App/6.0.36/x.dll": b"MZ"})
+        self.downloads[frame_mods.PYTHON["url"]] = zip_bytes({"python.exe": b"MZ", "python314.zip": b"PK"})
         self.pin(self.downloads)
 
     def pin(self, downloads):
         """Serve these bytes and pin their real hashes in place of the published ones."""
-        uevr = dict(frame_mods.UEVR, sha256=hashlib.sha256(downloads[frame_mods.UEVR["url"]]).hexdigest())
-        dotnet = dict(frame_mods.DOTNET, files=[(u, hashlib.sha512(downloads[u]).hexdigest())
-                                                for u, _ in frame_mods.DOTNET["files"]])
-        for name, value in (("UEVR", uevr), ("DOTNET", dotnet)):
-            p = mock.patch.object(frame_mods, name, value)
+        for name in ("UEVR", "PYTHON"):
+            pinned = getattr(frame_mods, name)
+            p = mock.patch.object(frame_mods, name,
+                                  dict(pinned, sha256=hashlib.sha256(downloads[pinned["url"]]).hexdigest()))
             p.start()
             self.addCleanup(p.stop)
         p = mock.patch.object(frame_mods.urllib.request, "urlopen",
@@ -109,8 +107,9 @@ class InstallUninstall(FakeLibrary):
         before = sorted(p.relative_to(self.prefix) for p in self.prefix.rglob("*"))
         res = frame_mods.install(APPID)
         self.assertTrue(res["installed"])
-        self.assertTrue((self.managed() / "uevr-1.05/UEVRInjector.exe").is_file())
-        self.assertTrue((self.managed() / "dotnet-6.0.36/shared/Microsoft.NETCore.App/6.0.36/x.dll").is_file())
+        self.assertTrue((self.managed() / "uevr-1.05/UEVRBackend.dll").is_file())
+        self.assertTrue((self.managed() / "python-3.14.7/python.exe").is_file())
+        self.assertIn("UEVRBackend.dll", (self.managed() / "python-3.14.7/frame_inject.py").read_text())
         self.assertFalse(list(self.managed().glob(".staging-*")))
         # What UEVR writes on its first injection.
         roaming = self.prefix / "drive_c/users/steamuser/AppData/Roaming/UnrealVRMod/Drop-Win64-Shipping"
@@ -166,9 +165,19 @@ class InstallUninstall(FakeLibrary):
         self.assertTrue((self.managed() / "uevr-1.05").is_dir(), "nothing removed when the receipt is bad")
 
 
+    def test_receipt_cannot_name_another_prefix(self):
+        frame_mods.install(APPID)
+        r = frame_mods.read_receipt(APPID)
+        r["prefix"] = "/"
+        frame_mods.receipt_path(APPID).write_text(json.dumps(r))
+        with self.assertRaisesRegex(frame_mods.Fail, "isn't app"):
+            frame_mods.uninstall(APPID)
+        self.assertTrue((self.managed() / "uevr-1.05").is_dir())
+
+
 class Downloads(FakeLibrary):
     def test_hash_mismatch_deletes_and_installs_nothing(self):
-        self.downloads[frame_mods.UEVR["url"]] = zip_bytes({"UEVRInjector.exe": b"tampered"})
+        self.downloads[frame_mods.UEVR["url"]] = zip_bytes({"UEVRBackend.dll": b"tampered"})
         with self.assertRaisesRegex(frame_mods.Fail, "doesn't match"):
             frame_mods.install(APPID)
         self.assertFalse((frame_mods.CACHE / "UEVR.zip").exists())
@@ -176,8 +185,8 @@ class Downloads(FakeLibrary):
         self.assertIsNone(frame_mods.read_receipt(APPID))
 
     def test_archive_escaping_its_folder_is_refused(self):
-        for bad in (zip_bytes({"UEVRInjector.exe": b"MZ", "../../evil.dll": b"MZ"}),
-                    zip_bytes({"UEVRInjector.exe": b"MZ"}, links=["openvr_api.dll"])):
+        for bad in (zip_bytes({"UEVRBackend.dll": b"MZ", "../../evil.dll": b"MZ"}),
+                    zip_bytes({"UEVRBackend.dll": b"MZ"}, links=["openvr_api.dll"])):
             downloads = dict(self.downloads, **{frame_mods.UEVR["url"]: bad})
             self.pin(downloads)
             with self.subTest(), self.assertRaises(frame_mods.Fail):
@@ -193,52 +202,88 @@ class Downloads(FakeLibrary):
                 frame_mods.install(APPID)
 
 
+    def test_oversized_download_is_stopped(self):
+        with mock.patch.object(frame_mods, "MAX_DOWNLOAD", 10):
+            with self.assertRaisesRegex(frame_mods.Fail, "bigger than expected"):
+                frame_mods.install(APPID)
+        self.assertFalse(list(frame_mods.CACHE.glob("*")))
+
+
+class Actions(FakeLibrary):
+    def test_one_change_at_a_time(self):
+        lock = Path(tempfile.mkdtemp()) / "mods.lock"
+        with mock.patch.object(frame_mods, "LOCK", lock), open(lock, "w") as held:
+            frame_mods.fcntl.flock(held, frame_mods.fcntl.LOCK_EX)
+            with self.assertRaisesRegex(frame_mods.Fail, "another mod action"):
+                frame_mods.main(["install", str(APPID)])
+            self.assertFalse(frame_mods.status(APPID)["installed"])
+            self.assertEqual(frame_mods.main(["status", str(APPID)])["appid"], APPID, "status never waits")
+
+    def test_zero_frames_is_an_answer(self):
+        stats = json.dumps([{"key": f"steam.app.{APPID}", "frame_submits": 0}, {"operation": "status"}])
+        with mock.patch.object(frame_mods.subprocess, "run", return_value=mock.Mock(stdout=stats)):
+            self.assertEqual(frame_mods.wait("frames", 5, lambda: frame_mods.frame_submits(APPID)), 0)
+        with mock.patch.object(frame_mods.subprocess, "run", return_value=mock.Mock(stdout='{"odd": 1}')):
+            self.assertIsNone(frame_mods.frame_submits(APPID))
+
+
 class Start(FakeLibrary):
+    def environ(self, text):
+        """The game's /proc/<pid>/environ; every other file reads normally."""
+        real = frame_mods.Path.read_text
+        return mock.patch.object(frame_mods.Path, "read_text", autospec=True, side_effect=lambda path, *a, **k:
+                                 text if str(path).startswith("/proc/") else real(path, *a, **k))
+
     def test_needs_install_first(self):
         with self.assertRaisesRegex(frame_mods.Fail, "isn't installed"):
             frame_mods.start(APPID)
 
-    def test_refuses_to_click_an_unexpected_layout(self):
+    def run_start(self, reply, loaded=(False, True, True, True)):
         frame_mods.install(APPID)
         self.running = 4242
         env = "WINEPREFIX=/x\0DISPLAY=:1\0WINESERVERSOCKET=17\0PATH=/p\0"
-        windows = [[(1, "SkyArk", 1280)], [(1, "SkyArk", 1280)], [(1, "SkyArk", 1280), (2, "UEVR", 700)]]
-        with mock.patch("builtins.open", mock.mock_open(read_data=env)), \
-                mock.patch.object(frame_mods, "loaded", return_value=False), \
-                mock.patch.object(frame_mods, "x11_windows", side_effect=lambda d: windows.pop(0) if len(windows) > 1 else windows[0]), \
-                mock.patch.object(frame_mods.subprocess, "Popen") as popen, \
-                mock.patch.object(frame_mods, "x_click") as click, \
-                mock.patch.object(frame_mods.os, "killpg") as kill, \
-                mock.patch.object(frame_mods.time, "time", side_effect=itertools.count(0, 5)), \
-                mock.patch.object(frame_mods.time, "sleep"):
-            popen.return_value.poll.return_value = None  # the injector stays up
-            with self.assertRaisesRegex(frame_mods.Fail, "700 px"):
-                frame_mods.start(APPID)
-        click.assert_not_called()
-        kill.assert_called_once_with(popen.return_value.pid, frame_mods.signal.SIGKILL)
-        env_used = popen.call_args.kwargs["env"]
-        self.assertNotIn("WINESERVERSOCKET", env_used, "an inherited fd number means nothing to a new process")
-        self.assertEqual(env_used["DOTNET_ROOT"], "C:\\frame-control\\dotnet-6.0.36")
-        self.assertEqual(env_used["WINEPREFIX"], "/x")
-        self.assertIn("HOME", env_used, "fontconfig needs a HOME for its cache")
-
-    def test_injector_that_keeps_crashing_is_reported(self):
-        frame_mods.install(APPID)
-        self.running = 4242
-        with mock.patch("builtins.open", mock.mock_open(read_data="WINEPREFIX=/x\0DISPLAY=:1\0")), \
-                mock.patch.object(frame_mods, "loaded", return_value=False), \
+        with self.environ(env), \
+                mock.patch.object(frame_mods, "loaded", side_effect=list(loaded) + [True] * 5), \
                 mock.patch.object(frame_mods, "x11_windows", return_value=[(1, "SkyArk", 1280)]), \
-                mock.patch.object(frame_mods.subprocess, "Popen") as popen, \
-                mock.patch.object(frame_mods, "x_click") as click, \
+                mock.patch.object(frame_mods.subprocess, "run", return_value=mock.Mock(stdout=reply, stderr="")) as run, \
+                mock.patch.object(frame_mods, "frame_submits", return_value=7), \
                 mock.patch.object(frame_mods.time, "sleep"):
-            popen.return_value.poll.return_value = 134  # died before showing its window
-            with self.assertRaisesRegex(frame_mods.Fail, "crashed on start 3 times"):
-                frame_mods.start(APPID)
-        self.assertEqual(popen.call_count, 3)
-        click.assert_not_called()
+            return frame_mods.start(APPID), run
+
+    def test_injects_with_the_games_wine_settings(self):
+        res, run = self.run_start('noise\n{"pid": 320}\n')
+        self.assertEqual((res["frame_submits"], res["message"]), (7, "UEVR injected into Gravitas; SteamVR is receiving its frames"))
+        cmd, env = run.call_args.args[0], run.call_args.kwargs["env"]
+        self.assertEqual(cmd[:2], ["wine", "C:\\frame-control\\python-3.14.7\\python.exe"])
+        self.assertEqual(cmd[3:], ["Drop-Win64-Shipping.exe", "C:\\frame-control\\uevr-1.05",
+                                   "C:\\users\\steamuser\\AppData\\Roaming\\UnrealVRMod\\Drop-Win64-Shipping"])
+        self.assertEqual(env["WINEPREFIX"], "/x")
+        self.assertNotIn("WINESERVERSOCKET", env, "an inherited fd number means nothing to a new process")
+        self.assertIn("HOME", env, "fontconfig needs a HOME for its cache")
+
+    def test_reports_the_injection_error(self):
+        with self.assertRaisesRegex(frame_mods.Fail, "couldn't open"):
+            self.run_start('{"error": "couldn\'t open Drop-Win64-Shipping.exe (5)"}\n')
+
+    def test_success_is_checked_in_the_game(self):
+        with self.assertRaisesRegex(frame_mods.Fail, "has no UEVRBackend.dll"):
+            with mock.patch.object(frame_mods.time, "time", side_effect=itertools.count(0, 5)):
+                self.run_start('{"pid": 320}\n', loaded=[False] * 40)
+
+    def test_inject_script_is_valid_python(self):
+        compile(frame_mods.INJECT_PY, "frame_inject.py", "exec")
 
 
 class Helper(unittest.TestCase):
+    def test_unexpected_errors_are_still_json(self):
+        # A receipt from another version, without "exe": a KeyError, not a traceback.
+        script = (ROOT / "ui" / "frame_mods.py").read_text().replace(
+            "def read_receipt(appid):", "def read_receipt(appid):\n    return {'prefix': '/x'}\n\n\ndef _unused(appid):")
+        out = subprocess.run([sys.executable, "-", "uninstall", "1"], input=script,
+                             capture_output=True, text=True, timeout=30, env={"HOME": tempfile.mkdtemp()})
+        self.assertEqual(out.returncode, 1, out.stderr)
+        self.assertIn("KeyError", json.loads(out.stdout)["error"])
+
     def test_bad_usage_prints_json_error(self):
         for args in ([], ["install"], ["install", "12x"], ["remove", "620"]):
             out = subprocess.run([sys.executable, str(ROOT / "ui" / "frame_mods.py"), *args],
