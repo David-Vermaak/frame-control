@@ -15,11 +15,13 @@
 set -euo pipefail
 
 FRAME_ALIAS=${FRAME_ALIAS:-frame}
+# Frame Control passes the headset it has chosen: its address and pinned identity.
+ssh_opts=(${(Q)${(z)FRAME_SSH_OPTS:-}})
 HERE=${0:A:h}
 cmd=${1:-status}
 case $cmd in on|off|status) ;; *) echo "usage: keep-awake.sh on|off|status" >&2; exit 2 ;; esac
 
-ssh -o ConnectTimeout=8 "$FRAME_ALIAS" \
+ssh "${ssh_opts[@]}" -o ConnectTimeout=8 "$FRAME_ALIAS" \
   'mkdir -p ~/.cache/frame-control && cat > ~/.cache/frame-control/frame_steam.py' < "$HERE/../ui/frame_steam.py"
 
 # Runs on the Frame. Verified 2026-09-28 (BUILD_ID 20260925.6191901): the
@@ -27,7 +29,7 @@ ssh -o ConnectTimeout=8 "$FRAME_ALIAS" \
 # written the way Steam's settings page does (steamui module exporting the
 # SetSetting wrapper). logind refuses an inhibitor from an SSH session
 # ("Interactive authentication required") but allows one from a user unit.
-ssh "$FRAME_ALIAS" python3 - "$cmd" <<'EOF'
+ssh "${ssh_opts[@]}" "$FRAME_ALIAS" python3 - "$cmd" <<'EOF'
 import json, os, subprocess, sys
 sys.path.insert(0, os.path.expanduser("~/.cache/frame-control"))
 from frame_steam import Page

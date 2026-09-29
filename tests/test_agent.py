@@ -252,3 +252,23 @@ class ComputerState(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class ScriptsFollowTheHeadset(unittest.TestCase):
+    """keep_awake and panel tools run scripts that ssh on their own: they must reach the
+    headset the server is routed to, not whatever `frame` means in ~/.ssh/config."""
+
+    @unittest.skipUnless(shutil.which('zsh'), 'needs zsh')
+    def test_scripts_get_the_routed_alias_and_options(self):
+        import shlex
+        fake = mock.Mock(FRAME='frame-2', LOCAL=False, HERE=Path(__file__).resolve().parent.parent / 'ui',
+                         SSH=['ssh', '-o', 'BatchMode=yes', '-o', 'HostName=192.0.2.2', '-o', 'HostKeyAlias=frame-control-ab'])
+        with mock.patch.object(agent.subprocess, 'run', return_value=mock.Mock(returncode=0, stdout='ok', stderr='')) as run:
+            agent.run_script(fake, 'keep-awake.sh', ['status'])
+        env = run.call_args.kwargs['env']
+        self.assertEqual(env['FRAME_ALIAS'], 'frame-2')
+        self.assertEqual(shlex.split(env['FRAME_SSH_OPTS']), fake.SSH[1:])
+        # and the script turns that back into the same argv
+        out = subprocess.run(['zsh', '-c', 'ssh_opts=(${(Q)${(z)FRAME_SSH_OPTS:-}}); print -l -- $ssh_opts'],
+                             env={**os.environ, 'FRAME_SSH_OPTS': env['FRAME_SSH_OPTS']}, capture_output=True, text=True)
+        self.assertEqual(out.stdout.splitlines(), fake.SSH[1:])

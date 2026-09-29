@@ -262,12 +262,13 @@ class MacView:
         """Tries the ports on one route; True once the tunnel answers. With self.lock held."""
         last = ""
         for port in ports:
+            target = (self.frame, self.host_opts)  # retarget() may change these meanwhile
             # `via` first: ssh keeps the first value of an option, so USB-C's HostName wins
             # while the headset's pinned identity (in host_opts) still checks it.
-            proc = subprocess.Popen([*self.tunnel_ssh, "-o", "ControlPath=none", *via, *self.host_opts,
+            proc = subprocess.Popen([*self.tunnel_ssh, "-o", "ControlPath=none", *via, *target[1],
                                      "-o", "ExitOnForwardFailure=yes",
                                      "-o", "ServerAliveInterval=5", "-o", "ServerAliveCountMax=3", "-N",
-                                     "-R", f"127.0.0.1:{port}:127.0.0.1:{self.port}", self.frame],
+                                     "-R", f"127.0.0.1:{port}:127.0.0.1:{self.port}", target[0]],
                                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                                     stderr=subprocess.PIPE, text=True)
             # A taken port makes ssh exit once it's connected; a working
@@ -280,6 +281,9 @@ class MacView:
                 if self._probe(port):
                     ok = True
                     break
+            if ok and target[0] != self.frame:
+                ok = False  # the app switched headset while this one connected: not its tunnel
+                self._last_tunnel_error = "switched headset"
             if ok:
                 self.tunnel, self.remote_port = proc, port
                 self.track(proc)
