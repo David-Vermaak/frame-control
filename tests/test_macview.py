@@ -10,6 +10,7 @@ Run: python3 -m unittest discover -s tests
 import base64
 import http.client
 import json
+import io
 import os
 import shutil
 import socket
@@ -58,6 +59,26 @@ class Helpers(unittest.TestCase):
         self.assertTrue(Tunnel.ended)
         self.assertIsNone(mv.tunnel)
         self.assertEqual(mv.frame, "frame-2")
+
+    def test_a_switch_just_before_publishing_drops_the_old_headsets_tunnel(self):
+        mv = frame_macview.MacView(["ssh"], lambda *a, **k: "", "frame")
+        mv.port = 47000
+        ended = []
+
+        class Proc:
+            def poll(self): return None
+            def terminate(self): ended.append(self)
+            def wait(self): return 0
+            stderr = io.StringIO("")
+
+        def probe(port):
+            mv.retarget("frame-2", ["-o", "HostName=192.0.2.2"])  # the app switches right now
+            return True
+        with mock.patch.object(frame_macview.subprocess, "Popen", return_value=Proc()), \
+                mock.patch.object(frame_macview.time, "sleep"), mock.patch.object(mv, "_probe", probe):
+            self.assertFalse(mv._open_tunnel([], [47001]))
+        self.assertIsNone(mv.tunnel)
+        self.assertEqual(len(ended), 1)  # the tunnel to the old headset was closed
 
     @unittest.skipUnless(shutil.which("bash"), "needs bash")
     @unittest.skipIf(os.name == "nt", "Windows' bash.exe is WSL's launcher, and runners have no distribution")

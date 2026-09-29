@@ -121,6 +121,9 @@ class MacView:
         self.run = run
         self.frame = frame
         self.host_opts = []  # the headset in use and how to reach it (see retarget)
+        # Short, never held across ssh: retarget() and publishing a new tunnel check and
+        # change the headset together (self.lock is held while a tunnel is being opened).
+        self.route_lock = threading.Lock()
         self.track = track or (lambda proc: None)  # the server ends these on exit
         self.lock = threading.Lock()
         self.token = secrets.token_urlsafe(24)
@@ -242,27 +245,29 @@ class MacView:
 
     def retarget(self, alias, host_opts):
         """The server now reaches the headset as `alias` with `host_opts` (another address,
-        or another headset). No lock: this runs while the server routes, which a tunnel
-        being opened may be waiting on; each assignment is atomic."""
+        or another headset). Only the short route_lock, never self.lock: this runs while
+        the server routes, which a tunnel being opened may be waiting on."""
         # host_opts is "-o", "Name=value" pairs; the tunnel keeps its own connection,
         # not the shared master.
         opts = [x for flag, value in zip(host_opts[::2], host_opts[1::2])
                 if not value.startswith("ControlPath=") for x in (flag, value)]
-        moved = alias != self.frame
-        self.frame, self.host_opts = alias, opts
-        tunnel = self.tunnel
-        if moved and tunnel is not None:
-            # Another headset: its viewers can't be the old one's. The supervisor
-            # reopens a tunnel to the new one if anything is being shown.
-            self.tunnel, self.remote_port = None, None
-            if tunnel.poll() is None:
-                tunnel.terminate()
+        with self.route_lock:
+            moved = alias != self.frame
+            self.frame, self.host_opts = alias, opts
+            tunnel = self.tunnel
+            if moved and tunnel is not None:
+                # Another headset: its viewers can't be the old one's. The supervisor
+                # reopens a tunnel to the new one if anything is being shown.
+                self.tunnel, self.remote_port = None, None
+        if moved and tunnel is not None and tunnel.poll() is None:
+            tunnel.terminate()
 
     def _open_tunnel(self, via, ports):
         """Tries the ports on one route; True once the tunnel answers. With self.lock held."""
         last = ""
         for port in ports:
-            target = (self.frame, self.host_opts)  # retarget() may change these meanwhile
+            with self.route_lock:
+                target = (self.frame, self.host_opts)  # retarget() may change these meanwhile
             # `via` first: ssh keeps the first value of an option, so USB-C's HostName wins
             # while the headset's pinned identity (in host_opts) still checks it.
             proc = subprocess.Popen([*self.tunnel_ssh, "-o", "ControlPath=none", *via, *target[1],
@@ -281,11 +286,12 @@ class MacView:
                 if self._probe(port):
                     ok = True
                     break
-            if ok and target[0] != self.frame:
-                ok = False  # the app switched headset while this one connected: not its tunnel
-                self._last_tunnel_error = "switched headset"
             if ok:
-                self.tunnel, self.remote_port = proc, port
+                with self.route_lock:  # checked and published together, so a switch can't slip between
+                    ok = target[0] == self.frame  # else the app switched headset while this connected
+                    if ok:
+                        self.tunnel, self.remote_port = proc, port
+            if ok:
                 self.track(proc)
                 self._supervise()
                 return True
