@@ -99,7 +99,9 @@ Frame Control worker into your headset user account.
 
 For the other features, nothing is installed on the Frame: the app uses what SteamOS
 already ships (sideloading a game copies Valve's own devkit scripts to
-`~/devkit-utils`, as Valve's Devkit Client does). [How each feature works](docs/frame-control.md).
+`~/devkit-utils`, as Valve's Devkit Client does). The optional
+[performance HUD](docs/vr-utilities.md) copies our own Python helpers into
+`~/.local/share/frame-control/vr/`. [How each feature works](docs/frame-control.md).
 
 ## Install
 
@@ -213,7 +215,7 @@ Frame's software fits together, all checked against a real headset and labelled
 | [Android apps (Lepton)](docs/apks.md) | Sideloading, the rated F-Droid catalogue, per-app instances |
 | [Sideloading Linux and Windows games](docs/sideloading.md) | A .zip, folder or .exe as a Steam Devkit Game, runtime detection |
 | [Install links for websites](docs/web-install.md) | `frame-control://install` links and manifests, the rules, a button to paste |
-| [Steam games](docs/steam-games.md) · [VR video](docs/vr-video.md) · [WebXR in Chromium](docs/webxr-chromium.md) | Installing and buying, watching VR180/360, the Chromium build |
+| [VR comfort and HUD](docs/vr-utilities.md) · [Steam games](docs/steam-games.md) · [VR video](docs/vr-video.md) · [WebXR in Chromium](docs/webxr-chromium.md) | Installing and buying, watching VR180/360, the Chromium build |
 | [Mac in the headset](docs/mac-in-headset.md) | Mac windows and screens as panels in the Frame, with laser and keyboard input |
 | [VR mods and custom songs](docs/mods.md) | Per-game feasibility, real-Frame results and blockers; no installer yet |
 | [SSH](docs/ssh.md) · [Streaming](docs/streaming.md) · [Files](docs/file-transfer.md) · [Panels](docs/panels.md) · [Tailscale](docs/tailscale.md) | Topic notes |

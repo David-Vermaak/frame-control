@@ -83,5 +83,27 @@ class Device(harness.FrameTestCase):
         self.assertEqual(state()['steam']['pages'][0]['title'], 'Hades on Steam')
 
 
+class VRUtilities(harness.FrameTestCase):
+    def test_missing_vr_runtime_is_unavailable_not_zero_fps(self):
+        data = ok('GET', '/api/status')
+        self.assertIsNone(data['performance']['compositorFps'])
+        self.assertIsNone(data['performance']['appFps'])
+        self.assertEqual(data['temp'], 41.5)
+        self.assertEqual(data['battery']['percent'], 76)
+
+    def test_optional_paid_utilities_are_not_installed(self):
+        # The fake library contains games but none of these paid software titles.
+        for appid in (1009850, 1173510, 1068820, 908520):
+            code, body, _ = api('POST', '/api/steam', {'action': 'install', 'appid': appid})
+            self.assertEqual(code, 502, body)
+            self.assertIn('not owned', body['error'])
+        self.assertEqual(launches('install'), [])
+
+    def test_unverified_controls_are_not_exposed(self):
+        for action in ('recenter', 'adjust', 'restore'):
+            code, body, _ = api('POST', '/api/vr', {'action': action, 'origin': 'seated', 'y': .1})
+            self.assertEqual(code, 400, body)
+
+
 if __name__ == '__main__':
     unittest.main()

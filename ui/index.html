@@ -576,6 +576,25 @@
     </section>
   </div>
 
+  <section class="panel" id="vrTools">
+    <div class="shelf-head"><h2>VR comfort and performance</h2><span class="spacer"></span><span class="sub" id="vrUpdated">Waiting for the Frame</span></div>
+    <div class="stats" id="vrMetrics"></div>
+    <div class="hint">Compositor FPS measures SteamVR output, not game FPS. Application FPS is unavailable when no app supplies timing. GPU time is render time, not GPU utilisation. Temperature is the hottest readable sensor.</div>
+    <div class="chips">
+      <button class="small" id="hudStart">Open HUD in headset</button>
+      <button class="small" id="hudStop">Close HUD</button>
+    </div>
+    <div class="hint">The HUD is ours and uses the Frame’s built-in tools. Place its panel with SteamVR’s Float in World or controller docking controls. It updates every two seconds until closed.</div>
+    <h3>Playspace and seated comfort</h3>
+    <p class="sub" id="comfortNote">Tracking-origin controls are not available yet: reversible changes still need an idle-headset test. Use SteamVR’s recenter and room setup for now. A seated origin only affects apps that use seated tracking; it cannot force a game into seated mode.</p>
+    <div class="hint">For motion comfort, choose snap-turn, teleport movement and a movement vignette in each game’s settings. SteamVR has no verified universal snap-turn or locomotion-vignette switch.</div>
+    <details style="margin-top:16px"><summary>Optional VR software</summary>
+      <p class="sub">None of Frame Control’s features needs these apps. Compatibility reports and account ownership are separate. Paid apps can only be installed here when already owned.</p>
+      <button class="small" id="vrUtilitiesRefresh">Check ownership and reports</button>
+      <div class="list" id="vrUtilities"><div class="sub">Load this optional list to check the Frame account.</div></div>
+    </details>
+  </section>
+
   <section class="panel" id="comfort" style="margin:20px 0;padding:16px">
     <div class="shelf-head"><h2>Family and comfort</h2><span class="spacer"></span>
       <button class="action small" id="castBtn">Cast headset view</button>
@@ -1165,6 +1184,7 @@ function refresh() {
       setConn(true, state.hostname);
       setOnline(true);
     } catch (e) {
+      renderPerformance(null);
       if (!e.offline) { setConn(false, "Error"); log("Status failed: " + e.message, "e"); }
       if (!state) ["games", "flatpaks"].forEach(id => failed($(id), e));
     } finally {
@@ -1174,6 +1194,38 @@ function refresh() {
   })();
   return refreshing;
 }
+
+// ---- our VR HUD and optional third-party catalogue ----
+function renderPerformance(s) {
+  const p = s?.performance || {};
+  const values = [["Compositor FPS", p.compositorFps, ""], ["Compositor period", p.frameMs, " ms"],
+    ["Application FPS", p.appFps, ""], ["Render GPU time", p.gpuMs, " ms"],
+    ["Compositor CPU", p.compositorCpuMs, " ms"], ["System CPU", p.cpuPercent, "%"],
+    ["GPU clock", p.gpuMHz, " MHz"], ["Hottest sensor", s?.temp, "°C"], ["Battery", s?.battery?.percent, "%"]];
+  $("vrMetrics").innerHTML = values.map(([label, v, unit]) => `<div class="stat"><div class="k">${label}</div><div class="v">${Number.isFinite(v) ? v.toFixed(1) + unit : "Unavailable"}</div></div>`).join("");
+  $("vrUpdated").textContent = s ? `Sampled ${new Date(s.time * 1000).toLocaleTimeString()} · refreshes with status` : "No live sample";
+}
+$("hudStart").onclick = () => act("Open HUD", () => api("/api/vr", {action: "hud-start"}), $("hudStart"));
+$("hudStop").onclick = () => act("Close HUD", () => api("/api/vr", {action: "hud-stop"}), $("hudStop"));
+async function loadUtilities() {
+  $("vrUtilitiesRefresh").disabled = true;
+  try {
+    const data = await api("/api/vr/utilities");
+    $("vrUtilities").innerHTML = data.utilities.map(u => `<div class="item">
+      <div class="grow"><strong>${esc(u.name)}</strong> · ${esc(u.status)} · ${u.free ? "Free" : "Paid"} · ${u.owned == null ? "Ownership unknown" : u.owned ? "Owned" : "Not in library"}
+      <div class="sub">${esc(u.note)} <a href="${esc(u.source)}" target="_blank" rel="noopener">Source</a></div>
+      ${u.report ? `<div class="sub">Report ${esc(u.report.date || "")}: ${esc(u.report.notes || "")} · SteamOS ${esc(u.report.steamos || "unspecified")}</div>` : ""}</div>
+      <button class="small" data-utility="${u.id}" ${u.installed || !u.canInstall ? "disabled" : ""}>${u.installed ? "Installed" : "Install (optional)"}</button></div>`).join("");
+  } catch(e) { failed($("vrUtilities"), e); }
+  finally { $("vrUtilitiesRefresh").disabled = false; }
+}
+$("vrUtilitiesRefresh").onclick = loadUtilities;
+$("vrUtilities").onclick = async e => {
+  const b = e.target.closest("[data-utility]");
+  if (!b) return;
+  await act("Install optional utility", () => api("/api/steam", {action:"install", appid:b.dataset.utility}), b);
+  await loadUtilities();
+};
 
 // The Frame owns the clock. Poll independently of status and the selected tab.
 let comfortBusy = false, comfortSeen = new Set(), comfortSession = null, comfortHydrated = false;
@@ -1314,6 +1366,7 @@ function battery(b, power) {
 }
 
 function render(s) {
+  renderPerformance(s);
   battery(s.battery, s.power);
   $("devName").textContent = `${s.hostname} · ${s.ip ?? "no IP"}`;
   $("updated").textContent = new Date(s.time * 1000).toLocaleTimeString();

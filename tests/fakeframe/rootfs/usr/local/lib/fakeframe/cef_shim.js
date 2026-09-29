@@ -27,7 +27,7 @@ function newShortcutId(steam) {
 function build(steam) {
   const findShortcut = id => steam.shortcuts.find(s => s.appid === Number(id));
   const gameOverview = a => ({
-    appid: a.appid, display_name: a.display_name, sort_as: a.display_name, app_type: 1,
+    appid: a.appid, display_name: a.display_name, sort_as: a.display_name, app_type: a.app_type ?? 1,
     steam_hw_compat_category_packed: a.packed || 0, vr_supported: !!a.vr, vr_only: !!a.vr_only,
     size_on_disk: String(a.installed ? a.size : 0), minutes_playtime_forever: a.minutes || 0,
     rt_last_time_played: a.last_played || 0,
