@@ -238,6 +238,56 @@ class ServerGuards(unittest.TestCase):
         self.assertEqual(self.post("/api/nope", {})[0], 404)
 
 
+class ArtworkSettings(unittest.TestCase):
+    """The settings panel's endpoints, with and without the page's X-Frame-UI key."""
+
+    def test_settings_need_and_accept_the_ui_key(self):
+        with tempfile.TemporaryDirectory() as home:
+            port = free_port()
+            env = {**os.environ, "FRAME_ALIAS": "frame-control-test.invalid", "PYTHONDONTWRITEBYTECODE": "1",
+                   "HOME": home, "APPDATA": home, "XDG_DATA_HOME": home}
+            for name in ("STEAMGRIDDB_API_KEY", "FRAME_STEAMGRIDDB_API_KEY", "FRAME_UI_KEY"):
+                env.pop(name, None)
+            proc = subprocess.Popen([sys.executable, str(ROOT / "ui" / "server.py"), "--port", str(port)],
+                                    env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            try:
+                def request(method, path, body=None, headers=None):
+                    conn = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
+                    conn.request(method, path, body=json.dumps(body).encode() if body is not None else None,
+                                 headers=headers or {})
+                    r = conn.getresponse()
+                    payload = r.read()
+                    conn.close()
+                    return r.status, payload
+                for _ in range(100):
+                    try:
+                        if request("GET", "/")[0] == 200:
+                            break
+                    except OSError:
+                        time.sleep(0.05)
+                key = {"X-Frame-UI": "1", "Content-Type": "application/json"}
+                self.assertEqual(request("GET", "/api/settings/artwork")[0], 403)
+                self.assertEqual(request("POST", "/api/settings/artwork", {"steamgriddb_api_key": "abc"})[0], 403)
+                status, payload = request("GET", "/api/settings/artwork", headers=key)
+                self.assertEqual((status, json.loads(payload)["steamgriddb_configured"]), (200, False))
+                status, payload = request("POST", "/api/settings/artwork", {"steamgriddb_api_key": "abc_1"}, key)
+                self.assertEqual((status, json.loads(payload)["steamgriddb_configured"]), (200, True))
+                self.assertNotIn(b"abc_1", payload)
+                status, payload = request("GET", "/api/settings/artwork", headers=key)
+                self.assertTrue(json.loads(payload)["steamgriddb_configured"])
+                self.assertEqual(request("POST", "/api/settings/artwork", {"steamgriddb_api_key": "a b"}, key)[0], 400)
+            finally:
+                proc.terminate()
+                proc.wait(timeout=10)
+
+    def test_panel_script_uses_the_keyed_api_helper(self):
+        script = (ROOT / "ui" / "artwork-settings.js").read_text(encoding="utf-8")
+        self.assertNotIn("fetch(", script)
+        self.assertIn("api('/api/settings/artwork'", script)
+        page = (ROOT / "ui" / "index.html").read_text(encoding="utf-8")
+        self.assertLess(page.index("async function api("), page.index('<script src="/artwork-settings.js">'))
+
+
 @unittest.skipIf(os.name == "nt", "runs on the Frame (Linux); local-bin/ssh is a POSIX shell script")
 class LocalMode(unittest.TestCase):
     """FRAME_LOCAL=1, as the iPhone app starts the server on the Frame: its own key

@@ -42,8 +42,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import frame_agent  # noqa: E402
 import frame_assistant  # noqa: E402
 import frame_android  # noqa: E402
+from apk_sources import search as apk_search, SourceError  # noqa: E402
 import frame_apk_versions  # noqa: E402
 import frame_catalog  # noqa: E402
+import frame_steamgriddb
 import frame_comfort  # noqa: E402
 import frame_host  # noqa: E402
 import frame_macview  # noqa: E402
@@ -162,7 +164,41 @@ _jobs_lock = threading.Lock()
 _jobs = {}  # id -> {"label", "done", "error", "message", "result", "time"}
 
 
-def start_job(label, work):
+_backfill = {"running": False, "last": 0.0}
+_backfill_lock = threading.Lock()
+
+
+def backfill_art(apps=(), titles=()):
+    """Apply art Frame Control couldn't at install time (Steam wasn't running), once Steam is up.
+
+    Only entries marked art_pending at install; it fills empty Steam slots and never replaces art or
+    names the user may have customised. Runs in the background, at most once every five minutes."""
+    pkgs = [a["package"] for a in apps if a.get("art_pending")]
+    gids = [t["id"] for t in titles if t.get("art_pending")]
+    with _backfill_lock:
+        if not (pkgs or gids) or _backfill["running"] or time.time() - _backfill["last"] < 300:
+            return False
+        _backfill.update(running=True, last=time.time())
+
+    def run():
+        try:
+            frame_android.shortcut_tool("list")  # Steam isn't up: try again on a later listing
+            for refresh, key in [(frame_android.refresh_art, p) for p in pkgs] + \
+                                [(frame_titles.refresh_art, g) for g in gids]:
+                try:
+                    refresh(key, fill_only=True)
+                except Exception as e:
+                    print(f"artwork backfill for {key}: {e}", file=sys.stderr)
+        except Exception:
+            pass
+        finally:
+            with _backfill_lock:
+                _backfill["running"] = False
+    threading.Thread(target=run, daemon=True).start()
+    return True
+
+
+def start_job(label, work, progress=False):
     """Run work() in the background. It returns a dict with a "message"."""
     now = time.time()
     with _jobs_lock:
@@ -171,14 +207,20 @@ def start_job(label, work):
         job = secrets.token_hex(8)
         _jobs[job] = {"label": label, "done": False, "error": None, "message": None, "result": None, "time": now}
 
+    def report(stage, percent=None):
+        with _jobs_lock:
+            _jobs[job].update(stage=stage, percent=percent)
+
     def run():
         fields = {}
         try:
-            result = work()
+            result = work(report) if progress else work()
             fields = {"message": result.get("message") or f"{label}: done", "result": result}
         except (Failure, frame_android.FrameError) as e:
             fields = {"error": unreachable(str(e)) or str(e)}
             frame_telemetry.diagnostic(f"job {label.split()[0]}", e)
+        except SourceError as e:  # already user-readable, and about a store, not the Frame
+            fields = {"error": str(e)}
         except Exception as e:
             fields = {"error": f"{type(e).__name__}: {e}"}
             frame_telemetry.diagnostic(f"job {label.split()[0]}", e)
@@ -1116,6 +1158,14 @@ def android(body):
                 return {"message": f"Installed {m['label']}. It's in the Steam library; launching it opens its own panel.",
                         "app": m}
             return start_job(f"Install {pkg}", work)
+        if action == "refresh-art":
+            if not pkg and not body.get("all"):
+                raise Failure('choose a package or all apps', 400)
+            if not body.get('all'):
+                return start_job('Refresh Steam artwork', lambda: {'apps': [frame_android.refresh_art(pkg)]})
+            # Everything Frame Control sideloaded: Android apps and devkit titles.
+            return start_job('Refresh Steam artwork', lambda: {
+                'apps': frame_android.refresh_art(), 'titles': frame_titles.refresh_art()})
         if action in ("launch", "stop"):
             m = getattr(frame_android, action)(pkg)
             return {"message": f"{'Launching' if action == 'launch' else 'Stopped'} {m['label']}"}
@@ -1260,12 +1310,14 @@ def titles(body):
         threading.Thread(target=_run_title_install, daemon=True,
                          args=(token, entry, opt("name"), opt("exe"), opt("runtime"))).start()
         return {"message": f"Installing {entry['plan']['source']}", "job": token}
-    if action not in ("launch", "remove"):
+    if action not in ("launch", "remove", "refresh-art"):
         raise Failure("unknown action", 400)
     gid = str(body.get("id", ""))
     if not frame_titles.ID_RE.match(gid):
         raise Failure("bad title id", 400)
     ensure_master()
+    if action == "refresh-art":
+        return start_job(f"Steam artwork for {gid}", lambda: {"titles": [frame_titles.refresh_art(gid)]})
     try:
         m = getattr(frame_titles, action)(gid)
     except frame_android.FrameError as e:
@@ -1950,9 +2002,84 @@ def agent_approval(body):
     return frame_agent.approvals.decide(body.get("confirmation"), body.get("accept"))
 
 
-POST = {"/api/vr": vr, "/api/comfort": comfort, "/api/media": media, "/api/agent/call": agent_call, "/api/agent/approval": agent_approval,
-        "/api/assistant/chat": assistant_chat, "/api/android/display": android_display, "/api/android": android, "/api/titles": titles, "/api/launch": launch, "/api/steam": steam, "/api/volume": set_volume, "/api/clipboard": clipboard,
-        "/api/input": remote_input, "/api/touch": remote_touch,
+def source_text(body, key, optional=False):
+    value = body.get(key)
+    if optional and value in (None, ''):
+        return None
+    if not isinstance(value, str) or not value.strip() or len(value) > 2000:
+        raise Failure('Provide a valid ' + key, 400)
+    return value.strip()
+
+
+def source_search(query):
+    args = parse_qs(query)
+    q = args.get('q', [''])[0]
+    vr = args.get('vr', [''])[0]
+    installable = args.get('installable', [''])[0]
+    if len(q) > 500 or vr not in ('', 'true', 'false', '1', '0') or installable not in ('', 'true', 'false', '1', '0'):
+        raise Failure('Invalid search filters', 400)
+    try:
+        return apk_search.search(q, vr=None if not vr else vr in ('true', '1'),
+                                 source=args.get('source', [None])[0], installable=installable in ('true', '1'))
+    except SourceError as e:
+        raise Failure(str(e), 400)
+
+
+def source_install(body):
+    source, entry = source_text(body, 'source'), source_text(body, 'id')
+    version = body.get('version_code')
+    if version is not None and (type(version) is not int or version < 0):
+        raise Failure('version_code must be a non-negative integer', 400)
+    try:
+        _, selected = apk_search.resolve(source)
+        if not selected['enabled']:
+            raise SourceError('This source is disabled')
+    except SourceError as e:
+        raise Failure(str(e), 400)
+    return start_job('Install ' + entry, lambda report: apk_search.install(source, entry, version, report), progress=True)
+
+
+def source_manage(body):
+    action = body.get('action')
+    try:
+        if action == 'enable':
+            if type(body.get('enabled')) is not bool:
+                raise Failure('enabled must be true or false', 400)
+            return apk_search.set_enabled(source_text(body, 'source'), body['enabled'])
+        if action == 'add':
+            url = source_text(body, 'url')
+            fingerprint, name = source_text(body, 'fingerprint', True), source_text(body, 'name', True)
+            parts = urlparse(url)
+            if parts.scheme not in ('https', 'fdroidrepos') or not parts.hostname or parts.username:
+                raise Failure('Use an HTTPS or fdroidrepos:// repository URL without credentials', 400)
+            apk_search.repo_module()  # fail now if this build can't manage repositories
+
+            def add():  # downloads and verifies the whole index: a job, not a request
+                source = apk_search.manage_repo('add_repo', url=url, fingerprint=fingerprint, name=name)
+                message = 'Added ' + source['name']
+                if source.get('trust_on_first_use'):
+                    message += '. Trusted on first use: ' + source['fingerprint'].upper()
+                return {'message': message, 'source': {k: source.get(k) for k in
+                                                       ('id', 'name', 'fingerprint', 'trust_on_first_use')}}
+            return start_job('Add repository', add)
+        if action == 'game-data':
+            package = source_text(body, 'package')
+            return start_job('Add game data', lambda: apk_search.add_game_data(package))
+        if action == 'remove':
+            apk_search.manage_repo('remove_repo', source_id=source_text(body, 'source'))
+            return {'message': 'Repository removed'}
+        raise Failure('Unknown source action', 400)
+    except SourceError as e:
+        raise Failure(str(e), 400)
+
+
+POST = {
+    "/api/vr": vr,
+    "/api/comfort": comfort, "/api/media": media, "/api/agent/call": agent_call,
+    "/api/agent/approval": agent_approval, "/api/assistant/chat": assistant_chat,
+    "/api/input": remote_input, "/api/touch": remote_touch,
+    "/api/settings/artwork": frame_steamgriddb.save_settings,
+    "/api/sources": source_manage, "/api/sources/install": source_install, "/api/android/display": android_display, "/api/android": android, "/api/titles": titles, "/api/launch": launch, "/api/steam": steam, "/api/volume": set_volume, "/api/clipboard": clipboard,
         "/api/flatpak": flatpak, "/api/open": open_thing, "/api/shots/save": save_shots,
         "/api/webinstall/check": webinstall_check, "/api/webinstall/start": webinstall_start,
         "/api/webinstall/cancel": webinstall_cancel,
@@ -2064,6 +2191,10 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if path in ("/", "/index.html"):
                 self.send_bytes((HERE / "index.html").read_bytes(), "text/html; charset=utf-8")
+            elif path == "/api/settings/artwork":
+                self.send_json(frame_steamgriddb.settings())
+            elif path == "/artwork-settings.js":
+                self.send_bytes((HERE / 'artwork-settings.js').read_bytes(), 'text/javascript; charset=utf-8')
             elif path == "/assistant":
                 page = (HERE / "assistant.html").read_text().replace("__FRAME_KEY__", json.dumps(UI_KEY).replace("<", "\\u003c"))
                 self.send_bytes(page.encode(), "text/html; charset=utf-8")
@@ -2074,14 +2205,35 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json({"os": "SteamOS", "fileManager": None, "computer": DEVICE, "mobile": True} if LOCAL else
                                {"os": frame_host.NAME, "fileManager": frame_host.FILE_MANAGER,
                                 "computer": "Mac" if frame_host.MAC else "PC"})
+            elif path.startswith("/source-image/"):
+                from apk_sources import _images
+                try:
+                    self.send_bytes(*_images.image(path.rsplit("/", 1)[-1]))
+                except Exception:
+                    self.send_json({"error": "Artwork unavailable"}, 404)
+            elif path == "/api/sources/details":
+                args = parse_qs(url.query)
+                try:
+                    self.send_json(apk_search.details(source_text({k: v[0] for k, v in args.items()}, "source"),
+                                                     source_text({k: v[0] for k, v in args.items()}, "id")))
+                except SourceError as e:
+                    raise Failure(str(e), 400)
+            elif path == "/api/sources":
+                self.send_json({"sources": apk_search.sources()})
+            elif path == "/api/search":
+                self.send_json(source_search(url.query))
             elif path == "/api/apk-versions":
                 self.send_json(apk_versions(url.query))
             elif path == "/api/android":
                 ensure_master()
-                self.send_json({"apps": frame_android.list_apps()})
+                apps = frame_android.list_apps()
+                backfill_art(apps=apps)
+                self.send_json({"apps": apps})
             elif path == "/api/titles":
                 ensure_master()
-                self.send_json({"titles": frame_titles.list_titles()})
+                titles_list = frame_titles.list_titles()
+                backfill_art(titles=titles_list)
+                self.send_json({"titles": titles_list})
             elif path == "/api/titles/job":
                 self.send_json(title_job(url.query))
             elif path == "/api/licenses":
@@ -2323,6 +2475,7 @@ def main():
     args = ap.parse_args()
     httpd = LoopbackServer(("127.0.0.1", args.port), Handler)
     sweep_tmp()
+    threading.Thread(target=apk_search.warm, daemon=True).start()  # big indexes download before the first search
     frame_telemetry.start()
     if not frame_host.WINDOWS:
         signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(KeyboardInterrupt))
