@@ -45,8 +45,10 @@ flat 2D desktop streaming into a window on the Frame's Linux desktop.
 | Immersed / Virtual Desktop | Vendor apps | Immersed has a Mac agent but no known Frame client. Virtual Desktop's developer said he'd "try" to port it ([NewsBreak](https://www.newsbreak.com/news/4892834783961-virtual-desktop-dev-says-he-ll-try-to-bring-the-app-to-steam-frame)). | Not available as of 2026-09-25. Check again later. |
 | WiVRn / ALVR | VR streaming from a Linux or Windows PC | Irrelevant for a Mac host (no SteamVR/OpenXR runtime on macOS) | N/A |
 
-For **VR video files** (180°/360° stereo), don't stream the Mac's screen. Play
-them on the Frame in DeoVR instead: see [vr-video.md](vr-video.md).
+For **local movies and stereo photos**, Frame Control's own OpenVR player
+runs on the Frame; see [vr-video.md](vr-video.md). It currently renders a flat
+stereo screen. VR180/360 projection is not implemented; the same page records
+DeoVR only as an optional, independently installed alternative.
 
 ### Pre-seeding the Remmina profile (no typing in the headset)
 
@@ -113,18 +115,90 @@ capture it.
 
 ## Input: type and point in the Frame from the Mac or iPhone
 
-**Verified 2026-09-27** on the headset: `steamos` is in the `input` group and
-`/dev/uinput` is `crw-rw-r-- root input`, so **our own code can create a
-virtual keyboard and mouse without sudo**. The Frame has no `python-evdev`,
-`ydotool`, `wtype` or KDE Connect; `kwin_wayland` and `plasmashell` run only
-while the desktop panel is open in the headset.
+**Built: Home → Keyboard and trackpad**, in every version of Frame Control
+(Mac, Windows, Linux, iPhone and iPad), with nothing to install on the device
+you're holding. On a phone the panel is a trackpad (drag to move, tap to click,
+two fingers to scroll, two-finger tap to right-click) plus a text field that
+types on the Frame. On a computer, clicking the pad passes your mouse and
+keyboard through to the Frame until you press Esc (⌘ is sent as Ctrl on a Mac).
 
-| Option | Mac | iPhone | Notes |
+It goes through **KDE Connect**, the first-party route (KDE makes the Frame's
+desktop): Frame Control's server runs [`ui/frame_input_agent.py`](../ui/frame_input_agent.py)
+on the Frame, which talks KDE Connect's own LAN protocol to the Frame's
+`kdeconnectd` as if it were a phone. KDE Connect does the typing and clicking.
+
+**Verified 2026-09-28** (SteamOS 0.4.1, build 20260925.6191901):
+
+- KDE Connect isn't installed on the Frame, so **Frame Control ships it**:
+  Valve's own build for the Frame (`kdeconnect` 24.02.2-1 from its `extra`
+  repository) plus the five libraries it links that the Frame lacks
+  (`kcontacts`, `kpeople`, `modemmanager-qt`, `pulseaudio-qt`, `libfakekey`),
+  pinned by SHA-256 in [`frame/kdeconnect/packages.json`](../frame/kdeconnect/packages.json).
+  The builds download them from the
+  [kdeconnect-frame-24.02.2-1 release](https://github.com/saphid/frame-control/releases/tag/kdeconnect-frame-24.02.2-1)
+  (`app/build/fetch-deps.js`, `frame/kdeconnect/fetch.py`). The address of
+  Valve's repository for the Frame isn't to be shared, and Valve's public
+  aarch64 preview repository has KDE Connect 25.08, built against newer KDE
+  libraries than the Frame has.
+- On first use, the computer copies them to the Frame over the SSH connection
+  it already has. The iPhone app's bundle, already copied to the Frame, has
+  them too. The agent checks each SHA-256 and unpacks them into
+  `~/.local/share/frame-control/kdeconnect` (3.6 MB copied, 18 MB unpacked,
+  about 2 s). There's no internet download on the Frame, no root, and nothing
+  on the read-only system, so SteamOS updates leave it alone. A stamp there
+  (`root/.frame-control-packages`) records which build it is; a newer Frame
+  Control replaces it.
+- `pacman -Sp kdeconnect …` also pulls in ModemManager, libqmi, libmbim,
+  libqrtr-glib and ppp (packaging dependencies). `kdeconnectd` and its plugins
+  don't link any of them (checked with `ldd` against the six packages alone),
+  so Frame Control leaves them out.
+- Licences: the packages are GPL and LGPL; Frame Control stays MIT because it
+  only starts `kdeconnectd` and speaks its protocol. The notice, licence texts
+  and complete source are in [`frame/kdeconnect`](../frame/kdeconnect/NOTICE.md),
+  [`THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md) and the app's
+  **About and licences** (Tools).
+- It pairs by itself: the agent asks to pair and accepts on KDE Connect's side
+  over D-Bus (`qdbus6 … acceptPairing`). It keeps its identity in
+  `…/kdeconnect/bridge`, so later connections are already paired. (A pair
+  request to a device that's already paired makes KDE Connect unpair it, so
+  the agent only asks when it isn't paired.)
+- Protocol version 7: whoever opens the TCP connection sends its identity line
+  in plain text, then acts as the **TLS server** (KDE Connect's
+  `lanlinkprovider.cpp`). Remote input is `kdeconnect.mousepad.request` with
+  `dx`/`dy`, `singleclick`, `rightclick`, `singlehold`/`singlerelease`,
+  `scroll`, `key` (any text) or `specialKey` (1 Backspace … 14 Escape,
+  21–32 F1–F12) and modifier flags.
+- **KDE Connect runs only while something uses the keyboard and trackpad.**
+  Each device gets its own KDE Connect identity (KDE Connect keeps one
+  connection per device, so a shared one would make a phone and a computer
+  knock each other off). The last one to disconnect stops KDE Connect, so it
+  isn't left running, or discoverable on your network, afterwards.
+- KDE Connect 24.02 **hangs or crashes when asked to unpair a device that's
+  offline** (seen twice: once spinning at 100% CPU with D-Bus unresponsive,
+  once exiting). Frame Control never unpairs. If its copy stops answering, the
+  agent restarts it once (tested by freezing it with `kill -STOP`).
+- Moves from the iPhone app (Simulator) and the Mac's server moved the Frame's
+  X pointer by exactly the amount sent, including with the bundled packages
+  copied over SSH (2026-09-28).
+- gamescope runs **two Xwayland displays**. `:0` holds Steam's VR bar and menus
+  and ignores injected pointer motion; `:1` holds apps such as Chromium and
+  takes it. KDE Connect runs on `:1`, so it reaches apps, not Steam's own menus.
+  There's also a `gamescope-0-ei` (libei) socket.
+- **Not yet tested:** typing and clicking as seen in the headset, and whether
+  it reaches the KDE desktop panel (Plasma is its own session).
+- **Known limit:** keys and clicks typed while the link is reconnecting wait
+  and are sent once it's back, but anything sent in the moment the Wi-Fi
+  drops, before SSH notices, can be lost. Confirming every event would add a
+  round trip to each pointer move.
+
+Our own `uinput` keyboard and mouse would also work (`steamos` is in the
+`input` group and `/dev/uinput` is group-writable, verified 2026-09-27), and
+remains the fallback if the bundled KDE Connect ever stops working on a new SteamOS.
+
+| Other option | Mac | iPhone | Why not |
 |---|---|---|---|
-| **A uinput keyboard and mouse in Frame Control's server** | ✓ | ✓ | **Recommended.** The server opens `/dev/uinput` with `ctypes` (standard library only) and the page sends key and pointer events through the tunnel it already has. On the phone: a trackpad area (drag to move, tap to click, two fingers to scroll) and the iOS keyboard for typing. On the Mac: a "control the Frame" mode that captures the keyboard and pointer (Esc to release). Uinput devices look like real hardware to the kernel, so libinput, KWin and gamescope should take them; [frame-voice](https://github.com/DeeJanuz/frame-voice) already types into a Frame through a uinput keyboard. **Untested**: which surfaces in VR (desktop panel, SteamVR dashboard, games, Android apps in Lepton) accept the pointer. About a day or two of work |
-| **Bluetooth keyboard and mouse** | – | – | Real hardware paired in SteamOS settings. The iPhone can't pretend to be a Bluetooth keyboard: iOS won't advertise the HID service ([Apple forums](https://developer.apple.com/forums/thread/733916)) |
+| **Bluetooth keyboard and mouse** | – | – | Needs real hardware, paired in SteamOS settings. The iPhone can't pretend to be a Bluetooth keyboard: iOS won't advertise the HID service ([Apple forums](https://developer.apple.com/forums/thread/733916)) |
 | **Deskflow** (formerly Input Leap / Barrier) | ✓ | – | Moves the Mac's own mouse and keyboard onto the Frame's screen edge. Flathub has an aarch64 build ([Flathub](https://flathub.org/apps/org.deskflow.deskflow)); on Wayland it needs the InputCapture/libei portal, and only works while Plasma is running. No iPhone client |
-| **KDE Connect** | ~ | ✓ | Its iOS app has a remote touchpad and keyboard, but the Frame would need KDE Connect installed (not on Flathub; `pacman` on a read-only root). More moving parts than the uinput route |
 | **Remmina / Steam Link / RDP** | ✓ | – | Input only reaches the streamed session, not the headset's own apps |
 
 Other ways to get text in:

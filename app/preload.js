@@ -18,6 +18,8 @@ contextBridge.exposeInMainWorld("frameApp", {
     ipcRenderer.removeAllListeners("use-device");
     ipcRenderer.on("use-device", (_e, id) => cb(String(id)));
   },
+  // While the keyboard-and-trackpad panel holds the keyboard, ⌘W, ⌘R and the rest go to the Frame.
+  captureKeys: (on) => ipcRenderer.send("keys:capture", !!on),
   pathForFile: (file) => { try { return webUtils.getPathForFile(file) || ""; } catch { return ""; } },
   // Updates (app/updater.js): the page shows a banner and an Update button.
   update: {

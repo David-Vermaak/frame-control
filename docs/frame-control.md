@@ -100,8 +100,11 @@ app bundles `ui/`, `scripts/`, `frame/android/`, Valve's `frame/devkit-utils/` a
 ([python-build-standalone](https://github.com/astral-sh/python-build-standalone))
 and `adb` from Google's platform-tools, so there's nothing else to install. It
 also bundles curl's copy of Mozilla's CA list, because Python on Windows only
-trusts root certificates already in the Windows store.
-`app/build/fetch-deps.js` downloads both, pinned by SHA-256.
+trusts root certificates already in the Windows store. And it bundles KDE
+Connect for the Frame (Valve's arm64 build and five libraries, 3.6 MB,
+[`frame/kdeconnect`](../frame/kdeconnect/NOTICE.md)), which it copies to the
+Frame for the keyboard and trackpad.
+`app/build/fetch-deps.js` downloads all of it, pinned by SHA-256.
 
 The server is Python stdlib only and listens on 127.0.0.1. It rejects requests
 with a non-local `Host` header, and any `/api/` request without a custom

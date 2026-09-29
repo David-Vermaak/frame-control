@@ -380,3 +380,21 @@ class Order(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RoutingLongLivedSsh(unittest.TestCase):
+    """The keyboard agent and the Mac view keep their own ssh open: switching headset
+    must end or retarget them, or input would go on reaching the old headset."""
+
+    def test_switching_headset_stops_input_and_retargets_the_mac_view(self):
+        import server
+        from unittest import mock
+        before = (server.FRAME, list(server.HOST_OPTS))
+        self.addCleanup(lambda: server.route(*before))
+        with mock.patch.object(server._input, "stop") as stop, \
+                mock.patch.object(server.macview, "retarget") as retarget:
+            server.route(server.FRAME, ["-o", "HostName=192.0.2.9"])  # same headset, new address
+            stop.assert_not_called()
+            server.route("frame-2", ["-o", "HostName=192.0.2.2"])
+            stop.assert_called_once()
+            retarget.assert_called_with("frame-2", ["-o", "HostName=192.0.2.2"])

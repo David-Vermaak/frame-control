@@ -149,6 +149,20 @@ refuses ids with a hyphen (`missing/invalid arguments`), which the fake had
 accepted. The fake now refuses them the same way, and Frame Control makes ids
 Steam accepts.
 
+## Owned media player
+
+`tests/test_media.py` covers layout evidence and overrides, OU eye ordering,
+hardware-decoder command construction, malformed splats, stereo parallax and
+fake-Frame library/process ownership. `tests/e2e/test_media_transfer.py` checks the real
+HTTP/SSH upload and library listing without pretending the fake renders VR.
+Real decode timings and captured stereo output are recorded in
+[vr-video.md](vr-video.md). Generated media only; no external player required.
+
+**Verified 2026-09-28**, real Frame BUILD_ID 20260925.6191901: `~/.local`
+and `~/.local/share` are `steamos:steamos`, mode 0755. The fake supervisor
+sets those parent owners too; previously its root-created Steam manifests
+left the parents root-owned and incorrectly prevented user runtime installs.
+
 ## Agent interfaces
 
 `tests/test_agent.py` exercises MCP stdio, exact-action human approvals and the
