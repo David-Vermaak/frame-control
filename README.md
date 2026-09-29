@@ -189,7 +189,7 @@ entry to `~/.ssh/config` and keys at `~/.ssh/id_ed25519_frame` and
 
 This is a first public test, so reports are really useful, especially from
 Windows and Linux. The quickest way is **Report a problem** in the app (the
-warning-sign button at the top, or **Help → Report a Problem…**). It adds
+speech-bubble button at the top, or **Help → Report a Problem…**). It adds
 diagnostics with personal details removed, shows you exactly what's included,
 and sends it privately to the maintainer; nothing is published. Without the app,
 use the [feedback form](https://frame-control.pages.dev/feedback/). Please include:

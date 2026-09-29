@@ -3,8 +3,9 @@
 Frame Control can manage more than one Steam Frame, and each headset can be
 reached at more than one address: a LAN IP at home, another at the office, its
 mDNS name (`frame.local`), its Tailscale IP or MagicDNS name. The **Devices**
-tab (key 5) lists them, and the connection pill in the header shows what the
-app is doing to reach the one in use, step by step, as it happens.
+tab (key 5) lists them. The connection pill in the header says whether the one in
+use is connected and how (Tailscale, or the network's name); click it to add,
+edit or reorder that headset's addresses, or to see each step of connecting.
 
 The code is in three modules, all stdlib-only Python on your computer:
 
@@ -57,7 +58,7 @@ and ranks them:
 5. addresses that only ever worked on other networks;
 6. Tailscale addresses while Tailscale is off.
 
-Your order on the Devices tab breaks ties. The best-ranked address that answers
+Your order (on the Devices tab, or in the pill's dialog) breaks ties. The best-ranked address that answers
 wins; one that answers first waits up to 0.35 s for a better-ranked one that is
 still trying. If SSH to the winner fails in a way another address could fix
 (a different device answered there, or the link dropped), the next one that
@@ -71,6 +72,12 @@ Tailscale** lists your tailnet's devices (likely headsets first, from `tailscale
 status --json`, including the Mac app's own CLI) with buttons to add their
 MagicDNS name or IP. **Find on this network** asks mDNS for SteamOS devkit
 services and checks `ALIAS.local` and `frame.local`.
+
+**The pill's dialog** lists the same addresses, with what each one answered, and
+can add, edit, reorder and remove them without leaving the page you're on. When
+the headset reports a LAN IP on the same network as this computer and that IP
+isn't saved, it offers to add it, so at home the app connects directly rather
+than over Tailscale. A new or edited address is tested straight away.
 
 ## Networks
 
@@ -122,7 +129,8 @@ file per headset instead, so saving or forgetting one headset's key never touche
 another's: a different device answering at one of its
 addresses is refused, and the pill says so. A headset's first connection trusts
 the key it shows, as Set Up Connection does. After reinstalling SteamOS the
-headset has a new key; **Forget identity** on the Devices tab lets the next
+headset has a new key; **Forget identity** (Devices tab → **Advanced**, with the
+SSH alias, user and port) lets the next
 connection save the new one.
 
 ## One server at a time

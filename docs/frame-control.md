@@ -22,9 +22,9 @@ The window has five tabs: **Home** (headset view, status, screenshots),
 the catalogue, display settings, reports), **Tools** (sending files and text,
 Flatpaks, remote and power) and **Devices** (your headsets and their addresses).
 Keys 1–5 switch between them. Files can be dropped anywhere in the window. A
-connection pill in the header always shows which headset, which network this
-computer is on, the address in use or being tried, and each step of connecting
-as it happens; click it for the whole timeline. When the Frame can't be
+connection pill in the header always shows which headset and whether it's
+connected, and how (Tailscale, or the network's name). Click it to add, edit or
+reorder the headset's addresses, or to see each step of connecting. When the Frame can't be
 reached, a banner says why in plain words, what was tried, and counts down to
 the next try, filling everything in once it answers. Flatpak and Android installs run in the background; the bottom bar
 counts them while they run.
