@@ -138,6 +138,115 @@ The optional CSV contains only `unix_seconds,bpm`. It is created privately
 path you specify. Nothing is logged by default, and heart-rate values are not
 printed to the terminal. Delete your session file when you no longer need it.
 
+### Checking heart rate against a reference
+
+`scripts/heart-check.py` runs on your computer. `listen` shows our OSC
+readings live as they arrive, so you can watch them next to another device:
+
+```sh
+python3 scripts/heart-check.py listen --port 9000 --out ours.csv
+```
+
+Point the Frame at it with `--osc <your computer's IP> 9000`. `compare` lines
+up two recordings by time and reports the mean difference, bias, the share
+within ±5 BPM and the delay between them. It passes when the mean difference
+is at most 5 BPM, at least 80% of reference readings are matched and nothing
+was shown while the sensor reported lost skin contact:
+
+```sh
+python3 scripts/heart-check.py compare ours.csv reference.csv
+python3 scripts/heart-check.py compare ours.csv ~/Downloads/export.zip
+```
+
+The reference can be a CSV (`time,bpm[,flags]`, time in unix seconds or ISO
+8601) or an Apple Health export (`export.zip` or `export.xml`). Only heart-rate
+records within the recording's time range are read. Everything stays on your
+computer.
+
+`scripts/heart-test-strap.swift` turns a Mac into a synthetic strap. It
+advertises the standard Heart Rate Service and sends a fixed, known sequence
+(8-bit and 16-bit values and a skin-contact loss), printing each sent value, so
+`compare` can check that the Frame shows exactly what was sent. It needs
+Bluetooth permission for the process that runs it. **Untested on 2026-09-29:**
+it compiled, but on this Mac, launched from an agent session, macOS never
+delivered a Bluetooth state and no permission prompt appeared, so it never
+advertised.
+
+## Pulse from the eye cameras (experimental)
+
+The Frame has no heart-rate sensor. **Verified 2026-09-29** (SteamOS 0.4.1,
+build `20260925.6191901`): its sensors are an ambient light/proximity sensor
+(`vcnl4000`), a hall sensor (`als31300`), two passthrough cameras
+(`arcimx616`), two tracking cameras (`og01a1b`) and two IR eye cameras
+(`og0ve10`). There is no optical heart-rate (PPG) sensor.
+
+The experiment asks whether the eye cameras can see a pulse anyway. With each
+heartbeat, the blood volume in the skin around the eye changes slightly and
+its IR reflectance changes with it. This is camera-based photoplethysmography;
+near-IR works, though the signal is weaker than in green light.
+
+```sh
+python3 scripts/tracking-on-frame.py pulse --seconds 60 --show
+```
+
+How it works:
+
+- **Capture (verified).** SteamVR ships `eyetracking --calib N`, which saves
+  both eye cameras for N seconds as 400×400 8-bit IR PNGs with a monotonic
+  timestamp per frame. A 2-second test captured 177 stereo pairs, about 90 fps.
+  SteamVR's live eye tracker, part of `steamvr.service`, gets its frames from
+  the DSP and stops its cameras when the headset is off; the capture ran
+  alongside it without errors in its log. **Untested:** whether the capture
+  and the live tracker coexist while the headset is worn and tracking.
+- **Privacy.** Each image is reduced to a 16×16 grid of patch averages as
+  soon as it is complete, then deleted. The capture directory is removed on
+  exit, even after errors. No image is kept or leaves the Frame. The estimate
+  is printed only with `--show`, and sent or saved only with `--osc` or
+  `--log`, as for the strap.
+- **Estimate.** Patch traces are averaged down to 15 Hz and turned into
+  relative change. A 2-second moving median removes drift and blinks.
+  Patches with frequent spikes (the eyeball and eyelid) are dropped, as are
+  dark or saturated ones. The 20% of patches with the clearest rhythm between
+  42 and 180 BPM are combined in the frequency domain. Output is an overall
+  estimate plus one estimate per second over 15-second windows. A result
+  counts as **clear** only when the top patches agree and the combined signal
+  stands out from the noise. Otherwise the command exits 3 and sends nothing.
+  The thresholds are provisional until checked on real wearers.
+
+**Verified on synthetic data** (unit tests): a 0.3% brightness pulse in a
+third of the patches, with noise, drift, blinks and eye movement, is
+recovered within 1.5 BPM at 58, 72 and 115 BPM; noise and blinks alone are
+not reported as a pulse. **Not yet verified:** whether a real wearer's eye
+images contain a usable pulse, and how accurate it is. That needs someone
+wearing the headset and a reference, as below.
+
+### Comparing with an Apple Watch
+
+1. On the watch, start a workout (for example **Other**) so it measures heart
+   rate every few seconds rather than occasionally.
+2. Put the Frame on, sit still and look ahead. Run:
+
+   ```sh
+   python3 scripts/tracking-on-frame.py pulse --seconds 120 --show \
+     --log /home/steamos/pulse.csv
+   ```
+
+   The per-second estimates print at the end. Compare them with what the
+   watch showed.
+3. End the workout. On the iPhone, open Health → your picture → **Export All
+   Health Data**, and AirDrop `export.zip` to the Mac.
+4. On the Mac:
+
+   ```sh
+   scp frame:pulse.csv . && ssh frame rm pulse.csv
+   python3 scripts/heart-check.py compare pulse.csv ~/Downloads/export.zip
+   ```
+
+This first version analyses after the capture ends, because the method must
+prove itself before a live panel is worth building. The Apple Watch is a
+reference, not ground truth: in workouts it is typically within a few BPM of
+a chest strap when you are still.
+
 ## SlimeVR: feasibility only
 
 SlimeVR is an independent application stack. Neither of our features installs,

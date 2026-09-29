@@ -5,6 +5,7 @@
   python3 scripts/tracking-on-frame.py gaze --seconds 10
   python3 scripts/tracking-on-frame.py gaze --seconds 3600 --osc 127.0.0.1 9000
   python3 scripts/tracking-on-frame.py heart --device AA:BB:CC:DD:EE:FF --panel
+  python3 scripts/tracking-on-frame.py pulse --seconds 60 --show   # experimental
 
 FRAME_ALIAS overrides the SSH alias (default: frame). Runs in the foreground;
 Ctrl-C stops the reader. No service, autostart, sudo or SteamVR settings changes.
@@ -27,13 +28,14 @@ cc -O2 -Wall -Wextra -Werror "$stage/gaze.c" \\
   -L/opt/steamvr/bin/linuxarm64 -Wl,-rpath,/opt/steamvr/bin/linuxarm64 \\
   -lopenxr_loader -o "$stage/gaze"
 chmod 700 "$stage/gaze" "$stage/tracking.py"
-mv "$stage/gaze" "$stage/tracking.py" "$base/"
+chmod 600 "$stage/pulse.py"
+mv "$stage/gaze" "$stage/tracking.py" "$stage/pulse.py" "$base/"
 echo 'Installed Frame Control tracking tools (no service started).'
 '''
 
 
 def main():
-    if len(sys.argv) < 2 or sys.argv[1] not in ("install", "gaze", "heart"):
+    if len(sys.argv) < 2 or sys.argv[1] not in ("install", "gaze", "heart", "pulse"):
         print(__doc__)
         return 2
     host = os.environ.get("FRAME_ALIAS", "frame")
@@ -45,7 +47,7 @@ def main():
         source = Path(__file__).resolve().parents[1] / "frame" / "tracking"
         with tempfile.TemporaryFile() as archive:
             with tarfile.open(fileobj=archive, mode="w") as tar:
-                for name in ("gaze.c", "tracking.py"):
+                for name in ("gaze.c", "tracking.py", "pulse.py"):
                     tar.add(source / name, arcname=name)
             archive.seek(0)
             return subprocess.call(ssh + ["bash -c " + shlex.quote(INSTALL)], stdin=archive)

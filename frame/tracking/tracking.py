@@ -341,21 +341,64 @@ def run_heart(args, osc):
             session.close()
 
 
+def run_pulse(args, osc):
+    """Experimental: estimate pulse from the IR eye cameras (see pulse.py)."""
+    import pulse
+    if not pulse.ET_BIN.exists():
+        raise TrackingError("SteamVR's eye-tracking tool is not installed on this Frame")
+    print(f"Capturing {args.seconds} s from the eye cameras. Wear the headset and keep still.", flush=True)
+    try:
+        frames = pulse.Capture(args.seconds).run()
+    except RuntimeError as error:  # capture status only; no image data
+        raise TrackingError(str(error))
+    print(f"Captured {len(frames)} eye frames; images already deleted. Analysing...", flush=True)
+    try:
+        result = pulse.analyse(frames)
+    except ValueError as error:
+        raise TrackingError(str(error))
+    clear = pulse.reliable(result)
+    offset = time.time() - time.monotonic()  # the capture's timestamps are CLOCK_MONOTONIC
+    if args.log:
+        fd = os.open(args.log, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "w") as log:
+            log.write("unix_seconds,bpm\n")
+            for when, bpm in result["series"]:
+                log.write(f"{when + offset:.3f},{bpm:.1f}\n")
+    if clear:
+        osc.send(args.address, [round(result["bpm"])])
+    if args.show:
+        print(f"Estimate: {result['bpm']:.1f} BPM ({'clear' if clear else 'NOT clear'}; "
+              f"patch agreement {result['agreement']:.0%}, signal/noise {result['snr']:.2f}, "
+              f"{result['patches']} of {result['usable']} usable patches)")
+        print("Per-second estimates (15 s windows): "
+              + " ".join(str(round(bpm)) for _, bpm in result["series"]))
+    else:
+        print("A clear pulse was found." if clear else "No clear pulse was found.")
+    return 0 if clear else 3
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
     gaze = commands.add_parser("gaze", help="headless OpenXR; prints counters only without --osc")
     heart = commands.add_parser("heart", help="standard BLE HRS from an explicitly selected strap")
-    for command in (gaze, heart):
+    pulse = commands.add_parser("pulse", help="experimental pulse estimate from the IR eye cameras")
+    for command in (gaze, heart, pulse):
         command.add_argument("--osc", nargs=2, metavar=("IP", "PORT"), help="explicit UDP destination; no default")
+    for command in (gaze, heart):
         command.add_argument("--seconds", type=int, default=10, help="bounded run, 1..86400 seconds (default: 10)")
+    pulse.add_argument("--seconds", type=int, default=60, help="capture length, 20..300 seconds (default: 60)")
     heart.add_argument("--device", required=True, help="strap Bluetooth address already discovered by BlueZ")
     heart.add_argument("--panel", action="store_true", help="show our panel on gamescope DISPLAY=:0")
-    heart.add_argument("--address", default="/avatar/parameters/HeartRate", help="integer BPM OSC parameter")
-    heart.add_argument("--log", help="new private CSV file; disabled by default")
+    for command in (heart, pulse):
+        command.add_argument("--address", default="/avatar/parameters/HeartRate", help="integer BPM OSC parameter")
+        command.add_argument("--log", help="new private CSV file; disabled by default")
+    pulse.add_argument("--show", action="store_true", help="print the estimate and per-second series")
     args = parser.parse_args()
     if not 1 <= args.seconds <= 86400:
         parser.error("--seconds must be 1..86400")
+    if args.command == "pulse" and not 20 <= args.seconds <= 300:
+        parser.error("pulse --seconds must be 20..300")
     def interrupted(signum, frame):
         raise KeyboardInterrupt
     signal.signal(signal.SIGTERM, interrupted)
@@ -363,12 +406,13 @@ def main():
         signal.signal(signal.SIGHUP, interrupted)
     osc = None
     try:
-        if args.command == "heart":
+        if args.command in ("heart", "pulse"):
             osc_message(args.address, [0])
-            if args.panel:
+            if getattr(args, "panel", False):
                 os.environ["DISPLAY"] = ":0"
         osc = Osc(args.osc)
-        return run_gaze(args, osc) if args.command == "gaze" else run_heart(args, osc)
+        run = {"gaze": run_gaze, "heart": run_heart, "pulse": run_pulse}[args.command]
+        return run(args, osc)
     except TrackingError as error:
         print(str(error))
         return 1
