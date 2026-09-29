@@ -9,6 +9,7 @@
 const { contextBridge, ipcRenderer, webUtils } = require("electron");
 
 contextBridge.exposeInMainWorld("frameApp", {
+  notify: (message, request) => ipcRenderer.invoke("comfort:notify", message, request),
   readClipboard: () => ipcRenderer.invoke("clipboard:read"),
   setUpConnection: () => ipcRenderer.invoke("connection:setup"),
   // While the keyboard-and-trackpad panel holds the keyboard, ⌘W, ⌘R and the rest go to the Frame.
