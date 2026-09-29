@@ -250,7 +250,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "mkdir -p \"${DERIVED_FILE_DIR}\"\npython3 \"${SRCROOT}/scripts/make_frame_bundle.py\" \"${DERIVED_FILE_DIR}/frame-bundle.tar.gz\" > \"${DERIVED_FILE_DIR}/frame-bundle.version\"\nmkdir -p \"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}\"\ncp \"${DERIVED_FILE_DIR}/frame-bundle.tar.gz\" \"${DERIVED_FILE_DIR}/frame-bundle.version\" \"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/\"\n";
+			shellScript = "set -e\nmkdir -p \"${DERIVED_FILE_DIR}\"\n# Written aside and moved into place together, so a failed download can't leave a stale pair.\npython3 \"${SRCROOT}/scripts/make_frame_bundle.py\" \"${DERIVED_FILE_DIR}/frame-bundle.new.tar.gz\" > \"${DERIVED_FILE_DIR}/frame-bundle.new.version\"\nmv \"${DERIVED_FILE_DIR}/frame-bundle.new.tar.gz\" \"${DERIVED_FILE_DIR}/frame-bundle.tar.gz\"\nmv \"${DERIVED_FILE_DIR}/frame-bundle.new.version\" \"${DERIVED_FILE_DIR}/frame-bundle.version\"\nmkdir -p \"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}\"\ncp \"${DERIVED_FILE_DIR}/frame-bundle.tar.gz\" \"${DERIVED_FILE_DIR}/frame-bundle.version\" \"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 

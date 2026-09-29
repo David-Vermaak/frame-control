@@ -99,7 +99,7 @@ controls to place each panel. See [docs/panels.md](panels.md).
 | `scripts/frame-ui.sh` | Mac | Start the Frame Control web UI (`ui/server.py`) and open it (**verified**) |
 | `scripts/apk-catalog.sh` | Mac | Refresh the rated F-Droid catalogue that Frame Control's Android section shows (**verified**) |
 | `scripts/compat-db-backup.sh` | Mac | Maintainer-only: back up the shared compatibility database locally and to Google Drive (**verified**) |
-| `scripts/push-vr-video.sh` | Mac → Frame | Upload VR180/360 videos to `~/Videos/VR`, linked into DeoVR's Proton prefix; `--launch` starts DeoVR (**verified**: upload and link; in-headset playback of local files not yet checked). See [docs/vr-video.md](vr-video.md) |
+| `scripts/push-vr-video.sh` | Computer → Frame | Upload movies, stereo PNG/JPEG or small `.splat` files to `~/Videos/FrameControl`; `--launch` starts our OpenVR player, `--theatre` adds a larger screen and dark surround. No separate viewer. **Verified remotely**: decode, stereo output and cleanup; worn-headset checks remain. See [docs/vr-video.md](vr-video.md) |
 | `scripts/push.sh` | Mac → Frame | `rsync` files to `~/Downloads` (or a given path) on the Frame (**verified**) |
 | `scripts/serve-bootstrap.sh` | Mac | Fallback: serve `bootstrap-on-frame.sh` with your public key embedded |
 | `scripts/bootstrap-on-frame.sh` | Frame | Fallback: install the key and enable `sshd` |

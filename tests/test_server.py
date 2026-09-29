@@ -5,6 +5,7 @@ request guards and input validation, which all run before any SSH call.
 
 Run: python3 -m unittest discover -s tests
 """
+import sandbox  # noqa: F401  (first: keeps tests off real data and services)
 import http.client
 import io
 import json

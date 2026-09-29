@@ -183,7 +183,7 @@ def current(s, now):
     out = dict(s)
     out['time'] = time.time()  # event age uses the Frame's clock, not the phone's
     out['remaining'] = max(0, max(s.get('deadline', now), (s.get('warned') or 0) + 60) - now) if s.get('active') else 0
-    if s.get('active') and now - s.get('heartbeat', s['started']) > 90:
+    if s.get('active') and now - (s.get('heartbeat') or s.get('started') or now) > 90:
         out['error'] = 'Session worker is not responding. Timer enforcement is unverified; cancel and start again.'
     return out
 

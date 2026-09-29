@@ -1,0 +1,24 @@
+<!doctype html>
+<!-- Control experiment, run on the Frame itself: how often does Chromium on
+     gamescope put a canvas animation on screen, with no network or decoding
+     involved? Draws every animation frame for ?s= seconds and writes the
+     frame-gap histogram per second into the title, where xprop can read it. -->
+<html><head><meta charset="utf-8"><title>fmv-present</title></head>
+<body style="margin:0;background:#000"><canvas id="c" width="1280" height="720" style="width:100%;height:100%"></canvas>
+<script>
+const q = new URLSearchParams(location.search), secs = +q.get("s") || 15, tag = q.get("tag") || "";
+const ctx = document.getElementById("c").getContext("2d", { alpha: false, desynchronized: true });
+const perSec = []; let t0 = 0, last = 0, n = 0, gaps = [];
+function frame(t) {
+  if (!t0) t0 = last = t;
+  ctx.fillStyle = "#123"; ctx.fillRect(0, 0, 1280, 720);
+  ctx.fillStyle = "#fff"; ctx.fillRect((n * 21) % 1280, 0, 20, 720); n++;
+  const s = Math.floor((t - t0) / 1000);
+  (perSec[s] = perSec[s] || []).push(t - last); last = t;
+  if (t - t0 < secs * 1000) return requestAnimationFrame(frame);
+  const out = perSec.map(g => g.length).join(",");
+  document.title = `[${tag}] done fps/s=${out}`;
+}
+document.title = `[${tag}] running`;
+requestAnimationFrame(frame);
+</script></body></html>
