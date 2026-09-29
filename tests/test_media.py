@@ -105,6 +105,7 @@ class Media(unittest.TestCase):
             with patch.object(remote, 'probe', return_value=({}, False)), \
                     self.assertRaisesRegex(RuntimeError, 'Unit already exists'):
                 remote.run({'action': 'play', 'id': identity})
+            self.assertEqual(run.call_args.args[0][0], 'systemd-run')  # reset-failed's result is ignored
 
     def test_upload_rejects_unplayable_names_and_keeps_copy_error(self):
         with patch.object(server, 'ssh') as ssh, patch.object(server, 'push_file') as push:
