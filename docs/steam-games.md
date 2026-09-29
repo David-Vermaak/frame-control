@@ -4,9 +4,9 @@ Frame Control's **Get games** section lists the games you own with each one's
 Steam Frame rating, installs them on the Frame, and searches the Steam store.
 This page covers how it works underneath, so you can do the same from a shell.
 
-For flat-to-VR mods and Beat Saber custom songs, see the
-[per-game feasibility table](mods.md). Mod support is separate from Steam's
-Frame rating; there is no mod installer yet.
+Installed Unreal Engine games also have a **VR mod** button that installs,
+starts and removes UEVR; see [VR mods](mods.md) for how it works and the
+per-game table. Mod support is separate from Steam's Frame rating.
 
 ## How it works
 

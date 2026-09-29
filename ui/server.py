@@ -407,13 +407,14 @@ def launch(body):
     return {"message": f"Launching {appid}"}
 
 
-def steam_frame(*args, timeout=40):
-    """Run frame_steam.py on the Frame (it drives the Steam client) and return its JSON."""
+def steam_frame(*args, timeout=40, script="frame_steam.py"):
+    """Run frame_steam.py (it drives the Steam client), or another on-Frame
+    helper with the same JSON contract, on the Frame and return its JSON."""
     try:
         out = ssh("python3 - " + " ".join(map(shlex.quote, args)),
-                  stdin=(HERE / "frame_steam.py").read_text(), timeout=timeout)
+                  stdin=(HERE / script).read_text(), timeout=timeout)
     except Failure as e:
-        # frame_steam.py prints {"error": ...} on stdout when it fails, but ssh()
+        # The helper prints {"error": ...} on stdout when it fails, but ssh()
         # reports stderr instead if there was any, so look in both.
         for line in [*reversed(getattr(e, "stdout", "").splitlines()), *reversed(str(e).splitlines())]:
             try:
@@ -432,6 +433,20 @@ def steam(body):
     if action not in ("install", "store"):
         raise Failure("action must be install or store", 400)
     return steam_frame(action, appid)
+
+
+# Downloads are about 70 MB; starting waits for the game, the injector and SteamVR.
+MOD_TIMEOUT = {"status": 40, "install": 600, "start": 360, "uninstall": 60}
+
+
+def mods(body):
+    """UEVR for one installed Unreal game: status, install, start (inject) or uninstall."""
+    appid, action = str(body.get("appid", "")), body.get("action")
+    if not APPID.match(appid):
+        raise Failure("bad appid", 400)
+    if action not in MOD_TIMEOUT:
+        raise Failure("action must be " + ", ".join(MOD_TIMEOUT), 400)
+    return steam_frame(action, appid, timeout=MOD_TIMEOUT[action], script="frame_mods.py")
 
 
 def steam_search(query):
@@ -1227,7 +1242,7 @@ def _sweep_one(prefix, d):
         pass
 
 
-POST = {"/api/android/display": android_display, "/api/android": android, "/api/titles": titles, "/api/launch": launch, "/api/steam": steam, "/api/volume": set_volume, "/api/clipboard": clipboard,
+POST = {"/api/android/display": android_display, "/api/android": android, "/api/titles": titles, "/api/launch": launch, "/api/steam": steam, "/api/mods": mods, "/api/volume": set_volume, "/api/clipboard": clipboard,
         "/api/flatpak": flatpak, "/api/open": open_thing, "/api/shots/save": save_shots,
         "/api/webinstall/check": webinstall_check, "/api/webinstall/start": webinstall_start,
         "/api/webinstall/cancel": webinstall_cancel}

@@ -254,10 +254,10 @@
   .and-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 22px; align-items: start; }
   .and-col { display: grid; gap: 22px; align-content: start; }
   .rep-item .s { white-space: normal; }
-  #repDlg, #titleDlg, #wiDlg, #pwDlg, #apkAltDlg { background: #1e2329; color: var(--text); border: 1px solid rgba(255,255,255,.1); border-radius: 4px;
+  #repDlg, #titleDlg, #wiDlg, #pwDlg, #apkAltDlg, #modDlg { background: #1e2329; color: var(--text); border: 1px solid rgba(255,255,255,.1); border-radius: 4px;
             padding: 22px; width: min(560px, 92vw); box-shadow: 0 20px 60px rgba(0,0,0,.6); }
-  #repDlg::backdrop, #titleDlg::backdrop, #wiDlg::backdrop, #pwDlg::backdrop, #apkAltDlg::backdrop { background: rgba(0,0,0,.55); }
-  #repDlg h2, #titleDlg h2, #wiDlg h2, #pwDlg h2, #apkAltDlg h2 { margin: 0 0 14px; font-size: 15px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--bright); }
+  #repDlg::backdrop, #titleDlg::backdrop, #wiDlg::backdrop, #pwDlg::backdrop, #apkAltDlg::backdrop, #modDlg::backdrop { background: rgba(0,0,0,.55); }
+  #repDlg h2, #titleDlg h2, #wiDlg h2, #pwDlg h2, #apkAltDlg h2, #modDlg h2 { margin: 0 0 14px; font-size: 15px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--bright); }
   #repForm label, #titleForm label { display: block; font-size: 12.5px; color: var(--muted); margin-top: 10px; }
   #repForm label input[type=text], #repForm textarea, #titleForm label input, #titleForm label select { margin-top: 5px; }
   #titleForm select { width: 100%; background: rgba(0,0,0,.28); color: var(--text); border: 1px solid transparent;
@@ -666,6 +666,20 @@
   <div class="actions"><button id="apkAltClose">Close</button></div>
 </dialog>
 
+<dialog id="modDlg" aria-labelledby="modTitle">
+  <h2 id="modTitle">Play in VR with UEVR</h2>
+  <p id="modState" class="sub"></p>
+  <p class="sub">UEVR by praydog turns many Unreal Engine games into VR games. Frame Control downloads
+    the official UEVR 1.05 release and Microsoft's .NET 6 runtime it needs (about 70 MB), checks their hashes,
+    and keeps them in this game's Proton prefix, not the game's folder. Remove takes them out again.</p>
+  <p class="sub">Tested on the Frame with one game so far. Whether a game looks and plays right in VR varies;
+    UEVR's own menu in the headset has the per-game settings.</p>
+  <div class="row rep-actions"><span class="sub" id="modMsg"></span><span class="spacer"></span>
+    <button type="button" class="small" id="modClose">Close</button>
+    <button type="button" class="small" id="modRemove" hidden>Remove UEVR</button>
+    <button type="button" class="action small" id="modInstall" hidden>Install UEVR</button>
+    <button type="button" class="play small" id="modStart" hidden>▶ PLAY IN VR</button></div>
+</dialog>
 <dialog id="repDlg" aria-labelledby="repTitle">
   <form method="dialog" id="repForm">
     <h2 id="repTitle">Report an APK</h2>
@@ -1701,7 +1715,8 @@ function gameButtons(id, name, free) {
   const open = `<button class="small" data-gm="store" data-id="${id}" data-name="${esc(name)}" title="Open the store page in the headset">Store on Frame</button>`;
   if (d && d.appid === id) return `<span class="tag">${d.paused ? "Paused" : "Downloading"} ${d.percent ?? 0}%</span>`;
   if (g && g.installed) return `<span class="tag">Installed</span>` +
-    `<button class="play small" data-launch="${id}" data-name="${esc(name)}">▶ PLAY</button>`;
+    `<button class="play small" data-launch="${id}" data-name="${esc(name)}">▶ PLAY</button>` +
+    `<button class="small" data-mod="${id}" data-name="${esc(name)}" title="Flat-to-VR mod for Unreal Engine games">VR mod</button>`;
   if (g) return `<button class="action small" data-gm="install" data-id="${id}" data-name="${esc(name)}">Install on Frame</button>`;
   return `<a href="${storeUrl}" target="_blank" rel="noopener" title="Opens in your browser">${free ? "Get" : "Buy"} on Steam ↗</a>${open}`;
 }
@@ -1772,6 +1787,45 @@ document.body.addEventListener("click", async e => {
   if (action === "install" && res) loadOwned();
 });
 loadOwned();
+
+// ---- VR mod (UEVR) for one installed game; frame_mods.py does the work ----
+const mod = { appid: null, name: "" };
+function showMod(st, note) {
+  const busy = note === null;
+  $("modTitle").textContent = `${mod.name} in VR`;
+  $("modState").textContent = !st ? "Checking the game on the Frame…"
+    : !st.eligible ? "This doesn't look like an Unreal Engine game, so UEVR can't run it."
+    : !st.prefix ? "Play the game once first, so Steam sets up its Proton prefix."
+    : st.injected ? "UEVR is running in the game now. Put on the headset."
+    : st.installed ? `UEVR ${st.version} is installed for this game.${st.running ? " The game is running; Play in VR adds UEVR to it." : ""}`
+    : `UEVR ${st.version} isn't installed for this game yet.`;
+  $("modMsg").textContent = busy ? "Working… this can take a few minutes" : note || "";
+  const ok = st && st.eligible && st.prefix;
+  $("modInstall").hidden = !ok || st.installed; $("modStart").hidden = !ok || !st.installed || st.injected;
+  $("modRemove").hidden = !st || !st.installed;
+  for (const b of ["modInstall", "modStart", "modRemove"]) $(b).disabled = busy || (b === "modRemove" && st && st.running);
+}
+async function modAction(action, label) {
+  const appid = mod.appid;
+  showMod(mod.st, null);
+  const res = await act(`${label} for ${mod.name}`, () => api("/api/mods", { action, appid }));
+  if (appid !== mod.appid) return;
+  try { mod.st = await api("/api/mods", { action: "status", appid }); } catch {}
+  showMod(mod.st, res ? res.message : "Didn't work; the log has the reason");
+}
+document.body.addEventListener("click", async e => {
+  const b = e.target.closest("[data-mod]"); if (!b) return;
+  mod.appid = b.dataset.mod; mod.name = b.dataset.name; mod.st = null;
+  showMod(null, "");
+  $("modDlg").showModal();
+  const appid = mod.appid;
+  try { const st = await api("/api/mods", { action: "status", appid }); if (appid === mod.appid) { mod.st = st; showMod(st, ""); } }
+  catch (err) { if (appid === mod.appid) $("modState").textContent = err.message; }
+});
+$("modInstall").onclick = () => modAction("install", "Install UEVR");
+$("modStart").onclick = () => modAction("start", "Start UEVR");
+$("modRemove").onclick = () => modAction("uninstall", "Remove UEVR");
+$("modClose").onclick = () => $("modDlg").close();
 
 // ---- Android apps (own Lepton instance each) + catalogue ----
 const VLABEL = { works: "Works on Frame", likely: "Should work", maybe: "Might work", unlikely: "Probably crashes", no: "Won't work" };
