@@ -88,12 +88,14 @@ class Overlay:
     def close(self):
         # Best effort: SteamVR removes a disconnected client's overlays anyway,
         # and a teardown error must not overwrite a finished playback's status.
-        for h in reversed(self.handles):
-            try:
-                self.call('DestroyOverlay', h)
-            except RuntimeError:
-                pass
-        self.vr.VR_ShutdownInternal()
+        try:
+            for h in reversed(self.handles):
+                try:
+                    self.call('DestroyOverlay', h)
+                except RuntimeError:
+                    pass
+        finally:
+            self.vr.VR_ShutdownInternal()
 
 
 def probe(path):
@@ -183,6 +185,8 @@ def play(args):
             except OverlayBusy:
                 pending.insert(0, item)
                 return
+            except RuntimeError:
+                pass  # the surround is cosmetic; never end playback over it
 
     def hold(handle, data, w, h):
         """Keep a still (photo or splat) up until Stop, retrying through standby."""
