@@ -56,22 +56,49 @@ def load_grid(path):
                       image.get_rowstride(), image.get_n_channels())
 
 
+def reduce_file(loader, path):
+    """Reduce one image to its patch grid and delete it, whatever happens."""
+    try:
+        return loader(path)
+    finally:
+        os.unlink(path)
+
+
 class Capture:
     """Run SteamVR's eye-camera capture and reduce frames as they arrive."""
     NAME = re.compile(r"^(left|right)_(\d+)\.png$")
     # Only SteamVR's own capture directories are read and removed.
-    WRITING = re.compile(r"Writing capture to: (/tmp/etcalib_[\w-]+)")
     PREFIX = "/tmp/etcalib_"
+    # About five seconds of frames (~65 MB in RAM-backed /tmp). If reduction
+    # falls further behind than this, the capture stops rather than letting
+    # eye images pile up.
+    MAX_BACKLOG = 900
 
-    def __init__(self, seconds, runner=subprocess.Popen, loader=load_grid):
-        self.seconds, self.runner, self.loader = seconds, runner, loader
+    def __init__(self, seconds, runner=subprocess.Popen, loader=load_grid, workers=3):
+        self.seconds, self.runner, self.loader, self.workers = seconds, runner, loader, workers
         self.grids = {"left": {}, "right": {}}
         self.directory = None
+        self.pool = None
+        self.submitted = set()
+        self.futures = {}
+
+    def candidates(self):
+        parent, stem = os.path.split(self.PREFIX)
+        return {Path(entry.path) for entry in os.scandir(parent)
+                if entry.name.startswith(stem) and entry.is_dir(follow_symlinks=False)}
 
     def run(self):
-        # The capture tool's output goes to a private temporary file, read back
-        # to find the capture directory and failure messages.
+        # The capture tool's output goes to a private temporary file, read for
+        # failure messages. It is block-buffered, so the capture directory is
+        # found by watching for a new one rather than waiting for its name.
         import tempfile
+        before = self.candidates()
+        if self.workers:
+            # SteamVR pins its eye tracker to cores 0-1; decoding runs beside it.
+            import concurrent.futures
+            import multiprocessing
+            self.pool = concurrent.futures.ProcessPoolExecutor(
+                self.workers, mp_context=multiprocessing.get_context("fork"))
         with tempfile.TemporaryFile("w+") as log:
             process = self.runner([str(ET_BIN), "-b", "CDSP", "-w", str(ET_WEIGHTS), "--calib", str(self.seconds)],
                                   cwd=str(ET_BIN.parent), stdout=log, stderr=subprocess.STDOUT)
@@ -79,10 +106,10 @@ class Capture:
                 deadline = time.monotonic() + self.seconds + 30
                 while True:
                     if not self.directory:
-                        log.seek(0)
-                        match = self.WRITING.search(log.read())
-                        if match:
-                            self.directory = Path(match.group(1))
+                        new = self.candidates() - before
+                        if len(new) > 1:
+                            raise RuntimeError("another eye-camera capture is running")
+                        self.directory = new.pop() if new else None
                     finished = process.poll() is not None
                     self.reduce(final=finished)
                     if finished:
@@ -104,6 +131,8 @@ class Capture:
                     except subprocess.TimeoutExpired:
                         process.kill()
                         process.wait()
+                if self.pool:
+                    self.pool.shutdown(wait=True, cancel_futures=True)
                 self.remove()
 
     def reduce(self, final=False):
@@ -116,14 +145,23 @@ class Capture:
             match = self.NAME.match(entry.name)
             if match:
                 pending[match.group(1)].append((int(match.group(2)), entry.path))
+        if sum(len(files) for files in pending.values()) > self.MAX_BACKLOG:
+            raise RuntimeError("eye-image processing fell behind; capture stopped")
         for eye, files in pending.items():
             files.sort()
             ready = files if final else files[:-1]
             for index, path in ready:
-                try:
-                    self.grids[eye][index] = self.loader(path)
-                finally:
-                    os.unlink(path)
+                if path in self.submitted:
+                    continue
+                self.submitted.add(path)
+                if self.pool:
+                    self.futures[(eye, index)] = self.pool.submit(reduce_file, self.loader, path)
+                else:
+                    self.grids[eye][index] = reduce_file(self.loader, path)
+        for key, future in list(self.futures.items()):
+            if final or future.done():
+                self.grids[key[0]][key[1]] = future.result()
+                del self.futures[key]
 
     def frames(self):
         """[(monotonic seconds, eye, grid)] joined with the capture metadata."""

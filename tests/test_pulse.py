@@ -125,7 +125,7 @@ class FakeCaptureTool:
             stdout.flush()
             self.returncode = 1
             return self
-        stdout.write(f"Writing capture to: {self.directory}\nCapturing images...\n")
+        # Real output is block-buffered until exit, so nothing is printed here.
         stdout.flush()
         self.directory.mkdir()
         return self
@@ -156,6 +156,7 @@ class CaptureLifecycle(unittest.TestCase):
     def setUp(self):
         self.root = Path(tempfile.mkdtemp())
         self.directory = self.root / "etcalib_test"
+        (self.root / "etcalib_older").mkdir()  # an earlier capture is not ours
         self.loaded = []
 
     def tearDown(self):
@@ -170,9 +171,8 @@ class CaptureLifecycle(unittest.TestCase):
     def capture(self, tool):
         class TestCapture(pulse.Capture):
             # A temporary directory stands in for /tmp/etcalib_*.
-            WRITING = __import__("re").compile(r"Writing capture to: (\S+)")
-            PREFIX = str(self.root)
-        capture = TestCapture(20, runner=tool, loader=self.loader)
+            PREFIX = str(self.root / "etcalib_")
+        capture = TestCapture(20, runner=tool, loader=self.loader, workers=0)
         with patch.object(pulse.time, "sleep", lambda s: None):
             return capture, capture.run()
 
@@ -181,6 +181,7 @@ class CaptureLifecycle(unittest.TestCase):
         capture, frames = self.capture(tool)
         self.assertEqual(sorted(self.loaded), sorted(f"{e}_{i}.png" for e in ("left", "right") for i in range(6)))
         self.assertFalse(self.directory.exists())  # images and metadata removed
+        self.assertTrue((self.root / "etcalib_older").exists())
         self.assertEqual(len(frames), 10)          # frame 2 invalid in both eyes
         self.assertEqual(tool.command[-2:], ["--calib", "20"])
         self.assertTrue(all(isinstance(t, float) and eye in ("left", "right") for t, eye, _ in frames))
@@ -190,6 +191,27 @@ class CaptureLifecycle(unittest.TestCase):
         with self.assertRaises(RuntimeError) as raised:
             self.capture(tool)
         self.assertIn("cameras unavailable", str(raised.exception))
+
+    def test_backlog_stops_capture_and_removes_images(self):
+        class Stalled(FakeCaptureTool):
+            def poll(self):
+                for i in range(20):
+                    for eye in ("left", "right"):
+                        (self.directory / f"{eye}_{self.polls * 20 + i}.png").write_bytes(b"png")
+                self.polls += 1
+                return None
+        tool = Stalled(self.directory)
+        class TestCapture(pulse.Capture):
+            PREFIX = str(self.root / "etcalib_")
+            MAX_BACKLOG = 50
+        capture = TestCapture(20, runner=tool, loader=self.loader, workers=0)
+        capture.reduce = lambda final=False, original=capture.reduce: (
+            original(final) if tool.polls > 3 else None)  # reduction stalls
+        with patch.object(pulse.time, "sleep", lambda s: None), self.assertRaises(RuntimeError) as raised:
+            capture.run()
+        self.assertIn("fell behind", str(raised.exception))
+        self.assertEqual(tool.returncode, -15)       # capture tool stopped
+        self.assertFalse(self.directory.exists())    # no image left behind
 
     def test_only_removes_capture_directories(self):
         capture = pulse.Capture(20)

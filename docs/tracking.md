@@ -193,13 +193,16 @@ How it works:
 
 - **Capture (verified).** SteamVR ships `eyetracking --calib N`, which saves
   both eye cameras for N seconds as 400×400 8-bit IR PNGs with a monotonic
-  timestamp per frame. A 2-second test captured 177 stereo pairs, about 90 fps.
-  SteamVR's live eye tracker, part of `steamvr.service`, gets its frames from
-  the DSP and stops its cameras when the headset is off; the capture ran
-  alongside it without errors in its log. **Untested:** whether the capture
-  and the live tracker coexist while the headset is worn and tracking.
+  timestamp per frame, at about 90 fps per eye. SteamVR's live eye tracker,
+  part of `steamvr.service`, gets its frames from the DSP and stops its
+  cameras when the headset is off. Unworn captures ran alongside it: its PID
+  and log were unchanged and our OpenXR gaze session still started
+  afterwards. **Untested:** whether the capture and the live tracker coexist
+  while the headset is worn and tracking.
 - **Privacy.** Each image is reduced to a 16×16 grid of patch averages as
-  soon as it is complete, then deleted. The capture directory is removed on
+  soon as it is complete, then deleted. Three worker processes do this beside
+  the capture. If more than 900 images (about five seconds) ever wait, the
+  capture stops rather than letting eye images accumulate. The capture directory is removed on
   exit, even after errors. No image is kept or leaves the Frame. The estimate
   is printed only with `--show`, and sent or saved only with `--osc` or
   `--log`, as for the strap.
@@ -212,6 +215,15 @@ How it works:
   counts as **clear** only when the top patches agree and the combined signal
   stands out from the noise. Otherwise the command exits 3 and sends nothing.
   The thresholds are provisional until checked on real wearers.
+
+**Verified on the Frame, unworn, 2026-09-29:** a 30-second run captured
+5,362 eye frames, never had more than 7 images on disk, finished 3 s after
+the capture ended and left no capture directory. It reported no clear pulse
+(exit 3), as it should with nobody wearing it. Worth knowing: the unworn
+patches agreed on a steady rhythm near 129 BPM (2.15 Hz) with low
+signal/noise (0.19). That is a camera or illumination artifact, not a pulse,
+and the signal/noise gate kept it from being reported. A worn test should
+also record an unworn baseline, to rule out the same artifact.
 
 **Verified on synthetic data** (unit tests): a 0.3% brightness pulse in a
 third of the patches, with noise, drift, blinks and eye movement, is
