@@ -56,13 +56,19 @@ def cache_dir(*parts):
     return base.joinpath(*parts)
 
 
-def control_path(*, private=False):
+def control_path(tag="x", *, private=None):
     """ssh ControlPath for the shared connection, or None where it isn't supported.
 
+    `tag` names the headset: ssh's %C hashes only the address, user and port, so two
+    headsets reached at the same address (one of them moved) would otherwise share a
+    connection, and one's commands would run on the other.
     /tmp, not $TMPDIR: macOS's per-user temp path overflows the unix socket path limit.
     """
+    # A private server (the MCP adapter's) keeps its own masters: FRAME_PRIVATE_SSH=1.
+    if private is None:
+        private = os.environ.get("FRAME_PRIVATE_SSH") == "1"
     suffix = f"-{os.getpid()}" if private else ""
-    return f"/tmp/frame-ui-{os.getuid()}{suffix}-%C" if MUX else None
+    return f"/tmp/frame-ui-{os.getuid()}{suffix}-{tag}-%C" if MUX else None
 
 
 def which(name, *extra):
@@ -258,9 +264,9 @@ def open_steam_link():
     return "Steam Link isn't installed; opened its download page"
 
 
-def open_rdp(alias):
-    """Remote desktop to the Frame's xrdp (user steamos)."""
-    host = ssh_hostname(alias)
+def open_rdp(alias, host=None):
+    """Remote desktop to the Frame's xrdp (user steamos), at `host` or where the alias points."""
+    host = host or ssh_hostname(alias)
     if MAC:
         if subprocess.run(["open", "-a", "Windows App"], capture_output=True).returncode == 0:
             return "Opened Windows App"

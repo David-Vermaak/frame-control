@@ -6,8 +6,9 @@ asking for the Developer Mode password once. The Linux and Windows twin of
 scripts/connect.sh (which the Mac app uses); same config block, so either can
 re-run over the other. Idempotent.
 
-Usage: python3 ui/frame_connect.py [HOST_OR_IP[:PORT]]
-Env:   FRAME_USER (default steamos), FRAME_ALIAS (default frame)
+Usage: python3 ui/frame_connect.py [--alias NAME] [HOST_OR_IP[:PORT]]
+Env:   FRAME_USER (default steamos), FRAME_ALIAS (default frame; --alias wins, for
+       terminals that don't pass the environment on, like Windows' `start`)
 """
 import base64
 import json
@@ -283,10 +284,40 @@ def config_block(host, port=22, user=FRAME_USER):
             "  IdentitiesOnly yes", "  ServerAliveInterval 30", "Host *", END]
 
 
+class config_lock:
+    """The lock Frame Control takes to edit ~/.ssh/config (frame_devices.file_lock), so a
+    running app and this setup never write over each other's change."""
+
+    def __enter__(self):
+        self.fh = open(SSH_DIR / "config.frame-control.lock", "a+")
+        for _ in range(300):
+            try:
+                if os.name == "nt":
+                    import msvcrt
+                    self.fh.seek(0)
+                    msvcrt.locking(self.fh.fileno(), msvcrt.LK_NBLCK, 1)
+                else:
+                    import fcntl
+                    fcntl.lockf(self.fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                return self
+            except OSError:
+                time.sleep(0.1)
+        return self  # 30 s: go ahead rather than fail the setup
+
+    def __exit__(self, *exc):
+        self.fh.close()  # closing releases the lock
+        return False
+
+
 def write_config(host, port=22, user=FRAME_USER):
+    make_ssh_dir()
+    with config_lock():
+        _write_config(host, port, user)
+
+
+def _write_config(host, port, user):
     """Replace our managed block and put it first: ssh uses the first value it sees per
     option. The trailing "Host *" returns the rest of the file to global scope."""
-    make_ssh_dir()
     old = CONFIG.read_text(encoding="utf-8") if CONFIG.exists() else ""
     kept, skip = [], False
     for line in old.splitlines():
@@ -297,7 +328,7 @@ def write_config(host, port=22, user=FRAME_USER):
         elif not skip:
             kept.append(line)
     block = config_block(host, port, user)
-    tmp = CONFIG.with_name("config.frame-control.tmp")
+    tmp = CONFIG.with_name(f"config.frame-control.{os.getpid()}.tmp")
     tmp.write_text("\n".join(block + kept) + "\n", encoding="utf-8")
     if os.name != "nt":
         tmp.chmod(0o600)
@@ -367,9 +398,22 @@ def pair_with_devkit(host, port, user):
     return chosen[0], "paired, but key login still fails"
 
 
+def use_alias(alias):
+    """--alias: set up another headset under its own ~/.ssh/config alias (Devices tab)."""
+    global FRAME_ALIAS, BEGIN, END
+    if not NAME_RE.fullmatch(alias):
+        sys.exit(f"--alias must be a plain name, not {alias!r}")
+    FRAME_ALIAS = alias
+    BEGIN = f"# >>> steam-frame ({FRAME_ALIAS}) >>>"
+    END = f"# <<< steam-frame ({FRAME_ALIAS}) <<<"
+
+
 def main(argv):
     if argv and argv[0] in ("-h", "--help"):
         sys.exit(__doc__)
+    if len(argv) >= 2 and argv[0] == "--alias":
+        use_alias(argv[1])
+        argv = argv[2:]
     say("==> Looking for the Steam Frame")
     found = pick_host(argv[0] if argv else None)
     while not found:

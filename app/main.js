@@ -159,10 +159,16 @@ async function startServer() {
 
 // Closing stdin lets server.py close its SSH connections and exit (the only clean
 // way on Windows); SIGTERM does the same elsewhere.
+// Resolves once it has exited (or after 20 s), so a replacement can take the server
+// lock: server.py allows one per user.
 function endServer(child) {
+  const gone = child.exitCode !== null || child.signalCode !== null ? Promise.resolve()
+    : new Promise((resolve) => child.once("exit", resolve));
   try { child.stdin.end(); } catch {}
   if (!IS_WIN) child.kill("SIGTERM");
-  setTimeout(() => { if (child.exitCode === null && child.signalCode === null) child.kill(); }, 5000).unref();
+  // server.py ignores a second SIGTERM while it shuts down, so the fallback is a hard kill.
+  setTimeout(() => { if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL"); }, 12000).unref();
+  return Promise.race([gone, new Promise((resolve) => setTimeout(resolve, 20000).unref())]);
 }
 
 function stopServer() {
@@ -183,27 +189,37 @@ function serverDied(why) {
   if (win) win.loadURL(errorPage(`The server stopped unexpectedly (${why}). See ${LOG}.`));
 }
 
-async function restartServer() {
-  const old = server;
-  server = null;
-  url = null;
-  if (old) endServer(old);
-  await load();
+// Restarts that overlap share one: two could each start a server, and the one
+// that lost the lock would leave the app pointing at nothing.
+let restarting = null;
+function restartServer() {
+  if (!restarting) {
+    restarting = (async () => {
+      const old = server;
+      server = null;
+      url = null;
+      if (old) await endServer(old);
+      if (starting) await starting.catch(() => {});  // a start it cut short: then start afresh
+      await load();
+    })().finally(() => { restarting = null; });
+  }
+  return restarting;
 }
 
 // On macOS the page's sticky header becomes the title bar, clear of the traffic lights.
 const CHROME_CSS = IS_MAC && `
   header { padding-left: 92px !important; -webkit-app-region: drag; user-select: none; }
-  header a, header button, header input, header .chip { -webkit-app-region: no-drag; }
+  header a, header button, header input, header select, header .chip { -webkit-app-region: no-drag; }
 `;
 
 // Restart Server can start a new load while an older one is still waiting for
 // its server; only the newest load may touch the window.
 let loadGen = 0;
+let starting = null;  // loads that overlap share one server start
 async function load() {
   const gen = ++loadGen;
   try {
-    if (!url) await startServer();
+    if (!url) await (starting ||= startServer().finally(() => { starting = null; }));
     if (gen === loadGen && win) { await win.loadURL(url); firstRunCheck(); }
   } catch (e) {
     if (gen === loadGen && win) await win.loadURL(errorPage(e.message));
@@ -253,6 +269,46 @@ ipcMain.on("keys:capture", (e, on) => { if (fromUi(e)) win.webContents.setIgnore
 ipcMain.handle("update:get", (e) => fromUi(e) ? publicUpdate() : null);
 ipcMain.handle("update:check", (e) => fromUi(e) ? checkForUpdate({ manual: true }).then(publicUpdate) : null);
 ipcMain.handle("update:install", (e) => { if (fromUi(e)) installUpdate(); });
+
+// The page reports the headsets it knows (the server's Devices tab), so the Frame
+// menu can switch between them. Only plain names and ids go into the menu.
+const ALIAS_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+let devices = [];
+ipcMain.on("devices:changed", (e, list) => {
+  if (!fromUi(e) || !Array.isArray(list)) return;
+  const next = list.slice(0, 20).filter(d => d && typeof d.id === "string" && ALIAS_RE.test(d.alias || ""))
+    .map(d => ({ id: d.id.slice(0, 80), name: String(d.name || d.alias).slice(0, 60), alias: d.alias, active: !!d.active }));
+  if (JSON.stringify(next) === JSON.stringify(devices)) return;
+  devices = next;
+  buildMenu();
+});
+const activeAlias = () => (devices.find(d => d.active) || {}).alias || FRAME;
+
+// SSH through the server, so it goes to the headset and address the app is using
+// (with its own pinned identity), and refuses when there's none.
+function openSsh() {
+  if (!url) return dialog.showErrorBox("Couldn't open SSH", "Frame Control's server isn't running.");
+  const body = JSON.stringify({ what: "terminal" });
+  const req = http.request(new URL("/api/open", url), {
+    method: "POST", timeout: 15000,
+    headers: { "Content-Type": "application/json", "X-Frame-UI": "1", "Content-Length": Buffer.byteLength(body) },
+  }, (res) => {
+    let data = "";
+    res.on("data", (c) => { data += c; });
+    res.on("end", () => {
+      if (res.statusCode === 200) return;
+      let why = `HTTP ${res.statusCode}`;
+      try { why = JSON.parse(data).error || why; } catch {}
+      dialog.showErrorBox("Couldn't open SSH", why);
+    });
+  });
+  req.on("error", (e) => dialog.showErrorBox("Couldn't open SSH", e.message));
+  req.on("timeout", () => req.destroy(new Error("the server didn't answer")));
+  req.end(body);
+}
+function showDevices() {
+  if (win && url) win.webContents.executeJavaScript('location.hash = "devices"').catch(() => {});
+}
 
 ipcMain.handle("comfort:notify", (e, message) => {
   if (!fromUi(e) || typeof message !== "string" || message.length > 500) throw new Error("Invalid notification");
@@ -425,13 +481,14 @@ async function runInTerminal(argv) {
   }
 }
 
-async function setUpConnection() {
-  const alias = `FRAME_ALIAS=${FRAME}`;
+// Set Up Connection for the headset in use (or another alias, from the Devices tab).
+async function setUpConnection(name = activeAlias()) {
+  if (!ALIAS_RE.test(name)) return;
+  const alias = `FRAME_ALIAS=${name}`;
   if (IS_MAC) return runInTerminal(["env", alias, "zsh", path.join(SCRIPTS, "connect.sh")]);
   const py = python || await findPython({ ...process.env, PATH: await loginPath() });
-  const setup = [py || "python3", ...PY_FLAGS, path.join(ROOT, "ui", "frame_connect.py")];
-  // A new console inherits our environment on Windows; Linux terminals may not.
-  runInTerminal(IS_WIN ? setup : ["env", alias, ...setup]);
+  // --alias, since a new console on Windows (and some Linux terminals) doesn't get our environment.
+  runInTerminal([py || "python3", ...PY_FLAGS, path.join(ROOT, "ui", "frame_connect.py"), "--alias", name]);
 }
 
 function buildMenu() {
@@ -446,8 +503,15 @@ function buildMenu() {
     {
       label: "Frame",
       submenu: [
-        { label: "Set Up Connection…", click: setUpConnection },
-        { label: IS_MAC ? "Open SSH in Terminal" : "Open SSH in a Terminal", click: () => runInTerminal(["ssh", FRAME]) },
+        { label: "Set Up Connection…", click: () => setUpConnection() },
+        { label: IS_MAC ? "Open SSH in Terminal" : "Open SSH in a Terminal", click: openSsh },
+        { type: "separator" },
+        ...(devices.length > 1 ? [{
+          label: "Headset",
+          submenu: devices.map(d => ({ label: d.name, type: "radio", checked: d.active,
+                                       click: () => { if (win) win.webContents.send("use-device", d.id); } })),
+        }] : []),
+        { label: "Devices…", accelerator: "CmdOrCtrl+5", click: showDevices },
         { type: "separator" },
         { label: "Open in Browser", click: () => url && shell.openExternal(url) },
         { label: "Restart Server", click: () => win ? restartServer() : createWindow() },

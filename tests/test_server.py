@@ -34,7 +34,9 @@ class ServerGuards(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.port = free_port()
-        env = {**os.environ, "FRAME_ALIAS": "frame-control-test.invalid", "PYTHONDONTWRITEBYTECODE": "1"}
+        cls.ssh_dir = tempfile.mkdtemp(prefix="frame-control-ssh-")  # an empty ~/.ssh: no headsets set up
+        env = {**os.environ, "FRAME_ALIAS": "frame-control-test.invalid", "PYTHONDONTWRITEBYTECODE": "1",
+               "FRAME_CONTROL_SSH_DIR": cls.ssh_dir}
         cls.log = tempfile.TemporaryFile()
         cls.proc = subprocess.Popen([sys.executable, str(ROOT / "ui" / "server.py"), "--port", str(cls.port)],
                                     env=env, stdout=cls.log, stderr=subprocess.STDOUT)
@@ -236,6 +238,46 @@ class ServerGuards(unittest.TestCase):
     def test_unknown_routes(self):
         self.assertEqual(self.request("GET", "/nope")[0], 404)
         self.assertEqual(self.post("/api/nope", {})[0], 404)
+
+
+class OneServer(unittest.TestCase):
+    """Two servers for one user would each connect and edit headsets on their own."""
+
+    def start(self, env):
+        proc = subprocess.Popen([sys.executable, str(ROOT / "ui" / "server.py"), "--port", "0"], env=env,
+                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        self.addCleanup(lambda: (proc.terminate(), proc.wait(10), proc.stdout.close()))
+        return proc
+
+    def test_a_second_server_is_refused_until_the_first_exits(self):
+        data = tempfile.mkdtemp(prefix="frame-one-server-")
+        env = {**os.environ, "FRAME_CONTROL_DATA_DIR": data, "FRAME_ALIAS": "frame-control-test.invalid",
+               "FRAME_CONTROL_SERVER_WAIT": "1"}
+        first = self.start(env)
+        self.assertIn("Frame Control on", first.stdout.readline())
+        second = subprocess.run([sys.executable, str(ROOT / "ui" / "server.py"), "--port", "0"], env=env,
+                                capture_output=True, text=True, timeout=60)
+        self.assertEqual(second.returncode, 1)
+        self.assertIn("already running", second.stderr)
+        first.terminate()
+        first.wait(10)
+        self.assertIn("Frame Control on", self.start(env).stdout.readline())
+
+    def test_a_private_server_runs_alongside_but_cant_change_headsets(self):
+        """The MCP adapter starts its own server (FRAME_PRIVATE_SSH=1) while the app runs."""
+        data = tempfile.mkdtemp(prefix="frame-one-server-")
+        env = {**os.environ, "FRAME_CONTROL_DATA_DIR": data, "FRAME_ALIAS": "frame-control-test.invalid",
+               "FRAME_CONTROL_SERVER_WAIT": "1"}
+        self.assertIn("Frame Control on", self.start(env).stdout.readline())
+        private = self.start({**env, "FRAME_PRIVATE_SSH": "1"})
+        line = private.stdout.readline()
+        self.assertIn("Frame Control on", line)
+        port = int(line.split("http://127.0.0.1:")[1].split()[0])
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
+        conn.request("POST", "/api/devices", body=json.dumps({"action": "use", "id": "x"}),
+                     headers={"Content-Type": "application/json", "X-Frame-UI": "1", "Host": f"127.0.0.1:{port}"})
+        r = conn.getresponse()
+        self.assertEqual(r.status, 403, r.read())
 
 
 class ArtworkSettings(unittest.TestCase):

@@ -86,6 +86,58 @@
   .wait { color: var(--muted); font-size: 13px; display: flex; align-items: center; gap: 8px; }
   .wait::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--dim); flex: none; }
 
+  /* ---- connection pill, its details dialog, and the Devices tab (frame_link.py) ---- */
+  .pill { height: 40px; padding: 0 12px; gap: 9px; max-width: 420px; min-width: 190px; flex: 0 1 auto; background: var(--btn); }
+  .pill .dot { flex: none; }
+  .pill .dot.wait { background: var(--warn); box-shadow: 0 0 6px rgba(217,162,58,.7); animation: pulse 1s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: .35; } }
+  .pill .pt { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; line-height: 1.2; text-align: left; }
+  .pill .pt b { font-weight: 500; font-size: 13px; color: var(--bright); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pill .pt span { font-size: 11.5px; color: var(--muted); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .devsel { background: var(--btn); color: var(--text); border: 0; border-radius: 3px; height: 40px; padding: 0 8px; font: inherit; font-size: 13px; max-width: 160px; }
+  .dlg { background: #1e2329; color: var(--text); border: 1px solid rgba(255,255,255,.1); border-radius: 4px;
+         padding: 22px; width: min(640px, 94vw); box-shadow: 0 20px 60px rgba(0,0,0,.6); }
+  .dlg::backdrop { background: rgba(0,0,0,.55); }
+  .dlg h2 { margin: 0 0 14px; font-size: 15px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--bright); }
+  .dlg h3, [data-page=devices] h3 { margin: 16px 0 6px; font-size: 11px; letter-spacing: 1.3px; text-transform: uppercase; color: var(--muted); font-weight: 700; }
+  .dlg label, .dev-form label { display: block; font-size: 12.5px; color: var(--muted); margin-top: 10px; }
+  .dlg label input, .dev-form label input { margin-top: 5px; }
+  .facts { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 0; font-size: 13px; }
+  .facts dt { color: var(--muted); } .facts dd { margin: 0; color: var(--bright); overflow-wrap: anywhere; }
+  .stages { list-style: none; margin: 0; padding: 0; }
+  .stages li { display: grid; grid-template-columns: 22px 1fr auto; gap: 2px 8px; padding: 6px 0; border-top: 1px solid rgba(255,255,255,.05); }
+  .stages li:first-child { border-top: 0; }
+  .stages .ic { width: 16px; height: 16px; border-radius: 50%; margin-top: 2px; display: grid; place-items: center; font-size: 11px; font-weight: 700; }
+  .stages .done .ic { background: rgba(89,191,64,.2); color: var(--green-hi); }
+  .stages .failed .ic { background: rgba(217,65,38,.25); color: #ff8a73; }
+  .stages .pending .ic { border: 1.5px solid var(--dim); }
+  .stages .active .ic { border: 2px solid rgba(255,255,255,.15); border-top-color: var(--blue); animation: spin .8s linear infinite; }
+  .stages .lb { color: var(--bright); font-size: 13.5px; } .stages .pending .lb { color: var(--muted); }
+  .stages .dt { grid-column: 2 / 4; color: var(--muted); font-size: 12.5px; overflow-wrap: anywhere; }
+  .stages .failed .dt { color: #ff8a73; }
+  .stages .tm { color: var(--dim); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .probes { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  .probes td { padding: 5px 8px 5px 0; border-top: 1px solid rgba(255,255,255,.05); vertical-align: top; }
+  .probes td:first-child { color: var(--bright); min-width: 170px; overflow-wrap: anywhere; }
+  .res-answered, .res-ok { color: var(--green-hi); } .res-refused, .res-sshfailed, .res-wrong, .res-denied { color: #ff8a73; }
+  .res-timeout, .res-unresolved, .res-unreachable, .res-unpinned { color: var(--warn); }
+  .res-trying, .res-resolving, .res-waiting, .res-checking { color: var(--link); }
+  .dev-grid { display: grid; grid-template-columns: minmax(260px, 1fr) minmax(0, 2.2fr); gap: 22px; align-items: start; }
+  @media (max-width: 1000px) { .dev-grid { grid-template-columns: 1fr; } }
+  .dev-item { cursor: pointer; border-radius: 3px; padding: 10px !important; margin: 0 -10px; }
+  .dev-item:hover { background: rgba(255,255,255,.04); }
+  .dev-item.sel { background: rgba(26,159,255,.12); }
+  .dev-form { display: grid; grid-template-columns: 2fr 1.3fr 1fr .8fr; gap: 0 10px; align-items: end; }
+  .dev-form input[readonly] { color: var(--muted); }
+  .dev-panel select, .dlg select { background: rgba(0,0,0,.28); color: var(--text); border: 1px solid transparent; border-radius: 3px;
+                                   padding: 8px 8px; font: inherit; font-size: 13px; }
+  .addr .t { overflow-wrap: anywhere; }
+  .addr .s { white-space: normal; }
+  .addr-edit { display: grid; grid-template-columns: 2fr 1fr 1.4fr auto auto; gap: 8px; align-items: center; width: 100%; }
+  .addr-add { display: grid; grid-template-columns: 2fr 1fr 1.4fr auto; gap: 8px; margin-top: 12px; }
+  @media (max-width: 700px) { .dev-form, .addr-edit, .addr-add { grid-template-columns: 1fr; } }
+  .found { margin-top: 10px; }
+
   /* ---- drop anywhere ---- */
   #media select { min-width: 0; max-width: 100%; flex: 1; }
   .dropzone { position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; pointer-events: none;
@@ -591,9 +643,11 @@
     <a href="#games" title="Steam games and sideloaded titles (2)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8h12a4 4 0 0 1 4 4v1a4 4 0 0 1-7 2.6h-6A4 4 0 0 1 2 13v-1a4 4 0 0 1 4-4z"/><path d="M7 11v3M5.5 12.5h3"/><circle cx="16" cy="11.5" r=".6"/><circle cx="18" cy="13.5" r=".6"/></svg>Games<kbd>2</kbd></a>
     <a href="#android" title="Android apps and their display (3)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="9" width="14" height="11" rx="2"/><path d="M8 9a4 4 0 0 1 8 0M8 5l1.5 2M16 5l-1.5 2M9.5 13h.01M14.5 13h.01"/></svg>Android<kbd>3</kbd></a>
     <a href="#tools" title="Files, clipboard, Linux apps, remote and power (4)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a4 4 0 0 0-5.2 5.2L3.5 17.5a2.1 2.1 0 0 0 3 3l6-6a4 4 0 0 0 5.2-5.2l-2.5 2.5-2.5-2.5z"/></svg>Tools<kbd>4</kbd></a>
+    <a href="#devices" class="desk-only" title="Headsets, their addresses and the connection (5)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5a10 10 0 0 1 14 0M8.5 16a5 5 0 0 1 7 0"/><circle cx="12" cy="19.5" r="1"/><path d="M2 9a15 15 0 0 1 20 0"/></svg>Devices<kbd>5</kbd></a>
   </nav>
   <div class="spacer"></div>
-  <span class="chip" id="conn" role="status"><span class="dot"></span><span>Connecting…</span></span>
+  <button class="pill" id="conn" role="status" aria-live="polite" title="Connection details"><span class="dot wait"></span><span class="pt"><b>Connecting…</b><span></span></span></button>
+  <select class="devsel desk-only" id="devSel" aria-label="Headset" title="Switch headset" hidden></select>
   <span class="chip" id="battChip" title="Battery">—</span>
   <button id="reportBtn" data-report title="Report a problem, with diagnostics" aria-label="Report a problem">
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M12 3l10 18H2z"/><path d="M12 10v5M12 18v.5"/></svg>
@@ -624,6 +678,7 @@
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M2 8.5a15 15 0 0 1 20 0M5.5 12a10 10 0 0 1 13 0M9 15.5a5 5 0 0 1 6 0"/><circle cx="12" cy="19" r="1.2" fill="currentColor"/><path d="M3 3l18 18"/></svg>
     <div class="grow"><div class="t" id="offMsg">Can't reach the Frame</div>
       <div class="s" id="offDetail">Retrying every few seconds. Everything fills in when it answers.</div></div>
+    <button class="small desk-only" id="offDetails" hidden>Details</button>
     <button class="small" id="offSetup" hidden>Set Up Connection…</button>
     <button class="action small" id="offRetry">Retry now</button>
   </div>
@@ -1079,6 +1134,25 @@
     </section>
   </div>
   </div>
+  <div class="page" data-page="devices">
+  <div class="dev-grid">
+    <section class="panel">
+      <div class="shelf-head"><h2>Headsets</h2><span class="count" id="devCount"></span><span class="spacer"></span>
+        <button class="action small" id="devAdd">+ Add a headset…</button></div>
+      <div class="list" id="devList"><div class="sub">Loading…</div></div>
+      <div class="hint">Frame Control talks to one headset at a time. Each can be reached at several addresses;
+        it tries them all at once and uses the best one that answers on the network you're on.</div>
+      <h3 style="margin-top:22px">This computer's network</h3>
+      <div id="netNow" class="sub">Checking…</div>
+      <div class="row" style="margin-top:8px; flex-wrap:nowrap">
+        <input type="text" id="netName" maxlength="60" placeholder="Name this network, e.g. Home Wi-Fi">
+        <button class="small" id="netSave">Save</button></div>
+      <div class="hint">Networks are told apart by their router (its IP and hardware address), so this works on wired
+        networks and when your computer won't share the Wi-Fi name.</div>
+    </section>
+    <section class="panel dev-panel" id="devDetail"><div class="sub">Pick a headset.</div></section>
+  </div>
+  </div>
 </main>
 <div class="dropzone" id="dropzone" hidden><div><b>Drop to send to the Frame</b>
   <span class="sub">Files go to <code>~/Downloads</code>; <code>.apk</code> files install as Android apps;
@@ -1209,6 +1283,45 @@
       <button type="submit" class="action small" id="pwGo">Restart</button></div>
   </form>
 </dialog>
+<dialog id="connDlg" class="dlg" aria-labelledby="connTitle">
+  <h2 id="connTitle">Connection</h2>
+  <div class="sub" id="connWhy"></div>
+  <h3>This computer</h3>
+  <dl class="facts" id="connNet"></dl>
+  <h3>Steps</h3>
+  <ol class="stages" id="connStages"></ol>
+  <h3>Addresses</h3>
+  <table class="probes"><tbody id="connProbes"></tbody></table>
+  <div class="row rep-actions"><span class="sub" id="connRetry"></span><span class="spacer"></span>
+    <button type="button" class="small desk-only" id="connDevices">Manage headsets</button>
+    <button type="button" class="small desk-only" id="connSetup">Set Up Connection…</button>
+    <button type="button" class="small action" id="connRetryBtn">Retry now</button>
+    <button type="button" class="small" id="connClose">Close</button></div>
+</dialog>
+<dialog id="addDevDlg" class="dlg" aria-labelledby="addDevTitle">
+  <form method="dialog" id="addDevForm">
+    <h2 id="addDevTitle">Add a headset</h2>
+    <div class="sub">This opens Set Up Connection in a terminal window. On the headset, first turn on Steam Settings →
+      System → Enable Developer Mode, then Developer → Set User Password. Setup finds the headset, adds a key and
+      asks for that password once (or for a tap in the headset under Developer → Pair new host).</div>
+    <label>SSH alias (how Terminal and the scripts reach it: <code>ssh NAME</code>)<input type="text" id="addAlias" maxlength="64" required pattern="[A-Za-z0-9][A-Za-z0-9._\-]*"></label>
+    <label>Address (optional: an IP or host name; left empty, setup looks for it)<input type="text" id="addHost" maxlength="253" placeholder="e.g. 192.168.1.40 or frame.local"></label>
+    <div class="row rep-actions"><span class="sub" id="addMsg"></span><span class="spacer"></span>
+      <button type="button" class="small" id="addCancel">Cancel</button>
+      <button type="submit" class="action small" id="addGo">Set Up…</button></div>
+  </form>
+</dialog>
+<dialog id="rmDevDlg" class="dlg" aria-labelledby="rmDevTitle">
+  <form method="dialog" id="rmDevForm">
+    <h2 id="rmDevTitle">Remove this headset?</h2>
+    <div class="sub" id="rmDevText"></div>
+    <label style="display:flex; gap:8px; align-items:center; color:var(--text)"><input type="checkbox" id="rmDevConfig">
+      <span id="rmDevConfigText"></span></label>
+    <div class="row rep-actions"><span class="sub" id="rmMsg"></span><span class="spacer"></span>
+      <button type="button" class="small" id="rmCancel">Cancel</button>
+      <button type="submit" class="small danger" id="rmGo">Remove</button></div>
+  </form>
+</dialog>
 <div class="toast" id="toast"></div>
 
 <script>
@@ -1285,9 +1398,18 @@ async function saveToDevice(items) {
 }
 const savesToDevice = () => !!(window.frameApp && window.frameApp.saveImages);
 
-async function api(path, body) {
+// Bumped when the app moves to another headset: answers to requests made before
+// then are about the old one, so they're dropped rather than shown.
+let devGen = 0;
+// Answers that don't depend on the headset (this computer's data, the catalogue, jobs).
+const HEADSET_FREE = /^\/api\/(devices|connection|host|job|titles\/job|webinstall\/job|apk-versions|android\/(catalog|reports)|steam\/search)\b/;
+async function api(path, body, device = window.connDevice) {
+  const gen = devGen;
+  // Changes name the headset the page was showing, so the server refuses one meant
+  // for a headset it has since switched away from.
+  const dev = device ? { "X-Frame-Device": device } : {};
   const opts = body === undefined ? { headers: {"X-Frame-UI": UI_KEY} } : {
-    method: "POST", headers: {"Content-Type": "application/json", "X-Frame-UI": UI_KEY}, body: JSON.stringify(body) };
+    method: "POST", headers: {"Content-Type": "application/json", "X-Frame-UI": UI_KEY, ...dev}, body: JSON.stringify(body) };
   let r;
   try { r = await fetch(path, opts); }
   catch {
@@ -1295,6 +1417,11 @@ async function api(path, body) {
                                                          : "Frame Control's local server isn't running. Restart the app (Frame → Restart Server).");
   }
   const data = await r.json().catch(() => ({ error: `HTTP ${r.status}` }));
+  if (gen !== devGen && !HEADSET_FREE.test(path)) {
+    const err = new Error("Switched headsets");
+    err.offline = err.stale = true;  // failed() leaves the panel alone: the new headset's answer fills it
+    throw err;
+  }
   if (!r.ok) {
     const err = new Error(data.error || `HTTP ${r.status}`);
     err.offline = !!data.offline;
@@ -1306,6 +1433,7 @@ async function api(path, body) {
 // What a panel shows when its data couldn't be read: a quiet placeholder while
 // the Frame is unreachable (the banner explains), the real error otherwise.
 function failed(el, e) {
+  if (e.stale) return;  // about the previous headset: leave the panel to the new one
   el.innerHTML = e.offline ? `<div class="wait">Waiting for the Frame</div>` : `<div class="sub">${esc(e.message)}</div>`;
 }
 async function act(label, fn, btn) {
@@ -1322,6 +1450,7 @@ async function act(label, fn, btn) {
 }
 
 function setConn(ok, text) {
+  if (window.connPill && window.connPill()) return;  // the connector's pill (below) says more
   $("conn").innerHTML = `<span class="dot ${ok ? "on" : "off"}"></span><span>${esc(text)}</span>`;
 }
 
@@ -1337,6 +1466,7 @@ function setOnline(ok, why) {
     setConn(false, "Offline");
     $("battChip").hidden = true;
     if (was !== false) { log(why || "Can't reach the Frame", "e"); schedule(); }
+    if (window.connBanner) window.connBanner();
   } else if (was === false) {
     log("Connected to the Frame again", "ok");
     reloadAll();
@@ -2409,8 +2539,9 @@ function setVolume(pct, muted) {
 $("vol").oninput = () => {
   setVolume(+$("vol").value);
   clearTimeout(volTimer);
+  const dev = window.connDevice;  // the headset whose slider this was, even 250 ms later
   volTimer = setTimeout(async () => {
-    try { await api("/api/volume", { level: $("vol").value / 100 }); } catch (e) { toast(e.message, true); }
+    try { await api("/api/volume", { level: $("vol").value / 100 }, dev); } catch (e) { toast(e.message, true); }
     volTimer = null;
   }, 250);
 };
@@ -2426,9 +2557,10 @@ $("clipSend").onclick = () => {
 // In the app, Electron reads the clipboard; in a browser, the server does.
 async function sendComputerClipboard() {
   if (!window.frameApp) return api("/api/clipboard", { fromComputer: true });
+  const device = window.connDevice;  // the headset it was sent to, not one switched to while reading
   const text = await window.frameApp.readClipboard();
   if (!text) throw new Error("The clipboard is empty (or holds something other than text)");
-  return api("/api/clipboard", { text });
+  return api("/api/clipboard", { text }, device);
 }
 $("clipMac").onclick = () => act($("clipMac").textContent, sendComputerClipboard, $("clipMac"));
 
@@ -2461,21 +2593,28 @@ window.addEventListener("drop", e => {
   const dirs = new Set(items.map((it, i) => it.webkitGetAsEntry && it.webkitGetAsEntry()?.isDirectory ? i : -1).filter(i => i >= 0));
   sendFiles([...e.dataTransfer.files], dirs);
 });
-function upload(file, mode) {
+function upload(file, mode, dev = window.connDevice) {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open("POST", "/api/upload");
     xhr.setRequestHeader("X-Frame-UI", UI_KEY);
+    if (dev) xhr.setRequestHeader("X-Frame-Device", dev);
     xhr.setRequestHeader("X-Filename", encodeURIComponent(file.name));
     xhr.setRequestHeader("X-Mode", mode);
     if (mode === "apk") xhr.setRequestHeader("X-APK-Display", $("apkDisplay").value);
     const bar = $("prog").firstElementChild;
     $("prog").style.display = "block"; bar.style.width = "0";
     xhr.upload.onprogress = e => { if (e.lengthComputable) bar.style.width = (100 * e.loaded / e.total) + "%"; };
+    const gen = devGen;
     xhr.onload = () => {
       $("prog").style.display = "none";
       let data; try { data = JSON.parse(xhr.responseText); } catch { data = { error: `HTTP ${xhr.status}` }; }
-      if (data.apk?.blocker && xhr.status >= 300) checkApkAlternatives(data.apk);
+      if (gen !== devGen) {  // the app switched headsets meanwhile: nothing to offer about this one here
+        const err = new Error(data.error || "Switched headsets");
+        err.stale = true;
+        return xhr.status < 300 ? resolve(data) : reject(err);
+      }
+      if (data.apk?.blocker && xhr.status >= 300) checkApkAlternatives(data.apk, dev);
       xhr.status < 300 ? resolve(data) : reject(new Error(data.error));
     };
     xhr.onerror = () => { $("prog").style.display = "none"; reject(new Error("network error")); };
@@ -2519,7 +2658,7 @@ $("mediaStop").onclick = () => act("Stop media", async () => {
 }, $("mediaStop"));
 
 let apkLookup = 0;
-async function checkApkAlternatives(apk) {
+async function checkApkAlternatives(apk, dev = window.connDevice) {
   const lookup = ++apkLookup;
   $("apkAltReason").textContent = apk.blocker;
   $("apkAltVersions").textContent = "Checking F-Droid for older versions…";
@@ -2530,12 +2669,12 @@ async function checkApkAlternatives(apk) {
   if (apk.version_code != null) query.set("code", apk.version_code);
   try {
     const result = await api(`/api/apk-versions?${query}`);
-    if (lookup === apkLookup && $("apkAltDlg").open) showApkAlternatives(apk.blocker, result);
+    if (lookup === apkLookup && $("apkAltDlg").open) showApkAlternatives(apk.blocker, result, dev);
   } catch (e) {
     if (lookup === apkLookup) $("apkAltVersions").textContent = e.message;
   }
 }
-function showApkAlternatives(reason, result) {
+function showApkAlternatives(reason, result, dev = window.connDevice) {
   $("apkAltReason").textContent = reason;
   $("apkAltNote").textContent = `${result.versions.length} of ${result.total} compatible versions. ${result.note}`;
   $("apkAltErrors").textContent = result.errors.join(" · ");
@@ -2550,9 +2689,10 @@ function showApkAlternatives(reason, result) {
     const v = result.versions[+b.dataset.version];
     if (installing.has(result.package)) return;
     b.disabled = true; b.textContent = "Installing…";
+    // For the headset the APK was checked against: refused (409) if the app has switched since.
     const res = await runJob(`Install ${result.package} ${v.version}`, result.package, () => api("/api/android", {
       action: "install", package: result.package, url: v.url
-    }));
+    }, dev));
     if (res) $("apkAltDlg").close(); else { b.disabled = false; b.textContent = "Install"; }
     await loadAndroid();
     if (cat.apps) { const y = window.scrollY; filterCatalog(); window.scrollTo(0, y); }
@@ -2579,7 +2719,12 @@ $("aboutClose").onclick = () => $("aboutDlg").close();
 
 const TITLE_EXT = /\.(zip|exe)$/i;
 async function sendFiles(files, dirs = new Set()) {
+  const dev = window.connDevice;  // the whole batch is for the headset it was dropped on
   for (const [i, f] of files.entries()) {
+    if (window.connDevice !== dev) {
+      toast(`Switched headsets: didn't send ${files.length - i} remaining file${files.length - i === 1 ? "" : "s"}`, true);
+      break;
+    }
     const path = window.frameApp?.pathForFile ? window.frameApp.pathForFile(f) : "";
     if (dirs.has(i)) {
       if (path) await sideload(f, path, true);
@@ -2589,7 +2734,7 @@ async function sendFiles(files, dirs = new Set()) {
     if (!f.size) { toast(`${f.name}: empty files aren't supported`, true); continue; }
     if (TITLE_EXT.test(f.name)) { await sideload(f, path); continue; }
     const apk = f.name.toLowerCase().endsWith(".apk");
-    const res = await act(apk ? `Install ${f.name}` : `Copy ${f.name} to ~/Downloads`, () => upload(f, apk ? "apk" : "push"));
+    const res = await act(apk ? `Install ${f.name}` : `Copy ${f.name} to ~/Downloads`, () => upload(f, apk ? "apk" : "push", dev));
     if (apk && res && res.app) await offerTest(res.app);
   }
   $("fileInput").value = "";
@@ -2614,20 +2759,24 @@ function candLabel(c) {
 // Inspect (upload, or the local path in the app), confirm in the dialog, then install with progress.
 // One at a time, so a second drop doesn't take over the dialog of the first.
 let sideloadQueue = Promise.resolve();
-function sideload(...args) {
-  const run = sideloadQueue.then(() => sideloadOne(...args));
+function sideload(file, path, isDir = false) {
+  const dev = window.connDevice;  // for the headset it was dropped on, even if it waits its turn
+  const run = sideloadQueue.then(() => {
+    if (window.connDevice !== dev) return toast(`Switched headsets: didn't add ${file.name}`, true);
+    return sideloadOne(file, path, isDir, dev);
+  });
   sideloadQueue = run.catch(() => {});
   return run;
 }
-async function sideloadOne(file, path, isDir = false) {
+async function sideloadOne(file, path, isDir = false, dev = window.connDevice) {
   const canPush = !isDir && file.size > 0;
   log(`Reading ${file.name}…`);
   let r;
-  try { r = path ? await api("/api/titles", { action: "inspect", path }) : await upload(file, "title"); }
+  try { r = path ? await api("/api/titles", { action: "inspect", path }) : await upload(file, "title", dev); }
   catch (e) {
     log(`${file.name}: ${e.message}`, "e");
     if (canPush && confirm(`${file.name}: ${e.message}\n\nCopy it to ~/Downloads instead?`))
-      await act(`Copy ${file.name} to ~/Downloads`, () => upload(file, "push"));
+      await act(`Copy ${file.name} to ~/Downloads`, () => upload(file, "push", dev));
     return;
   }
   // Its own fresh list, so the dialog can say whether this replaces an installed title.
@@ -2636,7 +2785,7 @@ async function sideloadOne(file, path, isDir = false) {
   const choice = await confirmTitle(r.plan, canPush, installed);
   if (choice === "push") {
     api("/api/titles", { action: "discard", token: r.token }).catch(() => {});
-    await act(`Copy ${file.name} to ~/Downloads`, () => upload(file, "push"));
+    await act(`Copy ${file.name} to ~/Downloads`, () => upload(file, "push", dev));
     return;
   }
   if (!choice) { api("/api/titles", { action: "discard", token: r.token }).catch(() => {}); return; }
@@ -4030,6 +4179,476 @@ if (window.frameApp && window.frameApp.onInstallLink) {
 setView("headset");
 refresh().then(loadShots);  // after status, so app names resolve
 document.addEventListener("visibilitychange", () => { if (!document.hidden && online === false) refresh(); });
+</script>
+<script>
+// ---- the connection and the Devices tab (ui/frame_link.py, ui/frame_devices.py, docs/devices.md) ----
+// The server streams the connection's state (server-sent events, read with fetch so the
+// X-Frame-UI header goes along) every time it changes: which headset, this computer's
+// network, each stage of connecting, and what every address answered.
+const link = { s: null, offset: 0, live: false, phase: null, device: null, rev: -1, lastData: 0, reload: false };
+const dv = { list: [], sel: null, data: null, found: null, editing: null };
+const STAGE_ICON = { done: "✓", failed: "✕", pending: "", active: "", skipped: "–" };
+const KIND_TAG = { lan: "LAN", mdns: "mDNS", tailscale: "Tailscale", manual: "Other" };
+const sleep = ms => new Promise(ok => setTimeout(ok, ms));
+const serverNow = () => Date.now() / 1000 - link.offset;
+function ago(t) {
+  if (!t) return "never";
+  const s = Math.max(0, serverNow() - t);
+  return s < 60 ? "just now" : s < 3600 ? `${Math.round(s / 60)} min ago` : s < 86400 ? `${Math.round(s / 3600)} h ago`
+       : `${Math.round(s / 86400)} d ago`;
+}
+function secs(a, b) { return a && b ? `${Math.max(0, b - a).toFixed(1)} s` : a ? `${Math.max(0, serverNow() - a).toFixed(0)} s` : ""; }
+const activeStage = s => (s.stages || []).find(x => x.state === "active") || (s.stages || []).filter(x => x.state === "failed").pop();
+function netLabel(s) {
+  const n = s.network;
+  if (s.via && s.via.kind === "tailscale") return "Tailscale";
+  return n ? n.name : "Checking the network";
+}
+function viaText(v) { return v ? v.host + (v.ip && v.ip !== v.host ? ` (${v.ip})` : "") : ""; }
+
+// The pill in the header: always there, and says what's happening right now.
+function renderPill() {
+  const s = link.s;
+  if (!link.live || !s) return false;
+  const dev = s.device ? s.device.name : "Frame";
+  let dot = "wait", line;
+  if (s.phase === "connected") {
+    dot = "on";
+    line = `${netLabel(s)} → ${viaText(s.via)}` + (s.via && s.via.rtt_ms != null ? ` · ${s.via.rtt_ms} ms` : "");
+  } else if (s.phase === "failed") {
+    dot = "off";
+    const left = s.retry_at ? Math.max(0, Math.ceil(s.retry_at - serverNow())) : null;
+    const st = (s.stages || []).find(x => x.id === (s.error || {}).stage);
+    line = `Offline: ${st ? st.label.toLowerCase() : "not connected"} failed` + (left != null ? ` · retry in ${left} s` : "");
+  } else {
+    const st = activeStage(s);
+    const probing = (s.probes || []).find(p => p.state === "trying" || p.state === "resolving");
+    line = st ? st.label + (st.id === "find" && probing ? `: ${probing.host}` : st.detail && st.id !== "network" ? `: ${st.detail}` : "…")
+              : "Connecting…";
+  }
+  $("conn").innerHTML = `<span class="dot ${dot}"></span><span class="pt"><b>${esc(dev)}</b><span>${esc(line)}</span></span>`;
+  $("conn").title = `${dev}: ${line}. Click for details.`;
+  return true;
+}
+window.connPill = renderPill;
+
+// The banner (when the headset can't be reached) repeats the reason and the countdown.
+function renderBanner() {
+  const s = link.s;
+  if (!link.live || !s) return;
+  $("offDetails").hidden = false;
+  if (s.phase === "failed" && s.error) {
+    $("offline").hidden = false;
+    $("offMsg").textContent = s.error.message;
+    const tried = (s.probes || []).map(p => `${p.host}: ${p.detail.toLowerCase()}`).join("; ");
+    const left = s.retry_at ? Math.max(0, Math.ceil(s.retry_at - serverNow())) : null;
+    $("offDetail").textContent = `${s.device ? s.device.name : "Frame"} on ${netLabel(s)}. ${tried ? "Tried " + tried + ". " : ""}` +
+      (left != null ? `Trying again in ${left} s.` : "");
+  } else if (s.phase === "connecting" && online === false) {
+    const st = activeStage(s);
+    $("offDetail").textContent = `Trying again: ${st ? st.label.toLowerCase() + (st.detail ? " (" + st.detail + ")" : "") : "connecting"}…`;
+  }
+}
+window.connBanner = renderBanner;
+
+function renderConnDlg() {
+  const s = link.s;
+  if (!s || !$("connDlg").open) return;
+  $("connTitle").textContent = s.device ? `${s.device.name} (ssh ${s.device.alias})` : "Connection";
+  $("connWhy").textContent = s.phase === "connected" ? `Connected via ${viaText(s.via)}${s.via && s.via.why ? " (" + s.via.why + ")" : ""}`
+    : s.phase === "failed" ? (s.error ? s.error.message : "Not connected")
+    : `${s.reason || "Connecting"}…`;
+  const n = s.network || {}, ts = n.tailscale || {};
+  const facts = [["Network", n.name || "—"], ["Wi-Fi", n.ssid || (n.wifi ? "Wi-Fi (name hidden by the system)" : n.wifi === false ? "Wired" : "—")],
+    ["Router", n.gateway ? `${n.gateway}${n.gateway_mac ? " · " + n.gateway_mac : ""}` : "No default route"],
+    ["This computer", n.local_ip || "—"],
+    ["Tailscale", ts.up ? `On${ts.ip ? " · " + ts.ip : ""}` : ts.installed ? "Installed, not running" : "Not installed"]];
+  $("connNet").innerHTML = facts.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("");
+  $("connStages").innerHTML = (s.stages || []).map(st => `<li class="${st.state}"><span class="ic">${STAGE_ICON[st.state] || ""}</span>
+    <span class="lb">${esc(st.id === "login" && s.device && s.device.user ? "Logging in as " + s.device.user : st.label)}</span>
+    <span class="tm">${esc(st.state === "pending" ? "" : secs(st.started, st.ended))}</span>
+    ${st.detail ? `<span class="dt">${esc(st.detail)}</span>` : ""}</li>`).join("") +
+    (s.phase === "connected" ? `<li class="done"><span class="ic">✓</span><span class="lb">Connected</span><span class="tm"></span>
+      <span class="dt">${esc(`via ${netLabel(s)}, ${viaText(s.via)}` + (s.via && s.via.rtt_ms != null ? `, ${s.via.rtt_ms} ms` : ""))}</span></li>` : "");
+  $("connProbes").innerHTML = (s.probes || []).map(p => `<tr><td>${esc(p.host)}${p.label ? `<div class="sub">${esc(p.label)}</div>` : ""}</td>
+    <td><span class="tag">${esc(KIND_TAG[p.kind] || p.kind)}</span></td><td class="sub">${esc(p.why || "")}</td>
+    <td class="res-${esc(p.state)}">${esc(p.detail)}${p.ip && p.ip !== p.host ? ` <span class="sub">${esc(p.ip)}</span>` : ""}</td></tr>`).join("")
+    || `<tr><td class="sub">No addresses tried yet.</td></tr>`;
+  const left = s.phase === "failed" && s.retry_at ? Math.max(0, Math.ceil(s.retry_at - serverNow())) : null;
+  $("connRetry").textContent = left != null ? `Trying again in ${left} s` : s.finished && s.phase === "connected" ? `Connected ${ago(s.finished)}` : "";
+}
+
+function onConnection(s) {
+  const prev = link.s;
+  link.s = s; link.live = !s.local; link.lastData = Date.now();
+  link.offset = Date.now() / 1000 - s.now;
+  if (!link.live) return;
+  renderPill(); renderConnDlg();
+  const devId = s.device && s.device.id;
+  window.connDevice = devId || null;
+  if (link.device !== null && devId !== link.device) {
+    log(`Now using ${s.device.name}`, "ok");
+    state = null;
+    online = null;
+    devGen++;               // answers still on their way are about the other headset
+    refreshing = null;      // and the next status check must be a new one
+    if (live) toggleLive(false);  // the other headset's video or captures
+    clearTimeout(volTimer); volTimer = null;  // a volume change still waiting to be sent
+    viewGen++;              // a capture still on its way is the other headset's too
+    lastImg = null; lastShot = null;
+    $("canvas").hidden = true; $("viewerEmpty").hidden = false; $("zoombar").hidden = true;
+    ["stamp", "srcBadge", "asleep"].forEach(id => $(id).hidden = true);
+    $("saveBtn").disabled = true;
+    // Lists and their buttons (Remove, Launch…) were the other headset's: clear them
+    // before anyone clicks one, until the new headset's arrive.
+    ["games", "titleList", "andApps", "flatpaks", "shotGrid", "gmGrid"].forEach(id => {
+      if ($(id)) $(id).innerHTML = `<div class="wait">Waiting for ${esc(s.device.name)}</div>`;
+    });
+    disp.list = []; disp.port = null;
+    // The lists behind those panels too, so filters can't bring the old ones back.
+    gm.owned = null; gm.byId = new Map(); gm.results = []; gm.store = []; gm.storeQ = null; gm.shown = 0; gm.seq++;
+    androidApps = []; shots.list = [];
+    titlesSeq++; disp.seq++;  // answers to loads already on their way are ignored
+    if (cat.apps) filterCatalog();  // "Installed" tags were the other headset's
+    // Confirmations still open were checked against the other headset.
+    ["titleDlg", "apkAltDlg", "pwDlg", "repDlg"].forEach(id => { if ($(id) && $(id).open) $(id).close(); });
+    if ($("wiDlg").open && !wi.job && !wi.starting) $("wiDlg").close();
+    $("dispSel").innerHTML = "<option>Loading…</option>"; $("dispSel").disabled = true; $("dispCtl").hidden = true;
+    link.reload = true;     // everything on the page was the other headset's
+    $("battChip").hidden = true;
+  }
+  if (s.phase !== link.phase || devId !== link.device) {
+    if (s.phase === "connected") {
+      log(`Connected to ${s.device.name} via ${viaText(s.via)} on ${netLabel(s)}`, "ok");
+      $("offline").hidden = true;
+      const reload = link.reload;
+      link.reload = false;
+      refresh().then(() => { if (reload) reloadAll(); });
+    } else if (s.phase === "failed" && s.error) {
+      setOnline(false, s.error.message);
+    } else if (s.phase === "connecting" && prev && prev.phase === "connected") {
+      log(`${s.reason || "Reconnecting"}; reconnecting…`);
+    }
+  }
+  renderBanner();
+  const netId = s.network ? s.network.id || s.network.gateway || "" : null;
+  if (s.devices_rev !== link.rev || devId !== link.device || (netId !== null && netId !== link.net)) {
+    link.rev = s.devices_rev; link.net = netId;  // also when only the network changed: the Devices tab shows it
+    loadDevices();
+  }
+  link.phase = s.phase; link.device = devId;
+  if (page === "devices") renderTests();
+}
+
+// Read the event stream; fall back to polling if it can't be streamed.
+async function watchConnection() {
+  for (;;) {
+    const ctl = new AbortController();
+    const watchdog = setInterval(() => { if (Date.now() - link.lastData > 40000) ctl.abort(); }, 5000);
+    try {
+      link.lastData = Date.now();
+      const r = await fetch("/api/connection/events", { headers: { "X-Frame-UI": UI_KEY }, signal: ctl.signal });
+      if (!r.ok || !r.body) throw new Error(`HTTP ${r.status}`);
+      const reader = r.body.getReader(), dec = new TextDecoder();
+      let buf = "";
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        link.lastData = Date.now();
+        buf += dec.decode(value, { stream: true });
+        let i;
+        while ((i = buf.indexOf("\n\n")) >= 0) {
+          const chunk = buf.slice(0, i); buf = buf.slice(i + 2);
+          if (chunk.startsWith("data: ")) onConnection(JSON.parse(chunk.slice(6)));
+        }
+      }
+    } catch {
+      try { onConnection(await api("/api/connection")); } catch {}
+    } finally { clearInterval(watchdog); }
+    if (link.s && link.s.local) return;
+    await sleep(2000);
+  }
+}
+setInterval(() => { if (link.live && link.s && link.s.phase === "failed") { renderPill(); renderBanner(); renderConnDlg(); } }, 1000);
+
+$("conn").onclick = () => {
+  if (!link.live) { if (online === false) refresh(); return; }
+  $("connDlg").showModal(); renderConnDlg();
+};
+$("offDetails").onclick = () => $("conn").click();
+$("connClose").onclick = () => $("connDlg").close();
+$("connDevices").onclick = () => { $("connDlg").close(); location.hash = "devices"; };
+async function retryNow() {
+  try { await api("/api/devices", { action: "retry" }); } catch (e) { toast(e.message, true); }
+}
+$("connRetryBtn").onclick = retryNow;
+$("offRetry").onclick = () => { if (link.live) retryNow(); else refresh(); };
+async function setUpHeadset(alias, host) {
+  return act(`Set Up Connection for ${alias}`, () => api("/api/devices", { action: "setup", alias, ...(host ? { host } : {}) }));
+}
+function setUpActive() {
+  const s = link.s;
+  if (HOST.mobile && window.frameApp && window.frameApp.setUpConnection) return window.frameApp.setUpConnection();
+  setUpHeadset(s && s.device ? s.device.alias : "frame");
+}
+$("connSetup").onclick = setUpActive;
+
+// ---- Devices tab ----
+PAGES.push("devices");
+let devicesSeq = 0;  // an older answer arriving late mustn't bring back the old selection
+async function loadDevices() {
+  if (!link.live) return;
+  const seq = ++devicesSeq;
+  let data;
+  try { data = await api("/api/devices"); } catch (e) { if (seq === devicesSeq) failed($("devList"), e); return; }
+  if (seq !== devicesSeq) return;
+  dv.data = data;
+  dv.list = dv.data.devices;
+  if (!dv.list.some(d => d.id === dv.sel)) dv.sel = dv.data.active;
+  const sel = $("devSel");
+  sel.hidden = dv.list.length < 2;
+  sel.innerHTML = dv.list.map(d => `<option value="${esc(d.id)}"${d.active ? " selected" : ""}>${esc(d.name)}</option>`).join("");
+  if (window.frameApp && window.frameApp.devicesChanged) {
+    window.frameApp.devicesChanged(dv.list.map(d => ({ id: d.id, name: d.name, alias: d.alias, active: !!d.active })));
+  }
+  renderDevices();
+}
+$("devSel").onchange = e => useDevice(e.target.value);
+async function useDevice(id) {
+  const d = dv.list.find(x => x.id === id);
+  if (!d || d.active) return;
+  const res = await act(`Switch to ${d.name}`, () => api("/api/devices", { action: "use", id }));
+  if (!res) {  // refused (an install is running): show the headset still in use
+    const current = dv.list.find(x => x.active);
+    if (current) $("devSel").value = current.id;
+  }
+}
+async function devAction(label, body, btn) {
+  const res = await act(label, () => api("/api/devices", body), btn);
+  if (res) loadDevices();  // in order with every other load, so a late answer can't undo a newer one
+  return res;
+}
+
+function deviceStatus(d) {
+  const s = link.s;
+  if (d.active && s) {
+    return s.phase === "connected" ? ["on", `Connected via ${viaText(s.via)}`]
+         : s.phase === "failed" ? ["off", s.error ? s.error.message : "Offline"] : ["", "Connecting…"];
+  }
+  const last = Math.max(0, ...d.addresses.map(a => a.last_ok || 0));
+  return ["", d.transient ? "Not set up in Frame Control" : last ? `Last connected ${ago(last)}` : "Not connected yet"];
+}
+
+function renderDevices() {
+  if (!dv.data) return;
+  $("devCount").textContent = dv.list.length;
+  $("devList").innerHTML = dv.list.map(d => {
+    const [dot, text] = deviceStatus(d);
+    return `<div class="item dev-item${d.id === dv.sel ? " sel" : ""}" data-dev="${esc(d.id)}">
+      <span class="dot ${dot}"></span><div class="grow"><div class="t">${esc(d.name)} ${d.active ? '<span class="tag">In use</span>' : ""}</div>
+      <div class="s">ssh ${esc(d.alias)} · ${esc(text)}</div></div>
+      ${d.active ? "" : `<button class="small" data-use="${esc(d.id)}">Use this headset</button>`}</div>`;
+  }).join("") || `<div class="sub">No headsets yet. Add one to get started.</div>`;
+  $("devList").querySelectorAll("[data-dev]").forEach(el => el.onclick = e => {
+    if (e.target.closest("[data-use]")) return useDevice(e.target.closest("[data-use]").dataset.use);
+    dv.sel = el.dataset.dev; dv.found = null; dv.editing = null; renderDevices();
+  });
+  const n = dv.data.network;
+  $("netNow").textContent = n ? `${n.name}${n.gateway && !n.name.includes(n.gateway) ? ` (router ${n.gateway})` : ""}${n.tailscale && n.tailscale.up ? " · Tailscale on" : ""}` : "Checking…";
+  if (document.activeElement !== $("netName")) {
+    const known = n && dv.data.networks.find(x => x.id === n.id);
+    $("netName").value = known ? known.name || "" : "";
+    $("netName").disabled = $("netSave").disabled = !(n && n.id);
+  }
+  renderDetail();
+}
+$("netSave").onclick = e => {
+  const n = dv.data && dv.data.network;
+  if (n && n.id) devAction("Name this network", { action: "name-network", network: n.id, name: $("netName").value }, e.currentTarget);
+};
+
+function renderDetail() {
+  const d = dv.list.find(x => x.id === dv.sel), el = $("devDetail");
+  if (!d) { el.innerHTML = `<div class="sub">Pick a headset.</div>`; return; }
+  if (el.contains(document.activeElement) && document.activeElement.matches("input, select") && el.dataset.dev === d.id) {
+    renderTests(); return;  // don't rebuild the form under someone typing
+  }
+  el.dataset.dev = d.id;
+  if (d.transient) {
+    el.innerHTML = `<div class="shelf-head"><h2>${esc(d.name)}</h2></div>
+      <div class="sub">This is the <code>${esc(d.alias)}</code> SSH alias, which Set Up Connection hasn't configured, so
+        ssh's own settings decide where it goes. Run Set Up Connection to manage its addresses here.</div>
+      <div class="row" style="margin-top:14px"><button class="action small" id="dvSetup">Set Up Connection…</button></div>`;
+    $("dvSetup").onclick = () => setUpHeadset(d.alias);
+    return;
+  }
+  const kinds = Object.entries(dv.data.kinds);
+  const kindSel = (id, v) => `<select id="${id}">${kinds.map(([k, label]) => `<option value="${k}"${k === v ? " selected" : ""}>${esc(label)}</option>`).join("")}</select>`;
+  const rows = d.addresses.map((a, i) => dv.editing === a.host ? `<div class="item addr"><div class="addr-edit">
+      <input type="text" id="edHost" value="${esc(a.host)}" maxlength="253" aria-label="Address">${kindSel("edKind", a.kind)}
+      <input type="text" id="edLabel" value="${esc(a.label)}" maxlength="60" placeholder="Label" aria-label="Label">
+      <button class="small action" id="edSave">Save</button><button class="small" id="edCancel">Cancel</button></div></div>`
+    : `<div class="item addr" data-host="${esc(a.host)}">
+      <div class="grow"><div class="t">${esc(a.host)} <span class="tag">${esc(KIND_TAG[a.kind] || a.kind)}</span>${a.label ? ` <span class="sub">${esc(a.label)}</span>` : ""}</div>
+        <div class="s">${a.network_names.length ? "Worked on " + esc(a.network_names.join(", ")) : "Hasn't worked on any network yet"}
+          · last OK ${esc(ago(a.last_ok))}${a.last_rtt_ms != null ? ` (${esc(a.last_rtt_ms)} ms)` : ""}</div>
+        <div class="s test" data-test="${esc(a.host)}"></div></div>
+      <button class="small" data-mv="-1" title="Try earlier"${i ? "" : " disabled"}>↑</button>
+      <button class="small" data-mv="1" title="Try later"${i < d.addresses.length - 1 ? "" : " disabled"}>↓</button>
+      <button class="small" data-ed>Edit</button><button class="small danger" data-rm>Remove</button></div>`).join("");
+  el.innerHTML = `<div class="shelf-head"><h2>${esc(d.name)}</h2>${d.active ? '<span class="count">In use</span>' : ""}<span class="spacer"></span>
+      ${d.active ? "" : `<button class="small action" id="dvUse">Use this headset</button>`}</div>
+    <form class="dev-form" id="dvForm">
+      <label>Name<input type="text" id="dvName" value="${esc(d.name)}" maxlength="60"></label>
+      <label>SSH alias<input type="text" value="${esc(d.alias)}" readonly title="Terminal: ssh ${esc(d.alias)}"></label>
+      <label>User<input type="text" id="dvUser" value="${esc(d.user)}" maxlength="64"></label>
+      <label>Port<input type="text" id="dvPort" value="${esc(d.port)}" maxlength="5" inputmode="numeric"></label>
+    </form>
+    <div class="row" style="margin-top:10px"><button class="small" id="dvSave">Save</button>
+      <span class="sub">User and port are written to its block in <code>~/.ssh/config</code> too.</span></div>
+    <h3>Addresses <span class="sub" style="text-transform:none; letter-spacing:0; font-weight:400">tried all at once; this order breaks ties</span></h3>
+    <div class="list" id="dvAddrs">${rows || '<div class="sub">No addresses yet: add one, or find it below.</div>'}</div>
+    <form class="addr-add" id="dvAdd">
+      <input type="text" id="adHost" maxlength="253" placeholder="IP address or host name" aria-label="New address">
+      ${kindSel("adKind", "")}
+      <input type="text" id="adLabel" maxlength="60" placeholder="Label, e.g. Office" aria-label="Label">
+      <button class="small" type="submit">Add</button></form>
+    <div class="row" style="margin-top:14px">
+      <button class="small action" id="dvTest"${d.addresses.length ? "" : " disabled"}>Test now</button>
+      <button class="small" id="dvTs">Find on Tailscale</button>
+      <button class="small" id="dvMdns">Find on this network</button>
+      <span class="spacer"></span>
+      <button class="small" id="dvForget" title="After reinstalling SteamOS the headset shows a new identity">Forget identity</button>
+      <button class="small danger" id="dvRemove">Remove…</button></div>
+    <div class="found" id="dvFound"></div>
+    <div class="hint">Identity: ${d.pinned ? "saved. A different device answering at one of these addresses is refused."
+      : "not saved yet; the next connection saves it."} Kind "auto" is picked from the address:
+      <code>.local</code> names are mDNS, <code>100.x</code> and <code>.ts.net</code> are Tailscale.</div>`;
+  $("adKind").insertAdjacentHTML("afterbegin", `<option value="" selected>Kind: auto</option>`);
+  $("adKind").value = "";
+  if ($("dvUse")) $("dvUse").onclick = () => useDevice(d.id);
+  $("dvSave").onclick = e => devAction(`Save ${d.name}`, { action: "update", id: d.id, name: $("dvName").value,
+                                                         user: $("dvUser").value, port: $("dvPort").value }, e.currentTarget);
+  $("dvAdd").onsubmit = e => {
+    e.preventDefault();
+    const host = $("adHost").value.trim();
+    if (!host) return $("adHost").focus();
+    devAction(`Add ${host}`, { action: "address-add", id: d.id, host, kind: $("adKind").value, label: $("adLabel").value });
+  };
+  el.querySelectorAll("[data-host]").forEach(row => {
+    const host = row.dataset.host;
+    row.querySelectorAll("[data-mv]").forEach(b => b.onclick = () =>
+      devAction("Move " + host, { action: "address-move", id: d.id, host, delta: +b.dataset.mv }, b));
+    row.querySelector("[data-ed]").onclick = () => { dv.editing = host; el.dataset.dev = ""; renderDetail(); $("edHost").focus(); };
+    row.querySelector("[data-rm]").onclick = e => devAction(`Remove ${host}`, { action: "address-remove", id: d.id, host }, e.currentTarget);
+  });
+  if ($("edSave")) {
+    const host = dv.editing;
+    $("edSave").onclick = async e => {
+      dv.editing = null;
+      await devAction(`Save ${host}`, { action: "address-update", id: d.id, host, newHost: $("edHost").value.trim(),
+                                        kind: $("edKind").value, label: $("edLabel").value }, e.currentTarget);
+    };
+    $("edCancel").onclick = () => { dv.editing = null; el.dataset.dev = ""; renderDetail(); };
+  }
+  $("dvTest").onclick = e => devAction(`Test ${d.name}'s addresses`, { action: "test", id: d.id }, e.currentTarget);
+  $("dvTs").onclick = e => findOn("tailscale", d, e.currentTarget);
+  $("dvMdns").onclick = e => findOn("mdns", d, e.currentTarget);
+  $("dvForget").onclick = e => devAction(`Forget ${d.name}'s identity`, { action: "forget-identity", id: d.id }, e.currentTarget);
+  $("dvRemove").onclick = () => askRemove(d);
+  renderFound(d);
+  renderTests();
+}
+
+function renderTests() {
+  const d = dv.list.find(x => x.id === dv.sel), t = d && link.s && (link.s.tests || {})[d.id];
+  document.querySelectorAll("#dvAddrs [data-test]").forEach(el => {
+    const row = t && t.rows.find(r => r.host === el.dataset.test);
+    el.className = "s test" + (row ? ` res-${row.ssh || row.state}` : "");
+    el.textContent = row ? `Test: ${row.detail}${row.ssh === "checking" ? " · checking SSH…" : ""}` : "";
+  });
+}
+
+async function findOn(where, d, btn) {
+  btn.disabled = true;
+  $("dvFound").innerHTML = `<div class="wait">${where === "tailscale" ? "Asking Tailscale for its devices…" : "Looking for headsets on this network…"}</div>`;
+  try {
+    dv.found = { where, dev: d.id, data: await api(`/api/devices/${where}?id=${encodeURIComponent(d.id)}`) };
+  } catch (e) { dv.found = { where, dev: d.id, error: e.message }; }
+  finally { btn.disabled = false; }
+  if (dv.sel === d.id) renderFound(d);  // another headset may be showing by now
+}
+function renderFound(d) {
+  const f = dv.found, el = $("dvFound");
+  if (!f || f.dev !== d.id) { el.innerHTML = ""; return; }
+  if (f.error) { el.innerHTML = `<div class="sub">${esc(f.error)}</div>`; return; }
+  const add = (host, kind, label, done) => done ? `<span class="sub">Added</span>`
+    : `<button class="small" data-add="${esc(host)}" data-kind="${kind}" data-label="${esc(label)}">Add ${esc(host)}</button>`;
+  let rows;
+  if (f.where === "tailscale") {
+    if (!f.data.up) { el.innerHTML = `<div class="sub">${esc(f.data.message)}</div>`; return; }
+    rows = f.data.peers.slice(0, 20).map(p => `<div class="item"><span class="dot ${p.online ? "on" : ""}"></span>
+      <div class="grow"><div class="t">${esc(p.name)} ${p.likely ? '<span class="tag">Likely</span>' : ""}</div>
+      <div class="s">${esc(p.dns)} · ${esc(p.ip || "")} · ${esc(p.os || "?")} · ${p.online ? "online" : "offline"}</div></div>
+      ${p.added ? '<span class="sub">Added</span>' : add(p.dns || p.ip, "tailscale", "Tailscale", false) + (p.ip && p.dns ? add(p.ip, "tailscale", "Tailscale IP", false) : "")}</div>`);
+  } else {
+    rows = f.data.hosts.map(h => `<div class="item"><span class="dot ${h.state === "answered" ? "on" : ""}"></span>
+      <div class="grow"><div class="t">${esc(h.host)} ${h.advertised ? '<span class="tag">SteamOS devkit</span>' : ""}</div>
+      <div class="s res-${esc(h.state)}">${esc(h.detail)}${h.ip ? " · " + esc(h.ip) : ""}</div></div>
+      ${add(h.host, "mdns", "mDNS", h.added)}${h.ip && !h.ip.includes(":") && !h.added ? add(h.ip, "lan", "", false) : ""}</div>`);
+    if (!f.data.tool) rows.push(`<div class="sub">Install Bonjour (Windows) or avahi (Linux) to search for SteamOS devkit services.</div>`);
+  }
+  el.innerHTML = `<h3>${f.where === "tailscale" ? "On your tailnet" : "On this network"}</h3>` +
+    (rows.length ? `<div class="list">${rows.join("")}</div>` : `<div class="sub">Nothing found.</div>`);
+  el.querySelectorAll("[data-add]").forEach(b => b.onclick = async () => {
+    const res = await devAction(`Add ${b.dataset.add}`, { action: "address-add", id: d.id, host: b.dataset.add,
+                                                          kind: b.dataset.kind, label: b.dataset.label }, b);
+    if (res) { b.replaceWith(Object.assign(document.createElement("span"), { className: "sub", textContent: "Added" })); }
+  });
+}
+
+function askRemove(d) {
+  $("rmDevTitle").textContent = `Remove ${d.name}?`;
+  $("rmDevText").textContent = `Frame Control forgets this headset, its ${d.addresses.length} address${d.addresses.length === 1 ? "" : "es"} and its saved identity. Its SSH keys stay.`;
+  $("rmDevConfigText").textContent = `Also remove the '${d.alias}' entry from ~/.ssh/config (Terminal's ssh ${d.alias} stops working)`;
+  // The only headset: its entry has to go too, or the app would go on using that alias.
+  $("rmDevConfig").checked = dv.list.filter(x => !x.transient).length === 1; $("rmMsg").textContent = "";
+  $("rmDevConfig").parentElement.hidden = !d.managed;
+  $("rmCancel").onclick = () => $("rmDevDlg").close();
+  $("rmDevForm").onsubmit = async e => {
+    e.preventDefault();
+    const res = await devAction(`Remove ${d.name}`, { action: "remove", id: d.id, config: $("rmDevConfig").checked }, $("rmGo"));
+    if (res) $("rmDevDlg").close();
+  };
+  $("rmDevDlg").showModal();
+}
+$("devAdd").onclick = () => {
+  $("addAlias").value = (dv.data && dv.data.nextAlias) || "frame-2";
+  $("addHost").value = ""; $("addMsg").textContent = "";
+  $("addCancel").onclick = () => $("addDevDlg").close();
+  $("addDevDlg").showModal();
+  $("addAlias").select();
+};
+$("addDevForm").onsubmit = async e => {
+  e.preventDefault();
+  const alias = $("addAlias").value.trim(), host = $("addHost").value.trim();
+  $("addGo").disabled = true;
+  try {
+    const res = await api("/api/devices", { action: "setup", alias, ...(host ? { host } : {}) });
+    log(res.message, "ok"); toast(res.message);
+    $("addDevDlg").close();
+  } catch (err) { $("addMsg").textContent = err.message; }
+  finally { $("addGo").disabled = false; }
+};
+// Electron's Frame menu can switch headsets and open this tab.
+if (window.frameApp && window.frameApp.onUseDevice) window.frameApp.onUseDevice(id => useDevice(id));
+window.addEventListener("hashchange", () => { if (location.hash === "#devices") loadDevices(); });
+showPage();  // #devices is a page now
+api("/api/host").then(h => {
+  if (h.mobile) return;
+  $("offSetup").hidden = false; $("offSetup").onclick = setUpActive;  // the server opens it in a terminal
+  watchConnection();
+}).catch(() => watchConnection());
 </script>
 <script src="/artwork-settings.js"></script>
 </body>
