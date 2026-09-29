@@ -1,0 +1,29 @@
+2026-09-28, Mac only; no device connection.
+APK: /tmp/vrapk/wolvic-quest-compat.apk
+SHA-256: 355a681625e38b71563dcffecb031799eff27894d6ab910a659bace057e82c1f
+
+Command:
+/tmp/vrapk/jdk/Contents/Home/bin/java -jar /tmp/vrapk/uber-apk-signer-1.3.0.jar -a /tmp/vrapk/wolvic-quest-compat.apk --onlyVerify
+Exit status: 0
+Relevant output:
+- zipalign verified
+- signature verified [v2, v3]
+Successfully processed 1 APKs and 0 errors in 0.63 seconds.
+
+ZIP readback checks: PASS
+- Injected JSON identical to frame/openxr-compat/XrApiLayer_FRAME_compat.json.
+- Injected SO identical to prebuilt/arm64-v8a/libXrApiLayer_FRAME_compat.so.
+- Existing libopenxr_loader.so identical to /tmp/vrapk/wq-dec version.
+- Binary AndroidManifest.xml contains android.intent.category.LAUNCHER.
+
+Loader strings present:
+openxr/1/api_layers/implicit.d/
+openxr/1/api_layers/explicit.d/
+ApiLayerManifestFile::AddManifestFilesAndroid unable to open asset
+xrLocateSpaces
+
+NDK: 30.0.16248370 (r30)
+DMG size: 1072970961 bytes
+Download-page SHA-1: 48591224b6657f46eebbc9d95d4af09bbed8d107
+Measured SHA-1:      48591224b6657f46eebbc9d95d4af09bbed8d107
+SHA check: PASS

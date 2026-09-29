@@ -4,6 +4,10 @@ Frame Control's **Get games** section lists the games you own with each one's
 Steam Frame rating, installs them on the Frame, and searches the Steam store.
 This page covers how it works underneath, so you can do the same from a shell.
 
+For flat-to-VR mods and Beat Saber custom songs, see the
+[per-game feasibility table](mods.md). Mod support is separate from Steam's
+Frame rating; there is no mod installer yet.
+
 ## How it works
 
 The Frame's Steam client runs with `-cef-enable-debugging`. So its UI, a

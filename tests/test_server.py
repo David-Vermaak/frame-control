@@ -5,6 +5,7 @@ request guards and input validation, which all run before any SSH call.
 
 Run: python3 -m unittest discover -s tests
 """
+import sandbox  # noqa: F401  (first: keeps tests off real data and services)
 import http.client
 import io
 import json
@@ -83,6 +84,7 @@ class ServerGuards(unittest.TestCase):
 
     def test_api_needs_custom_header(self):
         # <img src> and plain form posts from other sites can't set it.
+        self.assertEqual(self.request("POST", "/api/comfort", {"action": "start"})[0], 403)
         self.assertEqual(self.request("GET", "/api/status")[0], 403)
         self.assertEqual(self.request("GET", "/api/screenshot?view=headset")[0], 403)
         self.assertEqual(self.request("GET", "/api/shots")[0], 403)
@@ -98,6 +100,8 @@ class ServerGuards(unittest.TestCase):
 
     def test_input_validation(self):
         cases = [
+            ("/api/comfort", {"action": "poweroff"}),
+            ("/api/comfort", {"action": "start", "minutes": 0}),
             ("/api/launch", {"appid": "620; rm -rf ~"}),
             ("/api/launch", {"appid": ""}),
             ("/api/flatpak", {"id": "org.example.App;id", "action": "install"}),

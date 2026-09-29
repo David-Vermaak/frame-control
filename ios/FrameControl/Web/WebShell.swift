@@ -1,6 +1,7 @@
 import SwiftUI
 import UIKit
 import WebKit
+import UserNotifications
 
 /// The Frame Control page, served by the server on the headset, in a web view.
 /// window.frameApp (the same bridge the desktop app's preload.js provides) lets
@@ -48,6 +49,7 @@ struct WebShell: UIViewRepresentable {
       let installCb = null;
       window.frameApp = {
         platform: "ios",
+        notify: (message, request) => call("notify", { message, request }),
         readClipboard: () => call("readClipboard"),
         setUpConnection: () => call("setUpConnection"),
         open: (what) => call("open", what),
@@ -58,13 +60,31 @@ struct WebShell: UIViewRepresentable {
     })();
     """
 
-    final class Coordinator: NSObject, WKScriptMessageHandlerWithReply, WKNavigationDelegate, WKUIDelegate {
+    final class Coordinator: NSObject, WKScriptMessageHandlerWithReply, WKNavigationDelegate, WKUIDelegate, UNUserNotificationCenterDelegate {
         let model: AppModel
         weak var web: WKWebView?
         var loaded: URL?
         private var installReady = false
 
-        init(model: AppModel) { self.model = model }
+        init(model: AppModel) {
+            self.model = model
+            super.init()
+            UNUserNotificationCenter.current().delegate = self
+        }
+
+        func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification,
+                                    withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+            completionHandler([.banner, .sound, .list])
+        }
+
+        static func notificationContent(_ message: String) -> UNMutableNotificationContent? {
+            guard !message.isEmpty, message.count <= 500 else { return nil }
+            let content = UNMutableNotificationContent()
+            content.title = "Frame Control"
+            content.body = message
+            content.sound = .default
+            return content
+        }
 
         // MARK: bridge
 
@@ -76,6 +96,28 @@ struct WebShell: UIViewRepresentable {
             }
             let arg = body["arg"]
             switch name {
+            case "notify":
+                guard message.frameInfo.isMainFrame,
+                      message.frameInfo.securityOrigin.host == "127.0.0.1",
+                      let args = arg as? [String: Any], let text = args["message"] as? String,
+                      let content = Self.notificationContent(text) else {
+                    return replyHandler(nil, "Invalid notification")
+                }
+                let center = UNUserNotificationCenter.current()
+                let send: (Bool, Error?) -> Void = { allowed, error in
+                    guard allowed else {
+                        return replyHandler(nil, error?.localizedDescription ?? "Notifications are off. Enable them in iOS Settings.")
+                    }
+                    let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
+                    center.add(request) { error in replyHandler(error == nil, error?.localizedDescription) }
+                }
+                if args["request"] as? Bool == true {
+                    center.requestAuthorization(options: [.alert, .sound], completionHandler: send)
+                } else {
+                    center.getNotificationSettings { settings in
+                        send(settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional, nil)
+                    }
+                }
             case "readClipboard":
                 replyHandler(UIPasteboard.general.string ?? "", nil)
             case "setUpConnection":

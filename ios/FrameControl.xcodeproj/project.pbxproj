@@ -17,6 +17,7 @@
 		78427FC66780623F31E7501E /* FrameControlApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93C8E0D7C3F4F628941B3D5A /* FrameControlApp.swift */; };
 		84423CB45629465420180A64 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 8F2CB550FC81C01E6BDD5A71 /* Assets.xcassets */; };
 		9657F7BC23E3352E5AB30777 /* SetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB544223FC60A59CC3E8EF5F /* SetupView.swift */; };
+		A0C5B00E257230A38DBD9E54 /* ComfortNotificationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E81218B75FEEE47B8D8BAE20 /* ComfortNotificationTests.swift */; };
 		A8C7AED25A6280682FCE45DC /* Citadel in Frameworks */ = {isa = PBXBuildFile; productRef = 6BA549B6CC0A0CB847126456 /* Citadel */; };
 		DC043FB74BE2D23F3A5826BF /* FrameControlTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1740B691F9C25E5FB6F9EFC3 /* FrameControlTests.swift */; };
 		E6898C714A92D3979F73B6E1 /* FrameFinder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F288DF6636A417F0CA3A6CD /* FrameFinder.swift */; };
@@ -48,6 +49,7 @@
 		BF0FCA7117DA3ABA449B4EE0 /* InstallLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InstallLink.swift; sourceTree = "<group>"; };
 		D6C4E6C28315CA8729FCAAEA /* WebShell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebShell.swift; sourceTree = "<group>"; };
 		DB544223FC60A59CC3E8EF5F /* SetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SetupView.swift; sourceTree = "<group>"; };
+		E81218B75FEEE47B8D8BAE20 /* ComfortNotificationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComfortNotificationTests.swift; sourceTree = "<group>"; };
 		EDC7BA8014DBC302D08FD397 /* HeadsetServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeadsetServer.swift; sourceTree = "<group>"; };
 		F3E2F5607DD877272483D64E /* FrameControl.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = FrameControl.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -107,6 +109,7 @@
 		75A17B1C79C8C3C60FEABBA6 /* FrameControlTests */ = {
 			isa = PBXGroup;
 			children = (
+				E81218B75FEEE47B8D8BAE20 /* ComfortNotificationTests.swift */,
 				1740B691F9C25E5FB6F9EFC3 /* FrameControlTests.swift */,
 			);
 			path = FrameControlTests;
@@ -247,7 +250,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "mkdir -p \"${DERIVED_FILE_DIR}\"\npython3 \"${SRCROOT}/scripts/make_frame_bundle.py\" \"${DERIVED_FILE_DIR}/frame-bundle.tar.gz\" > \"${DERIVED_FILE_DIR}/frame-bundle.version\"\nmkdir -p \"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}\"\ncp \"${DERIVED_FILE_DIR}/frame-bundle.tar.gz\" \"${DERIVED_FILE_DIR}/frame-bundle.version\" \"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/\"\n";
+			shellScript = "set -e\nmkdir -p \"${DERIVED_FILE_DIR}\"\n# Written aside and moved into place together, so a failed download can't leave a stale pair.\npython3 \"${SRCROOT}/scripts/make_frame_bundle.py\" \"${DERIVED_FILE_DIR}/frame-bundle.new.tar.gz\" > \"${DERIVED_FILE_DIR}/frame-bundle.new.version\"\nmv \"${DERIVED_FILE_DIR}/frame-bundle.new.tar.gz\" \"${DERIVED_FILE_DIR}/frame-bundle.tar.gz\"\nmv \"${DERIVED_FILE_DIR}/frame-bundle.new.version\" \"${DERIVED_FILE_DIR}/frame-bundle.version\"\nmkdir -p \"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}\"\ncp \"${DERIVED_FILE_DIR}/frame-bundle.tar.gz\" \"${DERIVED_FILE_DIR}/frame-bundle.version\" \"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -274,6 +277,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A0C5B00E257230A38DBD9E54 /* ComfortNotificationTests.swift in Sources */,
 				DC043FB74BE2D23F3A5826BF /* FrameControlTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

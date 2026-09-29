@@ -35,8 +35,8 @@ See what the headset sees, install games and Android apps, move files and text a
 <tr>
 <td width="50%" valign="top">
 
-**👓 Headset view**<br>
-Live video of what the lenses show (about 30 fps), or a still of both eyes. Zoom, pan, full screen, save as PNG.
+**👓 Headset view and Desktop**<br>
+Live video of what the lenses show, or of the app panel in use, flat and still however the wearer looks around. Turn on Control and tap or click right on it to use the Frame from your phone or computer.
 
 </td>
 <td width="50%" valign="top">
@@ -72,6 +72,9 @@ Drag files onto the window to send them. Drop a game's .zip, folder or .exe to a
 **📸 Screenshots**<br>
 Browse the shots you take in the headset and save them to your Pictures folder.
 
+**⌨️ Keyboard and trackpad**<br>
+Type and point in the Frame's apps from your computer or phone, through KDE Connect, which Frame Control brings along and sets up on the Frame. Nothing else to install, anywhere.
+
 </td>
 </tr>
 <tr>
@@ -90,11 +93,15 @@ SSH, SFTP, Steam Link, remote desktop, volume, sleep, restart and shut down.
 </tr>
 </table>
 
-The app uses what SteamOS already ships. Sideloading copies Valve's devkit
-scripts to `~/devkit-utils`, as Valve's Devkit Client does; the optional
+The optional [Family and comfort](docs/family-comfort.md) card adds session
+limits, breaks, local alerts and one-click casting. A session copies a small
+Frame Control worker into your headset user account.
+
+For the other features, nothing is installed on the Frame: the app uses what SteamOS
+already ships (sideloading a game copies Valve's own devkit scripts to
+`~/devkit-utils`, as Valve's Devkit Client does). The optional
 [performance HUD](docs/vr-utilities.md) copies our own Python helpers into
-`~/.local/share/frame-control/vr/`. Neither needs a third-party app.
-[How each feature works](docs/frame-control.md).
+`~/.local/share/frame-control/vr/`. [How each feature works](docs/frame-control.md).
 
 ## Install
 
@@ -109,6 +116,10 @@ scripts to `~/devkit-utils`, as Valve's Devkit Client does; the optional
 a computer. Build it from [`ios/`](ios) in Xcode; see [docs/iphone.md](docs/iphone.md).
 
 The app brings its own Python and `adb`; SSH is built into macOS and Windows.
+From 0.4 it updates itself: when a new version is published, a banner offers
+**Update and restart**. It sends anonymous usage statistics, which you can turn
+off. Sharing compatibility results and error details is opt-in. See
+[docs/privacy.md](docs/privacy.md).
 Google doesn't publish `adb` for arm64 Linux, so that build uses your
 distribution's. If you already have `adb`, the app uses yours.
 
@@ -177,9 +188,11 @@ entry to `~/.ssh/config` and keys at `~/.ssh/id_ed25519_frame` and
 ## Feedback
 
 This is a first public test, so reports are really useful, especially from
-Windows and Linux. The quickest way is the
-[feedback form](https://frame-control.pages.dev/feedback/): no GitHub account
-needed, and it opens an issue here. Please include:
+Windows and Linux. The quickest way is **Report a problem** in the app (the
+warning-sign button at the top, or **Help → Report a Problem…**). It adds
+diagnostics with personal details removed, shows you exactly what's included,
+and sends it privately to the maintainer; nothing is published. Without the app,
+use the [feedback form](https://frame-control.pages.dev/feedback/). Please include:
 
 - what you tried and what happened
 - your computer's OS and your SteamOS build (Steam Settings → System)
@@ -203,9 +216,12 @@ Frame's software fits together, all checked against a real headset and labelled
 | [Sideloading Linux and Windows games](docs/sideloading.md) | A .zip, folder or .exe as a Steam Devkit Game, runtime detection |
 | [Install links for websites](docs/web-install.md) | `frame-control://install` links and manifests, the rules, a button to paste |
 | [VR comfort and HUD](docs/vr-utilities.md) · [Steam games](docs/steam-games.md) · [VR video](docs/vr-video.md) · [WebXR in Chromium](docs/webxr-chromium.md) | Installing and buying, watching VR180/360, the Chromium build |
+| [Mac in the headset](docs/mac-in-headset.md) | Mac windows and screens as panels in the Frame, with laser and keyboard input |
+| [VR mods and custom songs](docs/mods.md) | Per-game feasibility, real-Frame results and blockers; no installer yet |
 | [SSH](docs/ssh.md) · [Streaming](docs/streaming.md) · [Files](docs/file-transfer.md) · [Panels](docs/panels.md) · [Tailscale](docs/tailscale.md) | Topic notes |
 | [Frame Control for iPhone](docs/iphone.md) | The iPhone and iPad app, how it runs the server on the Frame, pairing |
 | [Recovery and OS images](docs/recovery-and-images.md) | Where to download the Frame's OS, what's inside, testing without the headset |
+| [AI agents and assistant](docs/agents.md) | Key-free MCP tools, human approvals, and an opt-in assistant panel |
 | [Testing](docs/testing.md) | Unit tests, end-to-end tests against a fake Frame in Docker, and the headset smoke test |
 | [Open questions](docs/open-questions.md) | What's still unchecked |
 
@@ -239,9 +255,12 @@ cd app && npm install && npm start      # run the app from the checkout
 
 The server is Python stdlib only; the app is Electron. GitHub Actions runs the
 tests on macOS, Windows and Linux, and a `v*` tag builds all three installers
-into the release. See [building](docs/frame-control.md#building).
+into a draft release, which reaches users once published. See
+[building](docs/frame-control.md#building) and [releasing](docs/releasing.md).
 
 ## License
 
-[MIT](LICENSE). Steam, Steam Frame and SteamVR are trademarks of Valve
+[MIT](LICENSE). The apps also ship other people's software under its own
+licence, notably KDE Connect (GPL) for the keyboard and trackpad; see
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Steam, Steam Frame and SteamVR are trademarks of Valve
 Corporation. This project isn't affiliated with or endorsed by Valve.

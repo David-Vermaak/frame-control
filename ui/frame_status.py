@@ -5,8 +5,8 @@ error. Sensor paths verified on SteamOS 0.3.0; OpenVR timing on 0.4.1
 (build 20260925.6191901). See docs/vr-utilities.md.
 """
 import ctypes as C
-import math
 import glob
+import math
 import json
 import os
 import re
@@ -159,6 +159,33 @@ def flatpaks():
     return out
 
 
+def thermal_alerts():
+    """Use the kernel's per-zone hot/critical trips, never a guessed chip limit."""
+    alerts, known = [], False
+    for z in glob.glob("/sys/class/thermal/thermal_zone*"):
+        t = num(z + "/temp", 0.001)
+        for trip in glob.glob(z + "/trip_point_*_type"):
+            if read(trip) not in ("hot", "critical"):
+                continue
+            limit = num(trip[:-4] + "temp", 0.001)
+            if t is not None and limit is not None and limit > 0:
+                known = True
+                if t >= limit:
+                    alerts.append({"zone": read(z + "/type"), "tempC": t, "limitC": limit})
+    return alerts if known else None
+
+
+def activity_level():
+    try:
+        rows = json.loads(run("/opt/steamvr/bin/linuxarm64/vrcmd", "--stats"))
+        if not isinstance(rows, list):
+            return None
+        return next((r.get("activity_level") for r in rows
+                     if isinstance(r, dict) and r.get("operation") == "status"), None)
+    except (ValueError, TypeError):
+        return None
+
+
 # OpenVR C ABI, ValveSoftware/openvr headers/openvr_capi.h (IVRCompositor_029).
 # Exact interface version: never guess an index against a different table.
 class Pose(C.Structure):
@@ -245,7 +272,7 @@ def performance():
             time.sleep(0.2)
             if first and get(C.byref(b), 0):
                 out.update(timing_values(a, b))
-    except (OSError, RuntimeError):
+    except (OSError, RuntimeError, AttributeError):  # AttributeError: a SteamVR build without these exports
         time.sleep(0.2)
     out['cpuPercent'] = cpu_percent(before, cpu_ticks())
     return out
@@ -279,5 +306,9 @@ def status():
     }
 
 
-if __name__ == "__main__":
+def main():
     print(json.dumps(status()))
+
+
+if __name__ == "__main__":
+    main()

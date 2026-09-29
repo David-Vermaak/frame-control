@@ -12,7 +12,8 @@ An iPhone can't run Python or `ssh`, but the Frame can. So the app:
 1. connects to the Frame over SSH itself (the [Citadel](https://github.com/orlandos-nl/Citadel)
    Swift SSH library), with its own ed25519 key from the Keychain;
 2. copies Frame Control's server and helpers (`ios/scripts/make_frame_bundle.py`,
-   under 1 MB) to `~/.cache/frame-control/<version>` on the Frame, once per version;
+   4.6 MB, 3.6 MB of it the KDE Connect the keyboard and trackpad use) to
+   `~/.cache/frame-control/<version>` on the Frame, once per version;
 3. starts `ui/server.py` there with `FRAME_LOCAL=1`. It listens only on the
    Frame's own 127.0.0.1, and it stops when the phone disconnects (`--exit-on-eof`);
 4. tunnels to it through the SSH session and shows the same page as the desktop
@@ -25,7 +26,10 @@ as its transport too), so the desktop and phone share one code path. Android
 display settings use `podman exec` into each Lepton container instead of adb,
 which the Frame doesn't have.
 
-Nothing is left running on the Frame after the phone disconnects; the copied
+The app server stops after the phone disconnects. An explicitly started
+[comfort session](family-comfort.md) keeps its timer and headset reminders running
+until the session ends or is cancelled; phone notifications require the app to
+remain connected and running. The copied
 files stay in `~/.cache/frame-control` (delete it any time).
 
 ## Pairing
@@ -107,3 +111,11 @@ running), a real sleep/restart/shut down on the Frame, and a physical iPhone.
 Debug builds have Simulator test hooks (`FRAME_TEST_HOST`, `FRAME_TEST_PAGE`,
 `FRAME_TEST_JS`, and the tunnel URL in the app's Caches folder); release builds
 don't.
+
+## Family and comfort
+
+The shared Home card sets session limits, breaks and check-ins, and offers
+**Cast headset view**. **Enable / test notifications** requests iOS notification
+permission and sends a local test. These are local notifications, not APNs push;
+iOS background suspension can interrupt phone alerts. The headset timer still
+runs. See [the behavior and verification limits](family-comfort.md).

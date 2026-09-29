@@ -33,8 +33,11 @@ class HostError(RuntimeError):
 
 
 def data_dir(*parts):
-    """Per-user app data: ~/Library/Application Support, %APPDATA% or $XDG_DATA_HOME."""
-    if MAC:
+    """Per-user app data: ~/Library/Application Support, %APPDATA% or $XDG_DATA_HOME
+    (or $FRAME_CONTROL_DATA_DIR, which the tests point at a throwaway directory)."""
+    if os.environ.get("FRAME_CONTROL_DATA_DIR"):
+        base = Path(os.environ["FRAME_CONTROL_DATA_DIR"])
+    elif MAC:
         base = Path.home() / "Library" / "Application Support" / "Frame Control"
     elif WINDOWS:
         base = Path(os.environ.get("APPDATA") or Path.home() / "AppData" / "Roaming") / "Frame Control"
@@ -53,12 +56,13 @@ def cache_dir(*parts):
     return base.joinpath(*parts)
 
 
-def control_path():
+def control_path(*, private=False):
     """ssh ControlPath for the shared connection, or None where it isn't supported.
 
     /tmp, not $TMPDIR: macOS's per-user temp path overflows the unix socket path limit.
     """
-    return f"/tmp/frame-ui-{os.getuid()}-%C" if MUX else None
+    suffix = f"-{os.getpid()}" if private else ""
+    return f"/tmp/frame-ui-{os.getuid()}{suffix}-%C" if MUX else None
 
 
 def which(name, *extra):

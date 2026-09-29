@@ -83,10 +83,6 @@ class Device(harness.FrameTestCase):
         self.assertEqual(state()['steam']['pages'][0]['title'], 'Hades on Steam')
 
 
-if __name__ == '__main__':
-    unittest.main()
-
-
 class VRUtilities(harness.FrameTestCase):
     def test_missing_vr_runtime_is_unavailable_not_zero_fps(self):
         data = ok('GET', '/api/status')
@@ -107,3 +103,7 @@ class VRUtilities(harness.FrameTestCase):
         for action in ('recenter', 'adjust', 'restore'):
             code, body, _ = api('POST', '/api/vr', {'action': action, 'origin': 'seated', 'y': .1})
             self.assertEqual(code, 400, body)
+
+
+if __name__ == '__main__':
+    unittest.main()
