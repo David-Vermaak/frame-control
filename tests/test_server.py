@@ -111,6 +111,8 @@ class ServerGuards(unittest.TestCase):
             ("/api/volume", {"level": 1.5}),
             ("/api/clipboard", {"text": ""}),
             ("/api/open", {"what": "anything-else"}),
+            ("/api/open", {"what": "shot", "id": "1/250820/../../.ssh/id_ed25519"}),
+            ("/api/open", {"what": "shot"}),
             ("/api/shots/save", {"ids": []}),
             ("/api/shots/save", {"ids": "1/250820/20260925225208_1.jpg"}),
             ("/api/shots/save", {"ids": [1]}),
@@ -120,6 +122,10 @@ class ServerGuards(unittest.TestCase):
         for path, body in cases:
             status, payload = self.post(path, body)
             self.assertEqual(status, 400, f"{path} {body} -> {payload}")
+
+    def test_showing_a_shot_needs_it_saved_here(self):
+        status, payload = self.post("/api/open", {"what": "shot", "id": "1/250820/19990101000000_1.jpg"})
+        self.assertEqual(status, 404, payload)
 
     def test_screenshot_ids_checked_before_ssh(self):
         for shot in ("../../etc/passwd", "1/250820/x.jpg", "1/2/20260925225208_1.jpg;id", "1/250820/20260925225208_1.gif"):

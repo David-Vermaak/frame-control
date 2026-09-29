@@ -153,6 +153,19 @@ def open_path(path):
                      stderr=subprocess.DEVNULL, **DETACHED)
 
 
+def reveal_path(path):
+    """Show a file selected in its folder (Linux file managers vary, so there the folder opens)."""
+    path = Path(path)
+    if MAC:
+        cmd = ["open", "-R", str(path)]
+    elif WINDOWS:
+        cmd = ["explorer", f"/select,{path}"]
+    else:
+        return open_path(path.parent)
+    subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                     stderr=subprocess.DEVNULL, **DETACHED)
+
+
 open_url = open_path  # the same openers hand URLs to the default browser
 
 
