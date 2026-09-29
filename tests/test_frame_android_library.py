@@ -98,7 +98,11 @@ class LauncherTests(unittest.TestCase):
         self.exercise(True)
 
     def test_hangup_and_interrupt_cleanup(self):
-        for sig in (signal.SIGHUP, signal.SIGINT):
+        # macOS's stock bash 3.2 doesn't run a SIGINT trap while blocked in `wait`;
+        # the Frame's bash (5.x) does, and that's where the launcher runs.
+        major = subprocess.run(['bash', '-c', 'echo ${BASH_VERSINFO[0]}'], capture_output=True, text=True).stdout.strip()
+        sigs = (signal.SIGHUP, signal.SIGINT) if major.isdigit() and int(major) >= 4 else (signal.SIGHUP,)
+        for sig in sigs:
             with self.subTest(sig=sig):
                 self.exercise(True, sig)
 
