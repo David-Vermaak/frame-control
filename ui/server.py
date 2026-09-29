@@ -44,6 +44,7 @@ import frame_assistant  # noqa: E402
 import frame_android  # noqa: E402
 import frame_apk_versions  # noqa: E402
 import frame_catalog  # noqa: E402
+import frame_comfort  # noqa: E402
 import frame_host  # noqa: E402
 import frame_macview  # noqa: E402
 import frame_media  # noqa: E402
@@ -268,6 +269,37 @@ def status(_body):
         frame_telemetry.frame_seen(osr.get("build"), osr.get("version"))
         frame_report.frame.update(build=osr.get("build"), version=osr.get("version"))
     return s
+
+
+def comfort(body):
+    try:
+        frame_comfort.validate(body)
+    except ValueError as e:
+        raise Failure(str(e), 400)
+    # Content-addressed, user-only helper bundle. Desktop and phone use the same
+    # on-headset state/lock; no listener, service registration or third-party app.
+    import hashlib
+    files = {name: (HERE / name).read_text() for name in
+             ("frame_comfort.py", "frame_status.py", "frame_steam.py")}
+    version = hashlib.sha256(json.dumps(files, sort_keys=True).encode()).hexdigest()[:16]
+    script = """import json, os, pathlib, subprocess, sys
+os.umask(0o077)
+files = %r
+root = pathlib.Path.home() / '.cache/frame-control/comfort' / %r
+root.mkdir(parents=True, exist_ok=True)
+for name, source in files.items():
+    path = root / name
+    if not path.exists():
+        tmp = root / (name + '.' + str(os.getpid()))
+        tmp.write_text(source)
+        tmp.replace(path)
+r = subprocess.run([sys.executable, str(root / 'frame_comfort.py'), %r], capture_output=True, text=True)
+print(r.stdout, end='')
+""" % (files, version, json.dumps(body))
+    out = json.loads(ssh("python3 -", stdin=script, timeout=65))
+    if out.get("error") and "active" not in out:
+        raise Failure(out["error"], 409)
+    return out
 
 
 def headset_view():
@@ -1867,7 +1899,7 @@ def agent_approval(body):
     return frame_agent.approvals.decide(body.get("confirmation"), body.get("accept"))
 
 
-POST = {"/api/media": media, "/api/agent/call": agent_call, "/api/agent/approval": agent_approval,
+POST = {"/api/comfort": comfort, "/api/media": media, "/api/agent/call": agent_call, "/api/agent/approval": agent_approval,
         "/api/assistant/chat": assistant_chat, "/api/android/display": android_display, "/api/android": android, "/api/titles": titles, "/api/launch": launch, "/api/steam": steam, "/api/volume": set_volume, "/api/clipboard": clipboard,
         "/api/input": remote_input, "/api/touch": remote_touch,
         "/api/flatpak": flatpak, "/api/open": open_thing, "/api/shots/save": save_shots,

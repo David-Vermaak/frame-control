@@ -170,3 +170,12 @@ assistant against an in-process HTTP endpoint with canned responses (no keys or
 external calls). `tests/e2e/test_agents.py` runs the MCP/HTTP/SSH path against the
 fake Frame for approved installs, clipboard and file transfer. Headset Chromium
 rendering and real screenshots still need a device; see [agent evidence](agents.md#evidence-and-limits).
+
+## Family and comfort
+
+`tests/test_comfort.py` uses an injected clock, fake headset sensor readings and
+actions, plus a Node fake of Steam's Home API. It covers warnings before Home,
+late/suspended sessions, cancellation, failed actions, duplicate alerts, reboot
+invalidation, per-zone thermal trips and shared on-headset state. The server
+guards reject invalid session settings before SSH. See
+[real-device evidence and limits](family-comfort.md#verification).
