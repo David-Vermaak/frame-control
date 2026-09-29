@@ -159,11 +159,30 @@ class InstallUninstall(FakeLibrary):
         victim = self.steam / "steamapps/common/Gravitas"
         r["remove"].append(str(self.prefix / "../../../common/Gravitas"))
         frame_mods.receipt_path(APPID).write_text(json.dumps(r))
-        with self.assertRaisesRegex(frame_mods.Fail, "outside"):
+        with self.assertRaisesRegex(frame_mods.Fail, "didn't create"):
             frame_mods.uninstall(APPID)
         self.assertTrue(victim.is_dir())
         self.assertTrue((self.managed() / "uevr-1.05").is_dir(), "nothing removed when the receipt is bad")
 
+
+    def test_receipt_cannot_delete_other_things_in_the_prefix(self):
+        frame_mods.install(APPID)
+        r = frame_mods.read_receipt(APPID)
+        users = self.prefix / "drive_c/users"
+        r["remove"].append(str(users))
+        frame_mods.receipt_path(APPID).write_text(json.dumps(r))
+        with self.assertRaisesRegex(frame_mods.Fail, "didn't create"):
+            frame_mods.uninstall(APPID)
+        self.assertTrue(users.is_dir())
+
+    def test_failed_removal_keeps_the_receipt(self):
+        frame_mods.install(APPID)
+        with mock.patch.object(frame_mods.shutil, "rmtree"):  # e.g. a permission error, swallowed
+            with self.assertRaisesRegex(frame_mods.Fail, "couldn't remove"):
+                frame_mods.uninstall(APPID)
+        self.assertIsNotNone(frame_mods.read_receipt(APPID), "Remove can be tried again")
+        frame_mods.uninstall(APPID)
+        self.assertFalse(self.managed().exists())
 
     def test_receipt_cannot_name_another_prefix(self):
         frame_mods.install(APPID)

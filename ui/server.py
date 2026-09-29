@@ -435,7 +435,7 @@ def steam(body):
     return steam_frame(action, appid)
 
 
-# Downloads are about 70 MB; starting waits for the game, the injector and SteamVR.
+# Downloads are about 20 MB; starting waits for the game, the injection and SteamVR.
 MOD_TIMEOUT = {"status": 40, "install": 600, "start": 900, "uninstall": 60}
 
 

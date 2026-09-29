@@ -69,18 +69,25 @@ import ctypes, json, os, sys
 from ctypes import wintypes as W
 exe, uevr, profile = sys.argv[1:4]
 k32 = ctypes.WinDLL("kernel32", use_last_error=True)
-k32.OpenProcess.restype = W.HANDLE
-k32.VirtualAllocEx.restype = ctypes.c_void_p
-k32.VirtualAllocEx.argtypes = [W.HANDLE, ctypes.c_void_p, ctypes.c_size_t, W.DWORD, W.DWORD]
-k32.WriteProcessMemory.argtypes = [W.HANDLE, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t, ctypes.c_void_p]
-k32.CreateRemoteThread.restype = W.HANDLE
-k32.CreateRemoteThread.argtypes = [W.HANDLE, ctypes.c_void_p, ctypes.c_size_t, ctypes.c_void_p, ctypes.c_void_p,
-                                   W.DWORD, ctypes.c_void_p]
-k32.GetModuleHandleW.restype = W.HMODULE
-k32.GetProcAddress.restype = ctypes.c_void_p
-k32.GetProcAddress.argtypes = [W.HMODULE, ctypes.c_char_p]
-k32.LoadLibraryW.restype = W.HMODULE
-k32.CreateToolhelp32Snapshot.restype = W.HANDLE
+H, P, SZ = W.HANDLE, ctypes.c_void_p, ctypes.c_size_t
+for name, res, args in (
+        ("OpenProcess", H, [W.DWORD, W.BOOL, W.DWORD]),
+        ("CloseHandle", W.BOOL, [H]),
+        ("VirtualAllocEx", P, [H, P, SZ, W.DWORD, W.DWORD]),
+        ("VirtualFreeEx", W.BOOL, [H, P, SZ, W.DWORD]),
+        ("WriteProcessMemory", W.BOOL, [H, P, P, SZ, P]),
+        ("CreateRemoteThread", H, [H, P, SZ, P, P, W.DWORD, P]),
+        ("WaitForSingleObject", W.DWORD, [H, W.DWORD]),
+        ("GetModuleHandleW", W.HMODULE, [W.LPCWSTR]),
+        ("LoadLibraryW", W.HMODULE, [W.LPCWSTR]),
+        ("FreeLibrary", W.BOOL, [W.HMODULE]),
+        ("GetProcAddress", P, [W.HMODULE, ctypes.c_char_p]),
+        ("CreateToolhelp32Snapshot", H, [W.DWORD, W.DWORD]),
+        ("Process32FirstW", W.BOOL, [H, P]), ("Process32NextW", W.BOOL, [H, P]),
+        ("Module32FirstW", W.BOOL, [H, P]), ("Module32NextW", W.BOOL, [H, P])):
+    fn = getattr(k32, name)
+    fn.restype, fn.argtypes = res, args
+INVALID = ctypes.c_void_p(-1).value
 
 class Entry(ctypes.Structure):  # PROCESSENTRY32W
     _fields_ = [("size", W.DWORD), ("usage", W.DWORD), ("pid", W.DWORD), ("heap", ctypes.c_void_p),
@@ -93,56 +100,68 @@ class Module(ctypes.Structure):  # MODULEENTRY32W
                 ("name", W.WCHAR * 256), ("path", W.WCHAR * 260)]
 
 def fail(msg):
-    print(json.dumps({"error": msg})); sys.exit(1)
+    print(json.dumps({"error": f"{msg} (Windows error {ctypes.get_last_error()})"})); sys.exit(1)
 
-def find_pid():
-    snap = k32.CreateToolhelp32Snapshot(2, 0)  # TH32CS_SNAPPROCESS
-    e = Entry(); e.size = ctypes.sizeof(e)
-    ok = k32.Process32FirstW(snap, ctypes.byref(e))
-    while ok:
-        if e.name.lower() == exe.lower():
-            k32.CloseHandle(snap); return e.pid
-        ok = k32.Process32NextW(snap, ctypes.byref(e))
-    k32.CloseHandle(snap)
+def snapshot(flags, pid, entry, first, next_, match):
+    snap = k32.CreateToolhelp32Snapshot(flags, pid)
+    if not snap or snap == INVALID:
+        fail("couldn't list processes")
+    try:
+        entry.size = ctypes.sizeof(entry)
+        ok = first(snap, ctypes.byref(entry))
+        while ok:
+            if match(entry):
+                return entry
+            ok = next_(snap, ctypes.byref(entry))
+    finally:
+        k32.CloseHandle(snap)
 
-def module_base(pid, path):
-    snap = k32.CreateToolhelp32Snapshot(0x18, pid)  # TH32CS_SNAPMODULE | SNAPMODULE32
-    m = Module(); m.size = ctypes.sizeof(m)
-    ok = k32.Module32FirstW(snap, ctypes.byref(m))
-    while ok:
-        if m.path.lower() == path.lower():
-            k32.CloseHandle(snap); return m.base
-        ok = k32.Module32NextW(snap, ctypes.byref(m))
-    k32.CloseHandle(snap)
-
-def remote_call(proc, fn, arg=None, wait_ms=10000):
+def remote_call(proc, fn, arg, wait_ms):
     t = k32.CreateRemoteThread(proc, None, 0, fn, arg, 0, None)
     if not t:
-        fail(f"CreateRemoteThread failed ({ctypes.get_last_error()})")
-    k32.WaitForSingleObject(t, wait_ms); k32.CloseHandle(t)
+        fail("CreateRemoteThread failed")
+    try:
+        return k32.WaitForSingleObject(t, wait_ms) == 0  # WAIT_OBJECT_0
+    finally:
+        k32.CloseHandle(t)
 
 def inject(proc, pid, name):
     path = os.path.join(uevr, name)
     data = ctypes.create_unicode_buffer(path)
     mem = k32.VirtualAllocEx(proc, None, ctypes.sizeof(data), 0x3000, 0x04)  # commit|reserve, read/write
-    if not mem or not k32.WriteProcessMemory(proc, mem, data, ctypes.sizeof(data), None):
-        fail(f"couldn't write into {exe} ({ctypes.get_last_error()})")
-    remote_call(proc, k32.GetProcAddress(k32.GetModuleHandleW("kernel32.dll"), b"LoadLibraryW"), mem)
-    base = module_base(pid, path)
-    if not base:
+    if not mem:
+        fail(f"couldn't allocate in {exe}")
+    try:
+        if not k32.WriteProcessMemory(proc, mem, data, ctypes.sizeof(data), None):
+            fail(f"couldn't write into {exe}")
+        load = k32.GetProcAddress(k32.GetModuleHandleW("kernel32.dll"), b"LoadLibraryW")
+        if not remote_call(proc, load, mem, 30000):
+            fail(f"loading {name} into {exe} didn't finish in 30 s")
+    finally:
+        k32.VirtualFreeEx(proc, mem, 0, 0x8000)  # MEM_RELEASE
+    m = snapshot(0x18, pid, Module(), k32.Module32FirstW, k32.Module32NextW,  # TH32CS_SNAPMODULE | SNAPMODULE32
+                 lambda m: m.path.lower() == path.lower())
+    if not m:
         fail(f"{name} didn't load into {exe}")
-    return path, base
+    return path, m.base
 
-pid = find_pid()
-if not pid:
+e = snapshot(2, 0, Entry(), k32.Process32FirstW, k32.Process32NextW,  # TH32CS_SNAPPROCESS
+             lambda e: e.name.lower() == exe.lower())
+if not e:
     fail(f"{exe} isn't running")
+pid = e.pid
 proc = k32.OpenProcess(0x1F0FFF, False, pid)  # PROCESS_ALL_ACCESS
 if not proc:
-    fail(f"couldn't open {exe} ({ctypes.get_last_error()})")
+    fail(f"couldn't open {exe}")
 path, base = inject(proc, pid, "UEVRPluginNullifier.dll")
 local = k32.LoadLibraryW(path)
-offset = k32.GetProcAddress(local, b"nullify") - local  # same DLL, same layout in both processes
-remote_call(proc, base + offset, wait_ms=2000)
+fn = local and k32.GetProcAddress(local, b"nullify")
+if not fn:
+    fail("couldn't find UEVRPluginNullifier.dll's nullify")
+offset = fn - local  # same DLL, same layout in both processes
+k32.FreeLibrary(local)
+# The frontend waits 2 s for nullify and carries on either way; so do we, but say so.
+nullified = remote_call(proc, base + offset, None, 2000)
 inject(proc, pid, "openvr_api.dll")
 # The frontend saves the runtime choice in the per-game config before UEVRBackend reads it.
 os.makedirs(profile, exist_ok=True)
@@ -151,7 +170,8 @@ lines = open(cfg).read().splitlines() if os.path.exists(cfg) else []
 lines = [l for l in lines if not l.startswith("Frontend_RequestedRuntime=")] + ["Frontend_RequestedRuntime=openvr_api.dll"]
 open(cfg, "w").write("\n".join(lines) + "\n")
 inject(proc, pid, "UEVRBackend.dll")
-print(json.dumps({"pid": pid}))
+k32.CloseHandle(proc)
+print(json.dumps({"pid": pid, "nullified": nullified}))
 """
 
 
@@ -420,7 +440,15 @@ def start(appid):
                              cwd=str(Path(r["prefix"]) / "drive_c" / MANAGED))
     except subprocess.TimeoutExpired:
         raise Fail("the injection step didn't finish in 2 minutes") from None
-    reply = next((json.loads(l) for l in reversed(out.stdout.splitlines()) if l.startswith("{")), None)
+    reply = None
+    for line in reversed(out.stdout.splitlines()):
+        try:
+            reply = json.loads(line)
+            break
+        except ValueError:
+            continue
+    if not isinstance(reply, dict):
+        reply = None
     if not reply or "error" in reply:
         raise Fail("UEVR injection failed: " + (reply or {}).get("error", (out.stderr.strip().splitlines() or ["no output"])[-1]))
     try:
@@ -446,15 +474,23 @@ def uninstall(appid):
     prefix = os.path.realpath(r["prefix"])
     if not prefix.endswith(f"/steamapps/compatdata/{appid}/pfx"):
         raise Fail(f"receipt names a prefix that isn't app {appid}'s: {r['prefix']}")
+    # Only ever our folder and UEVR's own settings folders for this game, even
+    # if the receipt says otherwise.
+    managed = os.path.join(prefix, "drive_c", MANAGED)
+    uevr_dirs = {os.path.realpath(str(d)) for d in user_dirs({"prefix": Path(prefix)}, Path(r["exe"])).values()}
     targets = list(r.get("remove", [])) + list(r.get("remove_if_created", {}).values())
-    for t in targets:  # a receipt only ever points inside this game's prefix
+    for t in targets:
         real = os.path.realpath(t)
-        if not real.startswith(prefix + os.sep):
-            raise Fail(f"receipt lists a path outside the game's prefix: {t}")
+        if not (real.startswith(managed + os.sep) or real in uevr_dirs):
+            raise Fail(f"receipt lists a path Frame Control didn't create: {t}")
     for t in targets:
         shutil.rmtree(t, ignore_errors=True)
+    left = [t for t in targets if os.path.lexists(t)]
+    if left:  # keep the receipt, so Remove can be tried again
+        raise Fail("couldn't remove " + ", ".join(left))
+    parents = {os.path.realpath(os.path.join(prefix, "drive_c/users/steamuser/AppData/Roaming/UnrealVRMod")), managed}
     for t in r.get("remove_if_empty", []):
-        if os.path.realpath(t).startswith(prefix + os.sep):
+        if os.path.realpath(t) in parents:
             try:
                 os.rmdir(t)
             except OSError:
