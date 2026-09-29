@@ -72,7 +72,7 @@
   @media (max-width: 1150px) { .grid-top, .grid-3 { grid-template-columns: 1fr; } header { gap: 14px; padding: env(safe-area-inset-top) calc(18px + env(safe-area-inset-right)) 0 calc(18px + env(safe-area-inset-left)); } nav a { padding: 0 10px; } }
   @media (max-width: 960px) { header { gap: 10px; } nav { gap: 0; } nav a { padding: 0 8px; font-size: 13px; letter-spacing: .4px; }
     .brand, #refreshAll { display: none; }
-    .pill .pt > b, .pill .via { display: none; } .pill .pt > span { font-size: 13px; color: var(--bright); } }
+    .pill .pt > b, .pill .via { display: none; } header .pill .pt > span { font-size: 13px; color: var(--bright); } }
   nav svg { display: none; }
   html { -webkit-text-size-adjust: 100%; }
   body { -webkit-tap-highlight-color: transparent; }
@@ -233,6 +233,10 @@
   .zoombar button:hover { background: rgba(255,255,255,.12); }
   .zoombar .lvl { min-width: 46px; font-variant-numeric: tabular-nums; color: var(--muted); font-size: 12px; }
   .viewer .empty { text-align: center; color: var(--muted); padding: 24px; max-width: 460px; }
+  /* Nothing captured yet: a short strip rather than a big black box. */
+  .viewer:has(> #viewerEmpty:not([hidden])) { aspect-ratio: auto !important; height: 190px;
+    background: radial-gradient(500px 160px at 50% 0%, rgba(42,71,94,.55), transparent 70%), #0b1016; }
+  .viewer:has(> #viewerEmpty:not([hidden])) .empty svg { width: 44px; height: 44px; margin-bottom: 4px; }
   .viewer .empty svg { width: 64px; height: 64px; opacity: .35; margin-bottom: 10px; }
   .viewer .badge { position: absolute; left: 12px; top: 12px; font-size: 11px; letter-spacing: 1.2px; text-transform: uppercase;
                    background: rgba(0,0,0,.6); color: var(--text); padding: 4px 9px; border-radius: 2px; }
@@ -259,6 +263,26 @@
              border-radius: 50%; animation: spin .8s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
   .toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+
+  /* ---- Home: what the headset's doing, and what you'd do next ---- */
+  .now-state { margin: 0 0 4px; color: var(--bright); font-size: 15px; }
+  .now-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 16px; }
+  .now-actions button { justify-content: center; height: 38px; white-space: normal; line-height: 1.2; text-align: center; }
+  .now-actions button:first-child { grid-column: 1 / -1; }
+  @media (max-width: 1150px) { .now { order: -1; } }  /* stacked: what's happening comes first */
+  #padIntro { margin: 0; }
+  .group-head { margin: 4px 0 -8px; }
+  a.button-link { display: inline-flex; align-items: center; height: 34px; padding: 0 14px; border-radius: 3px; background: var(--btn);
+                  color: var(--text); text-decoration: none; }
+  a.button-link:hover { background: var(--btn-hi); color: var(--bright); }
+  #settingsBtn.on { color: var(--blue); }
+  /* A panel that folds: its heading row is the summary. */
+  .fold > summary { list-style: none; cursor: pointer; margin: 0; color: inherit; font-size: inherit; }
+  .fold > summary::-webkit-details-marker { display: none; }
+  .fold > summary h2::before { content: "▸"; display: inline-block; width: 1.1em; color: var(--muted); }
+  .fold[open] > summary h2::before { content: "▾"; }
+  .fold:not([open]) > summary { margin-bottom: 0; }
+  .fold > summary:focus-visible { outline: 2px solid var(--blue); outline-offset: 4px; }
 
   /* ---- the headset's details: a menu under the battery chip ---- */
   .pop { position: fixed; inset: auto; margin: 0; width: min(390px, calc(100vw - 24px)); max-height: calc(100vh - 90px); overflow: auto;
@@ -481,8 +505,8 @@
     header { height: calc(52px + env(safe-area-inset-top)); padding: env(safe-area-inset-top) calc(14px + env(safe-area-inset-right)) 0 calc(14px + env(safe-area-inset-left)); gap: 10px;
              backdrop-filter: none; background: rgb(23, 29, 37); }
     .brand svg { width: 26px; height: 26px; }
-    .brand { display: flex; } #refreshAll { display: inline-flex; }  /* the tabs are at the bottom here */
-    .pill .pt > b { display: block; } .pill .via { display: inline; } .pill .pt > span { font-size: 11.5px; color: var(--muted); }
+    .brand { display: flex; }  /* the tabs are at the bottom here; Refresh is automatic */
+    .pill .pt > b { display: block; } .pill .via { display: inline; } header .pill .pt > span { font-size: 11.5px; color: var(--muted); }
     header .chip { height: 30px; padding: 0 10px; }
     nav { position: fixed; left: 0; right: 0; bottom: 0; z-index: 25; gap: 0;
           height: calc(58px + env(safe-area-inset-bottom)); padding: 0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
@@ -697,6 +721,9 @@
   <button id="reportBtn" data-report title="Report a problem or send feedback" aria-label="Report a problem or send feedback">
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 9.5h8M8 12.5h5" stroke-linecap="round"/></svg>
   </button>
+  <button id="settingsBtn" title="Settings: privacy, updates, artwork and the assistant" aria-label="Settings">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+  </button>
   <button id="refreshAll" title="Refresh (R)" aria-label="Refresh">
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
   </button>
@@ -805,8 +832,9 @@
       <div class="hint" id="viewHint"></div>
     </section>
 
-    <section class="panel" id="device">
-      <div class="shelf-head"><h2>Volume</h2></div>
+    <section class="panel now" id="device">
+      <div class="shelf-head"><h2>Right now</h2></div>
+      <p class="now-state" id="nowState">Waiting for the Frame…</p>
       <div class="vol">
         <button class="small" id="muteBtn" aria-label="Mute">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z"/><path id="volWaves" d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="2"/></svg>
@@ -814,33 +842,29 @@
         <input type="range" id="vol" min="0" max="100" step="1" value="0" aria-label="Volume">
         <span class="num" id="volNum">—</span>
       </div>
+      <div class="now-actions">
+        <button class="action" id="castBtn" title="The live headset view, full screen, for people in the room">Cast to this screen</button>
+        <button data-go="media">Play a video or photo</button>
+        <button data-go="macview" id="nowMac" hidden>Show a Mac window</button>
+        <button id="nowSend">Send files…</button>
+        <button data-go="pad">Type on the Frame</button>
+      </div>
+      <p class="hint">Casting shows everything the wearer sees, including anything private.</p>
     </section>
   </div>
 
-  <section class="panel" id="vrTools">
-    <div class="shelf-head"><h2>VR comfort and performance</h2><span class="spacer"></span><span class="sub" id="vrUpdated">Waiting for the Frame</span></div>
-    <div class="stats" id="vrMetrics"></div>
-    <div class="hint">Compositor FPS measures SteamVR output, not game FPS. Application FPS is unavailable when no app supplies timing. GPU time is render time, not GPU utilisation. Battery and temperature are in the battery menu at the top.</div>
-    <div class="chips">
-      <button class="small" id="hudStart">Open HUD in headset</button>
-      <button class="small" id="hudStop">Close HUD</button>
+  <section id="shots">
+    <div class="shelf-head"><h2>Screenshots</h2><span class="count" id="shotCount"></span><span class="spacer"></span>
+      <button class="small" id="shotsRefresh">Refresh</button>
+      <button class="small" id="shotsFolder" title="Open the SteamFrame folder in your Pictures">Show folder</button>
+      <button class="action small" id="shotsSaveNew" disabled>Save new to this computer</button>
     </div>
-    <div class="hint">The HUD is ours and uses the Frame’s built-in tools. Place its panel with SteamVR’s Float in World or controller docking controls. It updates every two seconds until closed.</div>
-    <h3>Playspace and seated comfort</h3>
-    <p class="sub" id="comfortNote">Tracking-origin controls are not available yet: reversible changes still need an idle-headset test. Use SteamVR’s recenter and room setup for now. A seated origin only affects apps that use seated tracking; it cannot force a game into seated mode.</p>
-    <div class="hint">For motion comfort, choose snap-turn, teleport movement and a movement vignette in each game’s settings. SteamVR has no verified universal snap-turn or locomotion-vignette switch.</div>
-    <details style="margin-top:16px"><summary>Optional VR software</summary>
-      <p class="sub">None of Frame Control’s features needs these apps. Compatibility reports and account ownership are separate. Paid apps can only be installed here when already owned.</p>
-      <button class="small" id="vrUtilitiesRefresh">Check ownership and reports</button>
-      <div class="list" id="vrUtilities"><div class="sub">Load this optional list to check the Frame account.</div></div>
-    </details>
+    <div class="shot-grid" id="shotGrid"><div class="sub">Loading…</div></div>
+    <div class="hint">Screenshots you take in the headset with Steam's screenshot shortcut. Click one to open it in the viewer; Save copies it to <code>~/Pictures/SteamFrame</code>.</div>
   </section>
 
-  <section class="panel" id="comfort" style="margin:20px 0;padding:16px">
-    <div class="shelf-head"><h2>Family and comfort</h2><span class="spacer"></span>
-      <button class="action small" id="castBtn">Cast headset view</button>
-    </div>
-    <p class="hint">Share this screen with people in the room. Casting shows everything the wearer sees, including private content.</p>
+  <section class="panel" id="comfort">
+    <div class="shelf-head"><h2>Family and comfort</h2><span class="count">Session timer and reminders</span></div>
     <form id="comfortForm">
       <div class="row" style="flex-wrap:wrap;gap:12px">
         <label>Session limit (minutes) <input id="sessionMinutes" type="number" min="1" max="240" value="30" required style="width:75px"></label>
@@ -870,6 +894,9 @@
     <div class="shelf-head"><h2>Keyboard and trackpad</h2><span class="sub" id="padState"></span><span class="spacer"></span>
       <button class="small" id="padOn">Turn on</button>
     </div>
+    <p class="sub" id="padIntro">Use this computer's keyboard and mouse in apps on the Frame, such as Chromium or the
+      desktop's Linux apps.</p>
+    <div id="padBody" hidden>
     <div class="pad-area" id="padArea" tabindex="0" role="application" aria-label="Trackpad for the Frame">
       <div class="pad-hint" id="padHint"></div>
     </div>
@@ -895,17 +922,29 @@
       don't take it. It works through KDE Connect, which comes with Frame Control: the first time, it copies Valve's build
       for the Frame (3.6 MB, 18 MB unpacked) into your home folder there and pairs with it. No internet needed, and nothing
       else to install. <a href="#" data-about>Licences</a></div>
+    </div>
   </section>
 
-  <section id="shots">
-    <div class="shelf-head"><h2>Screenshots</h2><span class="count" id="shotCount"></span><span class="spacer"></span>
-      <button class="small" id="shotsRefresh">Refresh</button>
-      <button class="small" id="shotsFolder" title="Open the SteamFrame folder in your Pictures">Show folder</button>
-      <button class="action small" id="shotsSaveNew" disabled>Save new to this computer</button>
+  <details class="panel fold" id="vrTools">
+    <summary class="shelf-head"><h2>VR performance</h2><span class="count">Frame timing, the HUD, playspace and optional software</span>
+      <span class="spacer"></span><span class="sub" id="vrUpdated">Waiting for the Frame</span></summary>
+    <div class="stats" id="vrMetrics"></div>
+    <div class="hint">Compositor FPS measures SteamVR output, not game FPS. Application FPS is unavailable when no app supplies timing. GPU time is render time, not GPU utilisation. Battery and temperature are in the battery menu at the top.</div>
+    <div class="chips">
+      <button class="small" id="hudStart">Open HUD in headset</button>
+      <button class="small" id="hudStop">Close HUD</button>
     </div>
-    <div class="shot-grid" id="shotGrid"><div class="sub">Loading…</div></div>
-    <div class="hint">Screenshots you take in the headset with Steam's screenshot shortcut. Click one to open it in the viewer; Save copies it to <code>~/Pictures/SteamFrame</code>.</div>
-  </section>
+    <div class="hint">The HUD is ours and uses the Frame’s built-in tools. Place its panel with SteamVR’s Float in World or controller docking controls. It updates every two seconds until closed.</div>
+    <h3>Playspace and seated comfort</h3>
+    <p class="sub" id="comfortNote">Tracking-origin controls are not available yet: reversible changes still need an idle-headset test. Use SteamVR’s recenter and room setup for now. A seated origin only affects apps that use seated tracking; it cannot force a game into seated mode.</p>
+    <div class="hint">For motion comfort, choose snap-turn, teleport movement and a movement vignette in each game’s settings. SteamVR has no verified universal snap-turn or locomotion-vignette switch.</div>
+    <details style="margin-top:16px"><summary>Optional VR software</summary>
+      <p class="sub">None of Frame Control’s features needs these apps. Compatibility reports and account ownership are separate. Paid apps can only be installed here when already owned.</p>
+      <button class="small" id="vrUtilitiesRefresh">Check ownership and reports</button>
+      <div class="list" id="vrUtilities"><div class="sub">Load this optional list to check the Frame account.</div></div>
+    </details>
+  </details>
+
   </div>
 
   <div class="page" data-page="games">
@@ -1024,7 +1063,64 @@
   </div>
 
   <div class="page" data-page="tools">
-  <section class="panel"><h2>Assistant and AI agents</h2><p>Use your own model endpoint, or review a proposed MCP action. Nothing is sent to a model until you opt in.</p><a href="/assistant">Open assistant</a></section>
+  <div class="shelf-head group-head"><h2>In the headset</h2><span class="count">Show your computer, films and photos, and panels</span></div>
+  <div class="grid-3">
+    <section class="panel" id="macview" hidden>
+      <div class="shelf-head"><h2>Mac in the headset</h2><span class="count" id="mvCount"></span><span class="spacer"></span>
+        <select id="mvQuality" title="Picture quality and bandwidth">
+          <option value="sharp">Sharp</option><option value="balanced" selected>Balanced</option>
+          <option value="light">Light</option><option value="compatible">Compatible (JPEG)</option>
+        </select>
+        <button class="small" id="mvRefresh">Refresh</button></div>
+      <label class="mv-opt"><input type="checkbox" id="mvSeparate" checked> Give each window its own display
+        <span class="sub">its menus and sheets come along, nothing covers it, and it goes back when you stop</span></label>
+      <div class="mv-perm" id="mvPerm" hidden></div>
+      <div class="list" id="mvDisplays"></div>
+      <div class="shelf-head" style="margin-top:16px"><h2>Windows</h2><span class="count" id="mvWinCount"></span></div>
+      <div class="list mv-windows" id="mvWindows"><div class="sub">Loading…</div></div>
+      <div class="row" style="margin-top:12px">
+        <button class="small" data-mv="show" data-src="test" data-title="Test pattern">Test pattern</button>
+        <button class="small danger" data-mv="stopall">Stop all</button>
+      </div>
+      <div class="hint">Each window or screen becomes its own panel in the headset. Place it with the SteamVR dashboard
+        (Float in World, Move, Size). Point and click with the laser, scroll with the thumbstick, and type on the Mac's keyboard.</div>
+    </section>
+
+    <section class="panel" id="media">
+      <div class="shelf-head"><h2>Media player</h2><span class="count">Preview</span></div>
+      <p class="sub">Watch your own films and stereo photos on a big screen in the headset.</p>
+      <div class="row"><button class="small" id="mediaChoose">Send media…</button>
+        <button class="small" id="mediaRefresh">Refresh</button></div>
+      <input type="file" id="mediaInput" accept=".mp4,.mkv,.mov,.m4v,.webm,.png,.jpg,.jpeg,.splat" hidden>
+      <div class="row" style="margin-top:12px"><label for="mediaFile">On the Frame</label>
+        <select id="mediaFile"><option value="">Refresh to load your media</option></select></div>
+      <div class="row" style="margin-top:8px"><label for="mediaLayout">Layout</label>
+        <select id="mediaLayout">
+          <option value="auto">Detect from name or metadata</option><option value="mono">2D</option>
+          <option value="sbs">Half SBS · left / right</option><option value="ou">Half OU · top / bottom</option>
+          <option value="full-sbs">Full SBS · left / right</option><option value="full-ou">Full OU · top / bottom</option>
+        </select></div>
+      <div class="row" style="margin-top:8px"><label><input type="checkbox" id="mediaTheatre" checked>
+        Theatre · bigger screen, dark surround</label></div>
+      <div class="row" style="margin-top:12px"><button class="action small" id="mediaPlay">Play</button>
+        <button class="small" id="mediaStop">Stop</button></div>
+      <p class="sub" id="mediaState" role="status" aria-live="polite">Choose a file to begin.</p>
+      <div class="hint">H.264/H.265 video; SBS/OU PNG or JPEG photos. Screens follow your head.
+        Small .splat files show a stationary stereo preview (up to 20,000 Gaussians).
+        Native HEIC/MPO photos, large splat scenes, seeking and subtitles aren't supported yet.
+        Stop works from here; playback also ends after four hours.</div>
+    </section>
+
+    <section class="panel" id="panels">
+      <div class="shelf-head"><h2>Panel switcher</h2><span class="spacer"></span>
+        <button class="small" id="panelsRefresh">Refresh</button>
+        <button class="small action" id="panelsOpen">Open in headset</button></div>
+      <div class="list" id="panelList"><div class="sub">Refresh to see open panels.</div></div>
+      <div class="hint">Choose a panel to show it in SteamVR. The headset switcher stays available from Steam's dashboard.
+        Saved spatial layouts are not available yet.</div>
+    </section>
+  </div>
+  <div class="shelf-head group-head"><h2>Send and manage</h2><span class="count">Files, clipboard, Linux apps, remote access and power</span></div>
   <div class="grid-3">
     <section class="panel" id="transfer">
       <div class="shelf-head"><h2>Send to Frame</h2></div>
@@ -1051,31 +1147,6 @@
       <div class="hint">Clipboard needs the desktop panel open in the headset.</div>
     </section>
 
-    <section class="panel" id="media">
-      <div class="shelf-head"><h2>Media in the headset</h2><span class="count">Preview</span></div>
-      <p class="sub">Play your movies and stereo photos with Frame Control's own player.</p>
-      <div class="row"><button class="small" id="mediaChoose">Send media…</button>
-        <button class="small" id="mediaRefresh">Refresh</button></div>
-      <input type="file" id="mediaInput" accept=".mp4,.mkv,.mov,.m4v,.webm,.png,.jpg,.jpeg,.splat" hidden>
-      <div class="row" style="margin-top:12px"><label for="mediaFile">On the Frame</label>
-        <select id="mediaFile"><option value="">Refresh to load your media</option></select></div>
-      <div class="row" style="margin-top:8px"><label for="mediaLayout">Layout</label>
-        <select id="mediaLayout">
-          <option value="auto">Detect from name or metadata</option><option value="mono">2D</option>
-          <option value="sbs">Half SBS · left / right</option><option value="ou">Half OU · top / bottom</option>
-          <option value="full-sbs">Full SBS · left / right</option><option value="full-ou">Full OU · top / bottom</option>
-        </select></div>
-      <div class="row" style="margin-top:8px"><label><input type="checkbox" id="mediaTheatre" checked>
-        Theatre · bigger screen, dark surround</label></div>
-      <div class="row" style="margin-top:12px"><button class="action small" id="mediaPlay">Play</button>
-        <button class="small" id="mediaStop">Stop</button></div>
-      <p class="sub" id="mediaState" role="status" aria-live="polite">Choose a file to begin.</p>
-      <div class="hint">H.264/H.265 video; SBS/OU PNG or JPEG photos. Screens follow your head.
-        Small .splat files show a stationary stereo preview (up to 20,000 Gaussians).
-        Native HEIC/MPO photos, large splat scenes, seeking and subtitles aren't supported yet.
-        Stop works from here; playback also ends after four hours.</div>
-    </section>
-
     <section class="panel" id="apps">
       <div class="shelf-head"><h2>Linux apps</h2><span class="count">Flatpak</span></div>
       <div class="list" id="flatpaks"><div class="sub">Loading…</div></div>
@@ -1086,20 +1157,6 @@
       <div class="row" style="margin-top:8px" id="fpQuick"></div>
     </section>
 
-
-    <section class="panel" id="artworkSettings">
-      <div class="shelf-head"><h2>Library artwork settings</h2></div>
-      <p class="sub">SteamGridDB supplies community artwork for sideloaded games. Without a key, Frame Control uses source images and creates the remaining art.</p>
-      <label for="steamGridKey">SteamGridDB API key</label>
-      <input type="password" id="steamGridKey" autocomplete="off" spellcheck="false" placeholder="Optional API key">
-      <div class="row" style="margin-top:8px">
-        <button id="saveSteamGridKey" class="action small">Save key</button>
-        <button id="clearSteamGridKey" class="small">Remove saved key</button>
-        <a href="https://www.steamgriddb.com/profile/preferences/api" target="_blank" rel="noreferrer">Get a free key</a>
-      </div>
-      <div id="steamGridStatus" class="hint" role="status"></div>
-      <button id="refreshAndroidArt" class="small" style="margin-top:12px">Refresh artwork for installed apps and titles</button>
-    </section>
     <section class="panel" id="power">
       <div class="shelf-head"><h2>Remote &amp; power</h2></div>
       <div class="actions">
@@ -1114,44 +1171,17 @@
       <div class="hint desk-only">Sleep, Restart and Shut down open a terminal window for the Developer Mode password.</div>
       <div class="hint mobile-only">Sleep, Restart and Shut down ask for the Developer Mode password. SSH, SFTP, Steam Link and remote desktop open in the app that handles them.</div>
       <div class="row mobile-only" style="margin-top:14px"><button class="small" id="changeHeadset">Change headset…</button></div>
-      <div class="row" style="margin-top:14px"><button class="small" data-about>About and licences</button></div>
       <div class="links desk-only">
         <div><a href="https://store.steampowered.com/remoteplay" target="_blank">Steam Link</a>: Valve's remote view of the headset</div>
         <div><a href="https://streamframe.app/" target="_blank">Stream Frame</a>: third-party recorder (macOS 14+)</div>
         <div><a href="https://framedropvr.com" target="_blank">FrameDrop</a>: sideloader (Windows only for now)</div>
       </div>
     </section>
-
-    <section class="panel" id="panels">
-      <div class="shelf-head"><h2>Panel switcher</h2><span class="spacer"></span>
-        <button class="small" id="panelsRefresh">Refresh</button>
-        <button class="small action" id="panelsOpen">Open in headset</button></div>
-      <div class="list" id="panelList"><div class="sub">Refresh to see open panels.</div></div>
-      <div class="hint">Choose a panel to show it in SteamVR. The headset switcher stays available from Steam's dashboard.
-        Saved spatial layouts are not available yet.</div>
-    </section>
-
-    <section class="panel" id="macview" hidden>
-      <div class="shelf-head"><h2>Mac in the headset</h2><span class="count" id="mvCount"></span><span class="spacer"></span>
-        <select id="mvQuality" title="Picture quality and bandwidth">
-          <option value="sharp">Sharp</option><option value="balanced" selected>Balanced</option>
-          <option value="light">Light</option><option value="compatible">Compatible (JPEG)</option>
-        </select>
-        <button class="small" id="mvRefresh">Refresh</button></div>
-      <label class="mv-opt"><input type="checkbox" id="mvSeparate" checked> Give each window its own display
-        <span class="sub">its menus and sheets come along, nothing covers it, and it goes back when you stop</span></label>
-      <div class="mv-perm" id="mvPerm" hidden></div>
-      <div class="list" id="mvDisplays"></div>
-      <div class="shelf-head" style="margin-top:16px"><h2>Windows</h2><span class="count" id="mvWinCount"></span></div>
-      <div class="list mv-windows" id="mvWindows"><div class="sub">Loading…</div></div>
-      <div class="row" style="margin-top:12px">
-        <button class="small" data-mv="show" data-src="test" data-title="Test pattern">Test pattern</button>
-        <button class="small danger" data-mv="stopall">Stop all</button>
-      </div>
-      <div class="hint">Each window or screen becomes its own panel in the headset. Place it with the SteamVR dashboard
-        (Float in World, Move, Size). Point and click with the laser, scroll with the thumbstick, and type on the Mac's keyboard.</div>
-    </section>
-
+  </div>
+  </div>
+  <div class="page" data-page="settings">
+  <div class="shelf-head group-head"><h2>Settings</h2><span class="spacer"></span><button class="small" data-about>About and licences</button></div>
+  <div class="grid-3">
     <section class="panel" id="privacy">
       <div class="shelf-head"><h2>Privacy &amp; updates</h2><span class="spacer"></span><span class="sub" id="appVersion"></span></div>
       <label class="popt"><input type="checkbox" id="tUsage"><b>Anonymous usage statistics</b>
@@ -1168,6 +1198,27 @@
       <div class="row" style="margin-top:14px"><button class="small action" data-report>Report a problem</button>
         <button class="small" id="updateCheck" hidden>Check for updates</button>
         <a class="sub" href="https://github.com/saphid/frame-control/blob/main/docs/privacy.md" target="_blank">What's collected, exactly</a></div>
+    </section>
+
+    <section class="panel" id="artworkSettings">
+      <div class="shelf-head"><h2>Library artwork</h2></div>
+      <p class="sub">SteamGridDB supplies community artwork for sideloaded games. Without a key, Frame Control uses source images and creates the remaining art.</p>
+      <label for="steamGridKey">SteamGridDB API key</label>
+      <input type="password" id="steamGridKey" autocomplete="off" spellcheck="false" placeholder="Optional API key">
+      <div class="row" style="margin-top:8px">
+        <button id="saveSteamGridKey" class="action small">Save key</button>
+        <button id="clearSteamGridKey" class="small">Remove saved key</button>
+        <a href="https://www.steamgriddb.com/profile/preferences/api" target="_blank" rel="noreferrer">Get a free key</a>
+      </div>
+      <div id="steamGridStatus" class="hint" role="status"></div>
+      <button id="refreshAndroidArt" class="small" style="margin-top:12px">Refresh artwork for installed apps and titles</button>
+    </section>
+
+    <section class="panel" id="assistant">
+      <div class="shelf-head"><h2>Assistant and AI agents</h2></div>
+      <p class="sub">Use your own model endpoint, and review what an AI agent asks to do over MCP before it happens. Nothing is
+        sent to a model until you turn it on.</p>
+      <div class="row" style="margin-top:12px"><a class="button-link" href="/assistant">Open assistant settings</a></div>
     </section>
   </div>
   </div>
@@ -1430,6 +1481,7 @@ function applyHostWording(h) {
   $("shotsSaveNew").textContent = h.mobile ? `Save all to ${h.computer}` : `Save new to ${h.computer}`;
   $("clipMac").textContent = `Send ${h.computer} clipboard`;
   if (h.mobile) $("offSetup").textContent = "Change headset…";
+  $("nowMac").hidden = !!h.mobile || h.computer !== "Mac";
 }
 // Images to the phone (the app offers Save Image to Photos, Files and so on).
 function blobBase64(blob) {
@@ -1513,6 +1565,7 @@ function setOnline(ok, why) {
     $("offMsg").textContent = why || "Can't reach the Frame";
     setConn(false, "Offline");
     $("battChip").hidden = true; closeDevPop();
+    $("nowState").textContent = "Waiting for the Frame…";
     if (was !== false) { log(why || "Can't reach the Frame", "e"); schedule(); }
     if (window.connBanner) window.connBanner();
   } else if (was === false) {
@@ -1615,7 +1668,8 @@ function renderComfort(s) {
   if (s.id !== comfortSession) {
     comfortSession = s.id;
     comfortSeen.clear();
-    if (s.options) for (const [key, value] of Object.entries(s.options)) {
+    // A finished session's settings (a one-minute test, say) mustn't replace the defaults.
+    if (s.active && s.options) for (const [key, value] of Object.entries(s.options)) {
       const el = $(key === "minutes" ? "sessionMinutes" : key);
       if (!el) continue;
       if (el.type === "checkbox") el.checked = value; else el.value = value;
@@ -1641,7 +1695,8 @@ function renderComfort(s) {
   // Keep only the server's bounded history; a new page seeds it without replay.
   comfortSeen = new Set((s.events || []).map(e => e.id));
   if (latest !== null) $("comfortAnnouncement").textContent = latest;
-  const history = (s.events || []).slice(-3).map(e => e.message).join(" · ");
+  const at = t => new Date(t * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  const history = (s.events || []).slice(-3).map(e => `${at(e.time)} ${e.message}`).join(" · ");
   if ($("comfortEvents").textContent !== history) $("comfortEvents").textContent = history;
 }
 async function pollComfort() {
@@ -1672,6 +1727,13 @@ $("testNotification").onclick = () => act("Test notification", async () => {
   await localNotification("Comfort notifications are enabled on this device.", true);
   return {message: "Test notification sent. Check your device's notification settings if it didn't appear."};
 });
+// Home's shortcuts to the things people come to do next.
+document.querySelectorAll("[data-go]").forEach(b => b.onclick = () => {
+  const to = b.dataset.go;
+  if (location.hash === "#" + to) showPage(); else location.hash = to;
+  if (to === "pad") { if (pad.state === "off" || pad.state === "error") padStart(); $("padType").focus({ preventScroll: true }); }
+});
+$("nowSend").onclick = () => $("fileInput").click();
 $("castBtn").onclick = () => {
   setView("headset");
   if (!live) toggleLive(true);
@@ -1752,6 +1814,8 @@ function render(s) {
 
   const svc = [["SteamVR", s.services.steamvr], ["Desktop", s.services.desktop],
                ["Lepton", s.services.lepton], ["RDP", s.services.rdp]];
+  $("nowState").textContent = s.services.steamvr ? "In VR: SteamVR is running." :
+    "SteamVR isn't running, so there's no headset view until it starts.";
   $("services").innerHTML = svc.map(([n, on]) => `<span class="chip"><span class="dot ${on ? "on" : ""}"></span>${esc(n)}</span>`).join("");
 
   if (s.volume && !volTimer) setVolume(Math.round(s.volume.level * 100), s.volume.muted);
@@ -3739,8 +3803,10 @@ $("macview").onclick = async e => {
 
 // ---- pages: #home, #games, #android, #tools (older section links still work) ----
 const PAGES = ["home", "games", "android", "tools"];
-const SECTION_PAGE = { view: "home", device: "home", shots: "home", library: "games", sideloaded: "games", getgames: "games",
-                       display: "android", transfer: "tools", apps: "tools", power: "tools", macview: "tools", privacy: "tools", panels: "tools" };
+const SECTION_PAGE = { view: "home", device: "home", shots: "home", comfort: "home", pad: "home", vrTools: "home",
+                       library: "games", sideloaded: "games", getgames: "games", display: "android",
+                       transfer: "tools", apps: "tools", power: "tools", macview: "tools", media: "tools", panels: "tools",
+                       privacy: "settings", artworkSettings: "settings", assistant: "settings" };
 let page = "home";
 function showPage() {
   const id = location.hash.slice(1);
@@ -3749,6 +3815,7 @@ function showPage() {
   page = next;
   document.querySelectorAll(".page").forEach(p => p.classList.toggle("on", p.dataset.page === page));
   document.querySelectorAll("nav a").forEach(a => a.classList.toggle("on", a.getAttribute("href") === "#" + page));
+  $("settingsBtn").classList.toggle("on", page === "settings");
   document.title = page === "home" ? "Frame Control" : `${page[0].toUpperCase() + page.slice(1)} · Frame Control`;
   const section = !PAGES.includes(id) && id && $(id);
   if (section) section.scrollIntoView(); else scrollToY(0);
@@ -3781,6 +3848,8 @@ function padShow(status) {
   $("padOn").hidden = ready || busy;
   $("padOn").textContent = pad.state === "error" ? "Try again" : "Turn on";
   $("padArea").classList.toggle("off", !ready);
+  $("padBody").hidden = pad.state === "off";
+  $("padIntro").hidden = pad.state !== "off";
   $("padHint").textContent = pad.state === "error" ? status.message || "Couldn't reach KDE Connect on the Frame."
     : !ready ? (busy ? PAD_STATES[pad.state] : "Turn on to use this as a trackpad for the Frame.")
     : TOUCH ? "Drag to move the pointer · tap to click · two fingers to scroll · two-finger tap to right-click"
@@ -4565,7 +4634,8 @@ function setUpActive() {
 $("connSetup").onclick = setUpActive;
 
 // ---- Devices tab ----
-PAGES.push("devices");
+PAGES.push("devices", "settings");  // Settings has no tab: the gear in the header, or key 6
+$("settingsBtn").onclick = () => { location.hash = "settings"; };
 let devicesSeq = 0;  // an older answer arriving late mustn't bring back the old selection
 async function loadDevices() {
   if (!link.live) return;

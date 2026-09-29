@@ -97,7 +97,7 @@ replies, screenshots and approval payloads are not sent to analytics.
 
 ## Assistant panel
 
-Open **Tools → Open assistant**, or `http://127.0.0.1:47810/assistant`.
+Open **Settings** (the gear in the header) **→ Open assistant settings**, or `http://127.0.0.1:47810/assistant`.
 To put the same page in the headset, with the HTTP server still running:
 
 ```sh

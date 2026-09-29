@@ -17,11 +17,16 @@ python3 ui/server.py         # anywhere: then open http://127.0.0.1:47810
 
 ## Features
 
-The window has five tabs: **Home** (headset view, status, screenshots),
-**Games** (installed games, sideloaded titles, getting games), **Android** (apps,
-the catalogue, display settings, reports), **Tools** (sending files and text,
-Flatpaks, remote and power) and **Devices** (your headsets and their addresses).
-Keys 1–5 switch between them. Files can be dropped anywhere in the window. A
+The window has five tabs: **Home** (what the headset's doing and what you'd do
+next, the headset view, screenshots, family and comfort, the keyboard and
+trackpad, and VR performance, folded away), **Games** (installed games,
+sideloaded titles, getting games), **Android** (apps, the catalogue, display
+settings, reports), **Tools** (in the headset: your computer's windows, the media
+player and the panel switcher; then sending files and text, Flatpaks, remote and
+power) and **Devices** (your headsets and their addresses). Keys 1–5 switch
+between them. The gear in the header (key 6) opens **Settings**: privacy and
+updates, library artwork and the assistant. The battery chip opens the headset's
+details: storage, memory, temperature, Wi-Fi, uptime and SteamOS build. Files can be dropped anywhere in the window. A
 connection pill in the header always shows which headset and whether it's
 connected, and how (Tailscale, or the network's name). Click it to add, edit or
 reorder the headset's addresses, or to see each step of connecting. When the Frame can't be
@@ -178,5 +183,5 @@ Control implementations. MCP wraps this HTTP API without API keys. Changes
 require a separate user approval; power also retains its password prompt. The
 assistant uses a user-chosen endpoint and sends nothing until the user opts in
 for a message. Screenshot context is separately opt-in. Model replies cannot
-operate the headset. Tools → Open assistant opens the page; the linked guide
+operate the headset. Settings → Open assistant settings opens the page; the linked guide
 covers putting it in a Chromium panel on the Frame.

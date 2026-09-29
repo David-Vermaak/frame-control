@@ -58,7 +58,7 @@ not been verified and is not guaranteed.
 
 ## Casting
 
-**Cast headset view** starts the existing headset Live view and requests full
+**Cast to this screen** (Home → **Right now**) starts the existing headset Live view and requests full
 screen where supported. Show that screen to people in the room, or use the
 computer/phone's own screen mirroring. It creates no new stream transport,
 public URL or LAN server. iPhone uses the inline viewer if full screen is not

@@ -6,7 +6,7 @@ is required.** Chromium and immersive WebXR are not in this playback path.
 
 ## Use it
 
-In **Tools → Media in the headset**, send a file, choose its layout and press
+In **Tools → Media player** (or **Play a video or photo** on Home), send a file, choose its layout and press
 **Play**. **Theatre** gives it a larger screen and an 85% black surround.
 **Stop** removes both. Refresh reads the library and the player's state.
 The screen follows your head; it isn't a saved world-space panel.

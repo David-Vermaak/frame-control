@@ -11,7 +11,7 @@ checks below. The PR stays draft.
 
 ## Our performance HUD
 
-On **Home → VR comfort and performance**, the app shows a timestamped sample
+On **Home → VR performance** (folded until you open it), the app shows a timestamped sample
 with each status refresh (30 seconds, or Refresh). **Open HUD in headset**
 starts our text HUD as a gamescope panel, refreshed every two seconds. In the
 SteamVR dashboard, select **Frame Control HUD**, then Float in World or dock

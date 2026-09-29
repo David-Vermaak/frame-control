@@ -58,3 +58,33 @@ const log = ()=>{}, toast = ()=>{};
 '''
         result = subprocess.run(['node', '-e', setup + code + checks], capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_a_finished_session_leaves_the_defaults(self):
+        """A one-minute test session that has ended mustn't fill the form with 1 / 0 / 0."""
+        page = (ROOT / 'ui/index.html').read_text(encoding='utf-8')
+        code = page[page.index('let comfortBusy ='):page.index('async function pollComfort()')]
+        setup = r'''
+const assert = require('node:assert/strict');
+const elements = new Map();
+const $ = id => {
+  if (!elements.has(id)) elements.set(id, {textContent:'', hidden:true, disabled:false, value:'30', checked:true,
+    type: /Alert$/.test(id) ? 'checkbox' : 'number'});
+  return elements.get(id);
+};
+const window = {frameApp:{notify:async()=>{}}};
+const log = ()=>{}, toast = ()=>{};
+'''
+        checks = r'''
+renderComfort({id:'old', active:false, time:100, options:{minutes:1,breakMinutes:0,stillMinutes:0,batteryAlert:false,heatAlert:false},
+  events:[{id:'old:1',kind:'finished',time:90,message:'Session ended'}]});
+assert.equal($('sessionMinutes').value, '30');
+assert.equal($('breakMinutes').value, '30');
+assert.equal($('batteryAlert').checked, true);
+assert.match($('comfortEvents').textContent, /Session ended/);
+assert.notEqual($('comfortEvents').textContent, 'Session ended');  // it carries a time
+renderComfort({id:'new', active:true, time:200, remaining:600, options:{minutes:45,breakMinutes:15,stillMinutes:20,batteryAlert:true,heatAlert:false}, events:[]});
+assert.equal($('sessionMinutes').value, 45);  // a running session shows its own settings
+assert.equal($('heatAlert').checked, false);
+'''
+        result = subprocess.run(['node', '-e', setup + code + checks], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)

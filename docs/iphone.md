@@ -114,8 +114,8 @@ don't.
 
 ## Family and comfort
 
-The shared Home card sets session limits, breaks and check-ins, and offers
-**Cast headset view**. **Enable / test notifications** requests iOS notification
+The shared Home card sets session limits, breaks and check-ins; **Cast to this
+screen** is in Home's **Right now** card. **Enable / test notifications** requests iOS notification
 permission and sends a local test. These are local notifications, not APNs push;
 iOS background suspension can interrupt phone alerts. The headset timer still
 runs. See [the behavior and verification limits](family-comfort.md).

@@ -125,7 +125,7 @@ a limit on the number of floating panels.
   separate from Frame Control. Public reports describe some Proton support;
   Windows-only does not by itself prove a Frame app cannot run. Local status
   and sources are in [VR utilities](vr-utilities.md).
-- **Our performance HUD:** Home → VR comfort and performance → Open HUD in
+- **Our performance HUD:** Home → VR performance (unfold it) → Open HUD in
   headset creates its own gamescope panel using built-in tools. It needs no
   third-party overlay app. [Metrics and verification](vr-utilities.md).
 

@@ -98,7 +98,7 @@ The same error is sent at most once every 10 minutes.
 ## Report a problem
 
 **Report a problem** is the speech-bubble button in the header, also in the
-Privacy panel and under **Help → Report a Problem…**. It sends the report
+Settings page (**Privacy & updates**) and under **Help → Report a Problem…**. It sends the report
 privately to Frame Control's PostHog project as a `problem_report` event, the
 same way as the analytics above, so only the maintainer can read it and
 nothing is published. It works whatever the analytics settings are, because

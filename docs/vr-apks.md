@@ -94,7 +94,7 @@ A new shortcut is rolled back if artwork fails; failure is never reported as
 an installed app with a blank tile.
 
 Artwork preference is **SteamGridDB → source images → generated fallback**.
-Set the optional free key in Frame Control's **Library artwork settings**, or
+Set the optional free key in Frame Control's **Settings → Library artwork**, or
 `STEAMGRIDDB_API_KEY` (`FRAME_STEAMGRIDDB_API_KEY` also works). Environment
 settings override the saved key. Without a key there are no provider calls or
 warnings. Saved keys stay in host app data, mode 0600 on POSIX, and are never
