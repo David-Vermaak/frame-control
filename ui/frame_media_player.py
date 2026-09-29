@@ -33,6 +33,15 @@ SLOTS = {
 }
 
 
+class OverlayBusy(RuntimeError):
+    """SetOverlayRaw's RequestFailed (23): SteamVR isn't taking frames, e.g. the
+    unworn headset is in standby (verified 2026-09-29). Transient, not fatal."""
+
+
+# A screen that can't take a frame for this long is broken, not asleep.
+BUSY_LIMIT = 300
+
+
 class Overlay:
     def __init__(self):
         self.handles = []
@@ -53,6 +62,8 @@ class Overlay:
     def call(self, name, *values):
         slot, args = SLOTS[name]
         rc = C.CFUNCTYPE(C.c_int, *args)(self.table[slot])(*values)
+        if rc == 23 and name == 'SetOverlayRaw':
+            raise OverlayBusy('SteamVR is not accepting frames (standby?)')
         if rc:
             raise RuntimeError('OpenVR %s failed: %s' % (name, rc))
 
@@ -75,11 +86,14 @@ class Overlay:
         self.call('ShowOverlay', handle)
 
     def close(self):
-        try:
-            for h in reversed(self.handles):
+        # Best effort: SteamVR removes a disconnected client's overlays anyway,
+        # and a teardown error must not overwrite a finished playback's status.
+        for h in reversed(self.handles):
+            try:
                 self.call('DestroyOverlay', h)
-        finally:
-            self.vr.VR_ShutdownInternal()
+            except RuntimeError:
+                pass
+        self.vr.VR_ShutdownInternal()
 
 
 def probe(path):
@@ -114,6 +128,11 @@ def decoder_command(path, info, width, height, audio, photo=False):
     return cmd
 
 
+def ignore_signals():
+    signal.signal(signal.SIGTERM, signal.SIG_IGN)
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
+
+
 def write_status(path, **values):
     tmp = path.with_suffix('.tmp')
     tmp.write_text(json.dumps(values))
@@ -135,6 +154,46 @@ def play(args):
         photo = plan['kind'] == 'photo'
         command = decoder_command(path, info, width, height, audio, photo)
     vr, proc, frames, started = None, None, 0, time.monotonic()
+    dropped, busy_since, pending = 0, None, []
+
+    def show(handle, data, w, h, video=False):
+        """Submit a frame. During standby return False; a video frame is dropped."""
+        nonlocal dropped, busy_since
+        try:
+            vr.pixels(handle, data, w, h)
+        except OverlayBusy:
+            if not video:
+                return False  # stills and the surround just wait; nothing is lost
+            dropped += 1
+            busy_since = busy_since or time.monotonic()
+            if time.monotonic() - busy_since > BUSY_LIMIT:
+                raise RuntimeError('SteamVR stopped accepting frames for %d s' % BUSY_LIMIT)
+            return False
+        if video:
+            busy_since = None
+        drain()
+        return True
+
+    def drain():
+        """Re-send anything that arrived during standby (e.g. the theatre surround)."""
+        while pending:
+            item = pending.pop(0)
+            try:
+                vr.pixels(*item)
+            except OverlayBusy:
+                pending.insert(0, item)
+                return
+
+    def hold(handle, data, w, h):
+        """Keep a still (photo or splat) up until Stop, retrying through standby."""
+        shown = False
+        while True:
+            if shown:
+                drain()
+            else:
+                shown = show(handle, data, w, h)
+            time.sleep(1)
+
     # systemd sends SIGTERM to the whole unit, including ffmpeg. Python unwinds
     # ownership; no unrelated Steam/SteamVR process or setting is touched.
     def stop(signum, frame):
@@ -146,14 +205,13 @@ def play(args):
         if args.theatre:
             surround = vr.create('framecontrol.media.surround', 40, 4, order=0)
             vr.call('SetOverlayAlpha', surround, .85)
-            vr.pixels(surround, b'\x00\x00\x00\xff', 1, 1)
+            if not show(surround, b'\x00\x00\x00\xff', 1, 1):
+                pending.append((surround, b'\x00\x00\x00\xff', 1, 1))
         screen = vr.create('framecontrol.media.screen', 3 if args.theatre else 1.6, 2,
                            plan['layout'] != 'mono', aspect)
         if splat:
-            vr.pixels(screen, data, width, height)
             write_status(status, state='playing', file=path.name, frames=1, **plan)
-            while True:
-                time.sleep(1)
+            hold(screen, data, width, height)
         proc = subprocess.Popen(command, stdout=subprocess.PIPE)
         video_start = time.monotonic()
         while True:
@@ -163,11 +221,14 @@ def play(args):
             data, outw, outh = frame_media.stereo_pixels(data, width, height, plan['layout'])
             if not photo:
                 time.sleep(max(0, video_start + frames/30 - time.monotonic()))
-            vr.pixels(screen, data, outw, outh)
+            if photo:
+                still = data, outw, outh
+            else:
+                show(screen, data, outw, outh, video=True)
             frames += 1
             if frames == 1 or frames % 30 == 0:
                 write_status(status, state='playing', file=path.name, frames=frames,
-                             seconds=time.monotonic()-started, **plan)
+                             dropped=dropped, seconds=time.monotonic()-started, **plan)
         if not photo:
             time.sleep(max(0, video_start + frames/30 - time.monotonic()))
         rc = proc.wait(timeout=10)
@@ -176,12 +237,17 @@ def play(args):
         if not frames:
             raise RuntimeError('Decoder produced no frames')
         if photo:
-            while True:
-                time.sleep(1)
-        write_status(status, state='ended', frames=frames, seconds=time.monotonic()-started)
+            hold(screen, *still)
+        # From here on a Stop can't change the outcome; don't let it turn
+        # 'ended' into an error while we write status and clean up.
+        ignore_signals()
+        write_status(status, state='ended', frames=frames, dropped=dropped,
+                     seconds=time.monotonic()-started)
     except InterruptedError:
-        write_status(status, state='stopped', frames=frames)
+        ignore_signals()
+        write_status(status, state='stopped', frames=frames, dropped=dropped)
     finally:
+        ignore_signals()
         if proc:
             if proc.poll() is None:
                 proc.terminate()

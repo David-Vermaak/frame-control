@@ -88,7 +88,7 @@ def run(body):
                '--property=StandardOutput=append:'+str(RUNTIME/'player.log'),
                '--property=StandardError=append:'+str(RUNTIME/'player.log'),
                'python3', str(RUNTIME/'frame_media_player.py'), str(path),
-               '--layout', plan['layout'], '--status', str(STATUS)]
+               '--layout', body.get('layout', 'auto'), '--status', str(STATUS)]
     if body.get('theatre'):
         command.append('--theatre')
     started = subprocess.run(command, capture_output=True, text=True, timeout=15)
