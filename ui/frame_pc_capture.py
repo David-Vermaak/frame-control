@@ -75,7 +75,9 @@ class Native:
 
 class Controller:
     def __init__(self, lib, fps, ceiling):
-        self.lib, self.lock = lib, threading.RLock()
+        # close() may run on the stream thread while /status reads state();
+        # after close every entry point is a no-op, never a NULL dereference.
+        self.lib, self.lock, self.fps = lib, threading.RLock(), fps
         self.enabled = os.environ.get('FRAME_MAC_VIEW_ADAPT') != '0'
         self.ptr = lib.fc_new(fps, self.enabled)
         if not self.ptr:
@@ -86,17 +88,23 @@ class Controller:
     def state(self):
         with self.lock:
             names = ['target', 'ceiling', 'tier', 'fps', 'scale', 'baseRtt', 'inFlight', 'slack']
-            out = {k: self.lib.fc_value(self.ptr, i) for i, k in enumerate(names)}
+            if not self.ptr:
+                out = dict.fromkeys(names, 0)
+                out.update(fps=self.fps, scale=100)
+            else:
+                out = {k: self.lib.fc_value(self.ptr, i) for i, k in enumerate(names)}
             out.update(scale=out['scale'] / 100, baseRtt=out['baseRtt'] / 1000,
                        slack=out['slack'] / 1000, adapt=self.enabled)
             return out
 
     def call(self, name, *args):
         with self.lock:
-            return getattr(self.lib, 'fc_' + name)(self.ptr, *args)
+            return getattr(self.lib, 'fc_' + name)(self.ptr, *args) if self.ptr else 0
 
     def update(self, now):
         with self.lock:
+            if not self.ptr:
+                return 0
             old = self.state()
             result = self.lib.fc_update(self.ptr, now)
             state = self.state()

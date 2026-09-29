@@ -27,6 +27,10 @@ from frame_pc_capture import Native, Controller, Windows, WindowsInput, PortalIn
 from frame_stream_stats import Stats
 
 
+# Viewer fields are untrusted JSON: float('x'), int(None), m['t'] missing.
+MALFORMED = (ValueError, TypeError, KeyError, OverflowError)
+
+
 class Grants:
     """Caller holds the agent lock, including replacement and Stop."""
     def __init__(self, token):
@@ -172,6 +176,22 @@ class Session:
             self.stop_event.set()
             return -1
 
+    STALL = 10000000
+
+    def stalled(self, now, opened, captured_at_open):
+        """PipeWire and WGC deliver frames only on screen damage, so an idle
+        desktop legitimately produces no output. Fail only on evidence of a
+        fault: a frame entered the encoder and never came out, or the capture
+        never produced its initial frame after the pipeline opened."""
+        with self.lock:
+            oldest = min((r['e0'] for r in self.pending.values()), default=None)
+            captured = self.stats.captured
+        if oldest is not None and now-oldest > self.STALL:
+            return 'The encoder stopped producing frames; check the video encoder'
+        if captured == captured_at_open and now-opened > self.STALL:
+            return 'No frames captured for 10 seconds; check capture permissions'
+        return None
+
     def fresh_pipewire(self):
         if 'portal' not in self.source:
             return
@@ -193,21 +213,24 @@ class Session:
             if not capture:
                 raise RuntimeError(error.value.decode(errors='replace'))
             last_update = last_stats = self.native.now()
-            last_output = last_config = last_update
+            last_config = opened = last_update
+            captured_at_open = self.stats.captured
             applied = (self.w, self.h, self.bitrate)
             wanted = applied
             while not self.stop_event.is_set():
                 while not self.test_inputs.empty():
                     event = self.test_inputs.get_nowait()
-                    native.fc_capture_test(capture, int(event.get('i', 0)) & 0xffffffff)
-                    self.stats.input(event)
+                    try:
+                        native.fc_capture_test(capture, int(event.get('i', 0)) & 0xffffffff)
+                        self.stats.input(event)
+                    except MALFORMED:
+                        pass  # a bad probe field drops the event, not the stream
                 output = Encoded()
                 result = native.fc_capture_pull(capture, C.byref(output))
                 now = self.native.now()
                 if result < 0:
                     raise RuntimeError(native.fc_capture_error(capture).decode(errors='replace'))
                 if result:
-                    last_output = now
                     with self.lock:
                         # At most three raw frames are in flight; no B-frames.
                         # x264 offsets PTS, so match the FIFO encode order while
@@ -224,8 +247,9 @@ class Session:
                     with self.lock:
                         f['wire'] = self.native.now()
                         self.pending.pop(raw_pts, None)
-                if now-last_output > 10000000:
-                    raise RuntimeError('No encoded frames for 10 seconds; check capture permissions and the encoder')
+                stall = self.stalled(now, opened, captured_at_open)
+                if stall:
+                    raise RuntimeError(stall)
                 if self.key_event.is_set():
                     self.key_event.clear()
                     if self.codec == 'h264':
@@ -260,6 +284,7 @@ class Session:
                         if not capture:
                             raise RuntimeError(error.value.decode(errors='replace'))
                         applied, self.bitrate, last_config = wanted, wanted[2], now
+                        opened, captured_at_open = now, self.stats.captured
                         with self.lock:
                             self.reconfiguring = False
                 if now-last_stats >= 1000000:
@@ -304,7 +329,10 @@ class Session:
                 elif t == 'key-frame':
                     self.key_event.set()
                 elif t in ('rx', 'fd', 'clock'):
-                    self.stats.report(m)
+                    try:
+                        self.stats.report(m)
+                    except MALFORMED:
+                        pass
                     if t == 'rx' and isinstance(m.get('s'), int):
                         self.controller.call('ack', m['s'] & 0xffffffff, self.native.now())
                 elif t in ('m', 'wheel', 'k', 'text', 'release'):
@@ -317,6 +345,8 @@ class Session:
                             try:
                                 self.input.handle(m)
                                 self.stats.input(m)
+                            except MALFORMED:
+                                pass  # drop a malformed viewer event; keep the session
                             except RuntimeError as e:
                                 self.input_enabled = False
                                 try:

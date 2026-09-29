@@ -126,6 +126,76 @@ class AdapterTests(unittest.TestCase):
         session.input.release.assert_called_once()
         self.assertTrue(session.stop_event.is_set())
 
+    def test_idle_source_is_not_a_stall(self):
+        # PipeWire/WGC deliver frames only on damage: a static desktop sends
+        # its first frame and then nothing. That must not end the session.
+        session = object.__new__(agent.Session)
+        session.lock, session.pending = threading.RLock(), {}
+        session.stats = Stats(lambda: 0)
+        session.stats.captured = 1
+        self.assertIsNone(session.stalled(60000000, 0, 0))
+        # A frame that entered the encoder and never came out is a fault.
+        session.pending[5] = dict(cap=0, arr=0, e0=1000000, tier=0, br=0)
+        self.assertIn('encoder', session.stalled(12000000, 0, 0))
+        self.assertIsNone(session.stalled(10000000, 0, 0))
+        # No initial frame at all after the pipeline opened is a fault.
+        session.pending.clear()
+        self.assertIn('capture', session.stalled(12000000, 0, 1))
+        self.assertIsNone(session.stalled(9000000, 0, 1))
+
+    def test_controller_is_inert_after_close(self):
+        lib = mock.Mock()
+        lib.fc_new.return_value = 1234
+        lib.fc_value.return_value = 100
+        controller = capture.Controller(lib, 60, 5000000)
+        controller.close()
+        lib.fc_free.assert_called_once_with(1234)
+        lib.reset_mock()
+        state = controller.state()
+        self.assertEqual((state['fps'], state['target'], state['scale']), (60, 0, 1))
+        self.assertEqual(controller.call('gate', 1, 1), 0)
+        self.assertEqual(controller.update(1), 0)
+        controller.close()
+        self.assertEqual(lib.method_calls, [])  # nothing touched the freed pointer
+
+    def test_library_path_prepend_adds_no_empty_entry(self):
+        env = {}
+        frame_pcview.prepend(env, 'LD_LIBRARY_PATH', '/opt/fc/lib')
+        self.assertEqual(env['LD_LIBRARY_PATH'], '/opt/fc/lib')
+        frame_pcview.prepend(env, 'LD_LIBRARY_PATH', '/x')
+        self.assertEqual(env['LD_LIBRARY_PATH'], '/x' + os.pathsep + '/opt/fc/lib')
+        with mock.patch.dict(os.environ, clear=True):
+            env = frame_pcview.PCView([], lambda *a: None, 'frame').agent_environment()
+        for name in ('PATH', 'LD_LIBRARY_PATH'):
+            parts = env.get(name, 'x').split(os.pathsep)
+            self.assertNotIn('', parts, name)
+
+    def test_malformed_viewer_input_is_dropped_not_fatal(self):
+        session = object.__new__(agent.Session)
+        session.lock, session.input_lock = threading.RLock(), threading.RLock()
+        session.stop_event, session.key_event = threading.Event(), threading.Event()
+        session.src, session.codec, session.key, session.w, session.h = 'display:1', 'h264', 'r', 100, 100
+        session.source = dict(src='display:1', w=100, h=100, portal=1)
+        session.input_enabled, session.released = True, False
+        session.native = mock.Mock()
+        session.native.now.return_value = 0
+        session.controller, session.agent = mock.Mock(), mock.Mock()
+        session.stats = Stats(lambda: 0)
+        session.produce = lambda: None
+        lib = mock.Mock()
+        lib.fc_portal_input.return_value = 1
+        session.input = capture.PortalInput(mock.Mock(lib=lib), session.source)
+        session.ws = mock.Mock()
+        session.ws.receive.side_effect = [
+            dict(t='m', x='left', y=0), dict(t='wheel', dx=[1]), dict(t='k', e='down', key=None, i='x'),
+            dict(t='fd', drop='many'), dict(t='rx', s=[1]), dict(t='m', x=.5, y=.5), ConnectionError('closed')]
+        with self.assertRaises(ConnectionError):
+            session.start()
+        # Every malformed message was skipped; the good move after them still ran.
+        moves = [c.args for c in lib.fc_portal_input.call_args_list if c.args[1] == 0]
+        self.assertAlmostEqual(moves[-1][2], .5*99)
+        self.assertEqual(session.ws.receive.call_count, 7)
+
     def test_stats_keep_capture_time_and_bound_records(self):
         stats = Stats(lambda: 10000000)
         stats.input(dict(t='m', i=1, tv=9999990))

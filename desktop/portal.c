@@ -61,12 +61,19 @@ FC_API void fc_portal_close(Portal *p) {
                                                 NULL,NULL,G_DBUS_CALL_FLAGS_NONE,2000,NULL,NULL);
         if(r)g_variant_unref(r);
     }
-    if(p->fd>=0)close(p->fd);
+    if(p->fd>=0){close(p->fd);p->fd=-1;}
     g_free(p->session);if(p->bus)g_object_unref(p->bus);
     if(p->context)g_main_context_unref(p->context);g_free(p);
 }
 /* Each pipeline gets a fresh restricted PipeWire connection. A dup of a
- * previously consumed protocol socket is not a new connection. */
+ * previously consumed protocol socket is not a new connection.
+ * Ownership: the Portal owns p->fd for its whole life and is its only closer.
+ * pipewiresrc never takes the fd it is given: its core connects with
+ * pw_context_connect_fd(ctx, fcntl(fd, F_DUPFD_CLOEXEC, 3), ...) and that
+ * duplicate is what PipeWire closes on teardown (src/gst/gstpipewirecore.c,
+ * unchanged from 0.3.19 through 1.x). So closing p->fd here is not a double
+ * close; not closing it would leak one socket per pipeline reopen. The
+ * caller closes the previous pipeline before asking for a new fd. */
 FC_API int fc_portal_refresh(Portal *p,char *error,int capacity) {
     GVariantBuilder b;g_variant_builder_init(&b,G_VARIANT_TYPE_VARDICT);
     GUnixFDList *fds=NULL;GError *e=NULL;

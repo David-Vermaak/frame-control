@@ -11,6 +11,12 @@ from frame_macview import MacView, MacViewError, ROOT
 from frame_pc_capture import LIBRARY, NATIVE
 
 
+def prepend(env, name, path):
+    """An empty entry means the current directory to the loader; never add one."""
+    rest = env.get(name, '')
+    env[name] = str(path) + (os.pathsep + rest if rest else '')
+
+
 class PCView(MacView):
     viewer_profile = 'pc-view'
     host = 'windows' if sys.platform == 'win32' else 'linux'
@@ -46,9 +52,9 @@ class PCView(MacView):
         env['GST_REGISTRY_1_0'] = os.path.join(cache, 'gstreamer-registry.bin')
         env['GST_REGISTRY_FORK'] = 'no'
         if sys.platform == 'win32':
-            env['PATH'] = str(NATIVE / 'bin') + os.pathsep + env.get('PATH', '')
+            prepend(env, 'PATH', NATIVE / 'bin')
         else:
-            env['LD_LIBRARY_PATH'] = str(NATIVE / 'lib') + os.pathsep + env.get('LD_LIBRARY_PATH', '')
+            prepend(env, 'LD_LIBRARY_PATH', NATIVE / 'lib')
             env['PIPEWIRE_MODULE_DIR'] = str(NATIVE / 'lib' / 'pipewire-0.3')
             env['SPA_PLUGIN_DIR'] = str(NATIVE / 'lib' / 'spa-0.2')
             env['PIPEWIRE_CONFIG_DIR'] = str(NATIVE / 'share' / 'pipewire')
