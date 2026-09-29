@@ -1,0 +1,2172 @@
+{
+ "label": "ab-keepwarm",
+ "date": "2026-09-28T20:28:57",
+ "commit": "a3c6e5c+dirty",
+ "config": {
+  "quality": "balanced",
+  "mode": "separate",
+  "net": "none",
+  "delay_ms": 0,
+  "buffer_ms": 250,
+  "host": "frame",
+  "ssh_opts": [],
+  "encoder": "",
+  "duration_s": 20.0,
+  "browser_flags": []
+ },
+ "frame_build": "20260925.6191901",
+ "mac": "26.5.2",
+ "headset": "8:23.135290 [Info] - 0 - leaving standby",
+ "scenarios": [],
+ "arms": [
+  "cold:FRAME_MAC_VIEW_WARM=0",
+  "warm:FRAME_MAC_VIEW_WARM=40"
+ ],
+ "runs": {
+  "cold": [
+   [
+    {
+     "scenario": "type",
+     "frames_sent": 145,
+     "frames_drawn": 145,
+     "frames_shown": 142,
+     "duration_s": 21.1,
+     "stages_ms": {
+      "capture": {
+       "p50": -2.5,
+       "p95": 2.7,
+       "p99": 19.4,
+       "n": 145
+      },
+      "queue": {
+       "p50": 0.0,
+       "p95": 0.0,
+       "p99": 0.3,
+       "n": 145
+      },
+      "encode": {
+       "p50": 6.5,
+       "p95": 9.6,
+       "p99": 18.2,
+       "n": 145
+      },
+      "socket": {
+       "p50": 0.1,
+       "p95": 0.2,
+       "p99": 1.0,
+       "n": 145
+      },
+      "network": {
+       "p50": 3.7,
+       "p95": 7.5,
+       "p99": 22.8,
+       "n": 145
+      },
+      "decode": {
+       "p50": 2.1,
+       "p95": 4.2,
+       "p99": 5.1,
+       "n": 145
+      },
+      "draw": {
+       "p50": 0.6,
+       "p95": 1.3,
+       "p99": 2.0,
+       "n": 145
+      },
+      "present": {
+       "p50": 0.5,
+       "p95": 9.3,
+       "p99": 12.6,
+       "n": 142
+      },
+      "content": {
+       "p50": 13.9,
+       "p95": 25.6,
+       "p99": 38.0,
+       "n": 145
+      },
+      "content_shown": {
+       "p50": 14.9,
+       "p95": 26.0,
+       "p99": 36.9,
+       "n": 142
+      }
+     },
+     "fps": 6.9,
+     "fps_shown": 6.7,
+     "late_pct": 51.37,
+     "stall_max": 1007.5,
+     "stalls_over_100ms": 66,
+     "mbps": 0.03,
+     "keyframes": 0,
+     "size": "1920x1290",
+     "captured": 145,
+     "viewer_never_drawn": 0,
+     "input_ms": {
+      "p50": 44.5,
+      "p95": 68.2,
+      "p99": 72.7,
+      "n": 66
+     },
+     "input_shown_ms": {
+      "p50": 44.9,
+      "p95": 68.9,
+      "p99": 73.1,
+      "n": 66
+     },
+     "input_parts_ms": {
+      "uplink": {
+       "p50": 4.2,
+       "p95": 17.4,
+       "p99": 41.0,
+       "n": 66
+      },
+      "mac": {
+       "p50": 22.8,
+       "p95": 36.8,
+       "p99": 42.9,
+       "n": 66
+      },
+      "back": {
+       "p50": 14.5,
+       "p95": 20.7,
+       "p99": 25.4,
+       "n": 66
+      }
+     },
+     "inputs": {
+      "asked": 65,
+      "sent": 66,
+      "seen": 66
+     },
+     "timeline": [
+      {
+       "t": 0,
+       "fps": 37,
+       "mbps": 0.26,
+       "content_p50": 14.9,
+       "content_p95": 36.5,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 1,
+       "fps": 42,
+       "mbps": 0.15,
+       "content_p50": 12.7,
+       "content_p95": 15.8,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 2,
+       "fps": 6,
+       "mbps": 0.02,
+       "content_p50": 15.1,
+       "content_p95": 20.8,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 3,
+       "fps": 5,
+       "mbps": 0.02,
+       "content_p50": 13.6,
+       "content_p95": 14.0,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 4,
+       "fps": 5,
+       "mbps": 0.02,
+       "content_p50": 16.5,
+       "content_p95": 18.5,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 5,
+       "fps": 5,
+       "mbps": 0.02,
+       "content_p50": 14.0,
+       "content_p95": 20.7,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 6,
+       "fps": 5,
+       "mbps": 0.02,
+       "content_p50": 14.5,
+       "content_p95": 15.6,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 7,
+       "fps": 5,
+       "mbps": 0.02,
+       "content_p50": 15.5,
+       "content_p95": 18.3,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 8,
+       "fps": 5,
+       "mbps": 0.02,
+       "content_p50": 13.4,
+       "content_p95": 16.2,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 9,
+       "fps": 5,
+       "mbps": 0.02,
+       "content_p50": 14.3,
+       "content_p95": 16.2,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 10,
+       "fps": 5,
+       "mbps": 0.02,
+       "content_p50": 14.9,
+       "content_p95": 16.4,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 11,
+       "fps": 5,
+       "mbps": 0.02,
+       "content_p50": 14.0,
+       "content_p95": 18.6,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 12,
+       "fps": 2,
+       "mbps": 0.01,
+       "content_p50": 13.2,
+       "content_p95": 17.8,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 13,
+       "fps": 3,
+       "mbps": 0.01,
+       "content_p50": 12.9,
+       "content_p95": 13.3,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 14,
+       "fps": 3,
+       "mbps": 0.01,
+       "content_p50": 14.2,
+       "content_p95": 25.7,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 15,
+       "fps": 1,
+       "mbps": 0.0,
+       "content_p50": 13.9,
+       "content_p95": 13.9,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 16,
+       "fps": 1,
+       "mbps": 0.0,
+       "content_p50": 15.8,
+       "content_p95": 15.8,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 17,
+       "fps": 2,
+       "mbps": 0.01,
+       "content_p50": 13.6,
+       "content_p95": 25.4,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 18,
+       "fps": 1,
+       "mbps": 0.0,
+       "content_p50": 15.7,
+       "content_p95": 15.7,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 19,
+       "fps": 1,
+       "mbps": 0.0,
+       "content_p50": 17.6,
+       "content_p95": 17.6,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 20,
+       "fps": 1,
+       "mbps": 0.0,
+       "content_p50": 16.0,
+       "content_p95": 16.0,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      }
+     ],
+     "adapt": [],
+     "content_p50": 13.9,
+     "content_p95": 25.6,
+     "input_p50": 44.5,
+     "input_p95": 68.2,
+     "grades": {
+      "input_replies": "local",
+      "content_p50": "local",
+      "content_p95": "local",
+      "input_p50": "local",
+      "input_p95": "local"
+     },
+     "controller": {
+      "adapt": true,
+      "baseRtt": 5.75,
+      "ceiling": 14860800,
+      "fps": 60,
+      "inFlight": 0,
+      "scale": 1,
+      "slack": 41.666,
+      "target": 14860800,
+      "tier": 0
+     },
+     "events": [],
+     "source_fps": 6.9,
+     "cpu": {
+      "mac_agent_pct": 1.7,
+      "frame_viewer_pct": 10.2,
+      "frame_tailscaled_pct": 1.6,
+      "frame_sshd_pct": 0.2,
+      "frame_gamescope_pct": 5.4,
+      "frame_total_pct": 32.0
+     },
+     "viewer": "h264 software; ANGLE (Mesa, zink Vulkan 1.4(Turnip Adreno (TM) 750 (MESA_TURNIP)), OpenGL 4.6); raf 71 Hz",
+     "show_s": 1.57,
+     "panel": "valve.steam.desktopgame.2001615880",
+     "src": "separate:6692"
+    }
+   ],
+   [
+    {
+     "scenario": "type",
+     "frames_sent": 190,
+     "frames_drawn": 190,
+     "frames_shown": 190,
+     "duration_s": 21.1,
+     "stages_ms": {
+      "capture": {
+       "p50": -4.7,
+       "p95": 4.9,
+       "p99": 7.4,
+       "n": 190
+      },
+      "queue": {
+       "p50": 0.0,
+       "p95": 0.1,
+       "p99": 0.1,
+       "n": 190
+      },
+      "encode": {
+       "p50": 6.4,
+       "p95": 9.0,
+       "p99": 12.6,
+       "n": 190
+      },
+      "socket": {
+       "p50": 0.1,
+       "p95": 0.2,
+       "p99": 0.3,
+       "n": 190
+      },
+      "network": {
+       "p50": 2.8,
+       "p95": 5.1,
+       "p99": 7.8,
+       "n": 190
+      },
+      "decode": {
+       "p50": 2.0,
+       "p95": 4.0,
+       "p99": 5.9,
+       "n": 190
+      },
+      "draw": {
+       "p50": 0.6,
+       "p95": 1.5,
+       "p99": 2.0,
+       "n": 190
+      },
+      "present": {
+       "p50": 0.6,
+       "p95": 8.5,
+       "p99": 13.4,
+       "n": 190
+      },
+      "content": {
+       "p50": 12.8,
+       "p95": 19.4,
+       "p99": 21.3,
+       "n": 190
+      },
+      "content_shown": {
+       "p50": 13.8,
+       "p95": 22.9,
+       "p99": 25.0,
+       "n": 190
+      }
+     },
+     "fps": 9.0,
+     "fps_shown": 9.0,
+     "late_pct": 41.88,
+     "stall_max": 2314.7,
+     "stalls_over_100ms": 67,
+     "mbps": 0.03,
+     "keyframes": 0,
+     "size": "1920x1290",
+     "captured": 190,
+     "viewer_never_drawn": 0,
+     "input_ms": {
+      "p50": 35.9,
+      "p95": 91.9,
+      "p99": 180.6,
+      "n": 65
+     },
+     "input_shown_ms": {
+      "p50": 36.3,
+      "p95": 92.4,
+      "p99": 181.0,
+      "n": 65
+     },
+     "input_parts_ms": {
+      "uplink": {
+       "p50": 5.3,
+       "p95": 19.9,
+       "p99": 57.7,
+       "n": 65
+      },
+      "mac": {
+       "p50": 17.6,
+       "p95": 38.0,
+       "p99": 89.2,
+       "n": 65
+      },
+      "back": {
+       "p50": 13.2,
+       "p95": 20.9,
+       "p99": 21.3,
+       "n": 65
+      }
+     },
+     "inputs": {
+      "asked": 65,
+      "sent": 66,
+      "seen": 65
+     },
+     "timeline": [
+      {
+       "t": 0,
+       "fps": 14,
+       "mbps": 0.03,
+       "content_p50": 12.3,
+       "content_p95": 17.3,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 1,
+       "fps": 6,
+       "mbps": 0.02,
+       "content_p50": 12.0,
+       "content_p95": 20.9,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 2,
+       "fps": 5,
+       "mbps": 0.02,
+       "content_p50": 15.5,
+       "content_p95": 19.7,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 3,
+       "fps": 5,
+       "mbps": 0.02,
+       "content_p50": 12.5,
+       "content_p95": 18.0,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 4,
+       "fps": 11,
+       "mbps": 0.03,
+       "content_p50": 13.2,
+       "content_p95": 19.4,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 5,
+       "fps": 12,
+       "mbps": 0.03,
+       "content_p50": 14.7,
+       "content_p95": 18.2,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 6,
+       "fps": 6,
+       "mbps": 0.02,
+       "content_p50": 12.6,
+       "content_p95": 14.4,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 7,
+       "fps": 13,
+       "mbps": 0.03,
+       "content_p50": 13.5,
+       "content_p95": 22.6,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 8,
+       "fps": 19,
+       "mbps": 0.05,
+       "content_p50": 12.4,
+       "content_p95": 16.6,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 9,
+       "fps": 5,
+       "mbps": 0.02,
+       "content_p50": 13.0,
+       "content_p95": 14.0,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 10,
+       "fps": 5,
+       "mbps": 0.02,
+       "content_p50": 12.9,
+       "content_p95": 13.8,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 11,
+       "fps": 5,
+       "mbps": 0.02,
+       "content_p50": 10.9,
+       "content_p95": 21.3,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 12,
+       "fps": 3,
+       "mbps": 0.01,
+       "content_p50": 14.2,
+       "content_p95": 14.7,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 13,
+       "fps": 1,
+       "mbps": 0.0,
+       "content_p50": 13.7,
+       "content_p95": 13.7,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 14,
+       "fps": 2,
+       "mbps": 0.01,
+       "content_p50": 12.7,
+       "content_p95": 15.4,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 15,
+       "fps": 42,
+       "mbps": 0.14,
+       "content_p50": 12.4,
+       "content_p95": 16.9,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 16,
+       "fps": 25,
+       "mbps": 0.1,
+       "content_p50": 12.2,
+       "content_p95": 14.1,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 17,
+       "fps": 7,
+       "mbps": 0.11,
+       "content_p50": 15.2,
+       "content_p95": 20.8,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 18,
+       "fps": 4,
+       "mbps": 0.01,
+       "content_p50": 14.2,
+       "content_p95": 14.8,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      }
+     ],
+     "adapt": [],
+     "content_p50": 12.8,
+     "content_p95": 19.4,
+     "input_p50": 35.9,
+     "input_p95": 91.9,
+     "grades": {
+      "input_replies": "local",
+      "content_p50": "local",
+      "content_p95": "local",
+      "input_p50": "local",
+      "input_p95": "acceptable"
+     },
+     "controller": {
+      "adapt": true,
+      "baseRtt": 5.709,
+      "ceiling": 14860800,
+      "fps": 60,
+      "inFlight": 0,
+      "scale": 1,
+      "slack": 41.666,
+      "target": 14860800,
+      "tier": 0
+     },
+     "events": [],
+     "source_fps": 9.0,
+     "cpu": {
+      "mac_agent_pct": 2.0,
+      "frame_viewer_pct": 12.8,
+      "frame_tailscaled_pct": 2.0,
+      "frame_sshd_pct": 0.2,
+      "frame_gamescope_pct": 6.0,
+      "frame_total_pct": 26.5
+     },
+     "viewer": "h264 software; ANGLE (Mesa, zink Vulkan 1.4(Turnip Adreno (TM) 750 (MESA_TURNIP)), OpenGL 4.6); raf 71 Hz",
+     "show_s": 1.29,
+     "panel": "valve.steam.desktopgame.2001147903",
+     "src": "separate:7108"
+    }
+   ],
+   [
+    {
+     "scenario": "type",
+     "frames_sent": 83,
+     "frames_drawn": 83,
+     "frames_shown": 83,
+     "duration_s": 21.1,
+     "stages_ms": {
+      "capture": {
+       "p50": 0.2,
+       "p95": 19.9,
+       "p99": 50.0,
+       "n": 83
+      },
+      "queue": {
+       "p50": 0.0,
+       "p95": 0.1,
+       "p99": 21.0,
+       "n": 83
+      },
+      "encode": {
+       "p50": 6.6,
+       "p95": 8.9,
+       "p99": 19.9,
+       "n": 83
+      },
+      "socket": {
+       "p50": 0.1,
+       "p95": 0.3,
+       "p99": 9.8,
+       "n": 83
+      },
+      "network": {
+       "p50": 3.4,
+       "p95": 8.8,
+       "p99": 43.6,
+       "n": 83
+      },
+      "decode": {
+       "p50": 2.6,
+       "p95": 8.7,
+       "p99": 11.1,
+       "n": 83
+      },
+      "draw": {
+       "p50": 0.7,
+       "p95": 1.1,
+       "p99": 1.7,
+       "n": 83
+      },
+      "present": {
+       "p50": 0.6,
+       "p95": 5.7,
+       "p99": 11.5,
+       "n": 83
+      },
+      "content": {
+       "p50": 14.6,
+       "p95": 60.4,
+       "p99": 124.2,
+       "n": 83
+      },
+      "content_shown": {
+       "p50": 15.9,
+       "p95": 61.1,
+       "p99": 124.8,
+       "n": 83
+      }
+     },
+     "fps": 3.9,
+     "fps_shown": 3.9,
+     "late_pct": 61.45,
+     "stall_max": 9230.5,
+     "stalls_over_100ms": 39,
+     "mbps": 0.15,
+     "keyframes": 0,
+     "size": "1920x1290",
+     "captured": 114,
+     "viewer_never_drawn": 0,
+     "input_ms": {
+      "p50": 44.3,
+      "p95": 236.4,
+      "p99": 1853.7,
+      "n": 39
+     },
+     "input_shown_ms": {
+      "p50": 45.2,
+      "p95": 236.9,
+      "p99": 1854.2,
+      "n": 39
+     },
+     "input_parts_ms": {
+      "uplink": {
+       "p50": 5.3,
+       "p95": 18.0,
+       "p99": 45.1,
+       "n": 39
+      },
+      "mac": {
+       "p50": 21.2,
+       "p95": 150.9,
+       "p99": 1809.2,
+       "n": 39
+      },
+      "back": {
+       "p50": 13.9,
+       "p95": 23.3,
+       "p99": 179.5,
+       "n": 39
+      }
+     },
+     "inputs": {
+      "asked": 65,
+      "sent": 66,
+      "seen": 39
+     },
+     "timeline": [
+      {
+       "t": 0,
+       "fps": 7,
+       "mbps": 0.04,
+       "content_p50": 16.2,
+       "content_p95": 179.5,
+       "bitrate": 469728,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 1,
+       "fps": 10,
+       "mbps": 0.04,
+       "content_p50": 16.5,
+       "content_p95": 30.9,
+       "bitrate": 469728,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 2,
+       "fps": 5,
+       "mbps": 0.02,
+       "content_p50": 13.8,
+       "content_p95": 14.6,
+       "bitrate": 469728,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 3,
+       "fps": 6,
+       "mbps": 0.02,
+       "content_p50": 13.5,
+       "content_p95": 18.5,
+       "bitrate": 673370,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 4,
+       "fps": 7,
+       "mbps": 0.02,
+       "content_p50": 12.7,
+       "content_p95": 13.4,
+       "bitrate": 1217929,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 5,
+       "fps": 15,
+       "mbps": 0.06,
+       "content_p50": 13.3,
+       "content_p95": 19.4,
+       "bitrate": 1786562,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 6,
+       "fps": 6,
+       "mbps": 0.02,
+       "content_p50": 13.9,
+       "content_p95": 20.1,
+       "bitrate": 2543412,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 7,
+       "fps": 5,
+       "mbps": 0.11,
+       "content_p50": 14.2,
+       "content_p95": 23.2,
+       "bitrate": 3182528,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 8,
+       "fps": 3,
+       "mbps": 0.01,
+       "content_p50": 13.5,
+       "content_p95": 13.5,
+       "bitrate": 4891587,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 17,
+       "fps": 5,
+       "mbps": 0.97,
+       "content_p50": 41.2,
+       "content_p95": 89.1,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 18,
+       "fps": 5,
+       "mbps": 0.65,
+       "content_p50": 36.5,
+       "content_p95": 44.4,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 20,
+       "fps": 5,
+       "mbps": 0.72,
+       "content_p50": 26.1,
+       "content_p95": 40.5,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 21,
+       "fps": 4,
+       "mbps": 0.5,
+       "content_p50": 17.6,
+       "content_p95": 24.0,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      }
+     ],
+     "adapt": [],
+     "content_p50": 14.6,
+     "content_p95": 60.4,
+     "input_p50": 44.3,
+     "input_p95": 236.4,
+     "grades": {
+      "input_replies": "bad",
+      "content_p50": "local",
+      "content_p95": "acceptable",
+      "input_p50": "local",
+      "input_p95": "bad"
+     },
+     "controller": {
+      "adapt": true,
+      "baseRtt": 6.375,
+      "ceiling": 14860800,
+      "fps": 60,
+      "inFlight": 0,
+      "scale": 1,
+      "slack": 44.666,
+      "target": 14860800,
+      "tier": 0
+     },
+     "events": [
+      {
+       "t": 0.39,
+       "e": "down to 469 kbit/s: queue 165 ms, held 4, oldest 213 ms, base 5 ms, sent 44 got 28 wants 234"
+      }
+     ],
+     "source_fps": 5.4,
+     "cpu": {
+      "mac_agent_pct": 1.5,
+      "frame_viewer_pct": 8.1,
+      "frame_tailscaled_pct": 1.8,
+      "frame_sshd_pct": 0.1,
+      "frame_gamescope_pct": 5.5,
+      "frame_total_pct": 25.1
+     },
+     "viewer": "h264 software; ANGLE (Mesa, zink Vulkan 1.4(Turnip Adreno (TM) 750 (MESA_TURNIP)), OpenGL 4.6); raf 72 Hz",
+     "show_s": 1.27,
+     "panel": "valve.steam.desktopgame.2001547827",
+     "src": "separate:7247"
+    }
+   ]
+  ],
+  "warm": [
+   [
+    {
+     "scenario": "type",
+     "frames_sent": 114,
+     "frames_drawn": 114,
+     "frames_shown": 112,
+     "duration_s": 21.1,
+     "stages_ms": {
+      "capture": {
+       "p50": 0.2,
+       "p95": 5.8,
+       "p99": 10.8,
+       "n": 114
+      },
+      "queue": {
+       "p50": 0.0,
+       "p95": 0.1,
+       "p99": 0.1,
+       "n": 114
+      },
+      "encode": {
+       "p50": 6.6,
+       "p95": 12.2,
+       "p99": 14.3,
+       "n": 114
+      },
+      "socket": {
+       "p50": 0.1,
+       "p95": 0.4,
+       "p99": 2.9,
+       "n": 114
+      },
+      "network": {
+       "p50": 3.9,
+       "p95": 12.5,
+       "p99": 44.8,
+       "n": 114
+      },
+      "decode": {
+       "p50": 2.2,
+       "p95": 5.4,
+       "p99": 9.2,
+       "n": 114
+      },
+      "draw": {
+       "p50": 0.6,
+       "p95": 1.5,
+       "p99": 1.9,
+       "n": 114
+      },
+      "present": {
+       "p50": 0.5,
+       "p95": 0.9,
+       "p99": 1.2,
+       "n": 112
+      },
+      "content": {
+       "p50": 14.5,
+       "p95": 29.9,
+       "p99": 65.7,
+       "n": 114
+      },
+      "content_shown": {
+       "p50": 15.1,
+       "p95": 28.9,
+       "p99": 52.5,
+       "n": 112
+      }
+     },
+     "fps": 5.4,
+     "fps_shown": 5.3,
+     "late_pct": 72.17,
+     "stall_max": 1001.0,
+     "stalls_over_100ms": 67,
+     "mbps": 0.03,
+     "keyframes": 0,
+     "size": "1920x1290",
+     "captured": 162,
+     "viewer_never_drawn": 0,
+     "input_ms": {
+      "p50": 46.6,
+      "p95": 71.3,
+      "p99": 84.0,
+      "n": 66
+     },
+     "input_shown_ms": {
+      "p50": 47.1,
+      "p95": 71.8,
+      "p99": 84.7,
+      "n": 66
+     },
+     "input_parts_ms": {
+      "uplink": {
+       "p50": 4.3,
+       "p95": 9.7,
+       "p99": 34.2,
+       "n": 66
+      },
+      "mac": {
+       "p50": 25.8,
+       "p95": 42.8,
+       "p99": 44.3,
+       "n": 66
+      },
+      "back": {
+       "p50": 15.2,
+       "p95": 29.3,
+       "p99": 29.9,
+       "n": 66
+      }
+     },
+     "inputs": {
+      "asked": 65,
+      "sent": 66,
+      "seen": 66
+     },
+     "timeline": [
+      {
+       "t": 0,
+       "fps": 29,
+       "mbps": 0.26,
+       "content_p50": 14.3,
+       "content_p95": 21.8,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 1,
+       "fps": 7,
+       "mbps": 0.03,
+       "content_p50": 13.4,
+       "content_p95": 15.7,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 2,
+       "fps": 5,
+       "mbps": 0.02,
+       "content_p50": 16.9,
+       "content_p95": 18.5,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 3,
+       "fps": 9,
+       "mbps": 0.03,
+       "content_p50": 16.1,
+       "content_p95": 20.0,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 4,
+       "fps": 5,
+       "mbps": 0.02,
+       "content_p50": 14.4,
+       "content_p95": 19.4,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 5,
+       "fps": 10,
+       "mbps": 0.04,
+       "content_p50": 13.8,
+       "content_p95": 29.9,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 6,
+       "fps": 6,
+       "mbps": 0.02,
+       "content_p50": 14.2,
+       "content_p95": 28.4,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 7,
+       "fps": 4,
+       "mbps": 0.02,
+       "content_p50": 16.8,
+       "content_p95": 28.2,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 8,
+       "fps": 6,
+       "mbps": 0.03,
+       "content_p50": 13.8,
+       "content_p95": 16.9,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 9,
+       "fps": 5,
+       "mbps": 0.02,
+       "content_p50": 13.5,
+       "content_p95": 20.2,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 10,
+       "fps": 9,
+       "mbps": 0.05,
+       "content_p50": 29.9,
+       "content_p95": 95.2,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 11,
+       "fps": 7,
+       "mbps": 0.02,
+       "content_p50": 13.8,
+       "content_p95": 30.1,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 12,
+       "fps": 2,
+       "mbps": 0.01,
+       "content_p50": 13.3,
+       "content_p95": 17.6,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 13,
+       "fps": 1,
+       "mbps": 0.0,
+       "content_p50": 16.6,
+       "content_p95": 16.6,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 14,
+       "fps": 2,
+       "mbps": 0.01,
+       "content_p50": 15.2,
+       "content_p95": 17.3,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 15,
+       "fps": 1,
+       "mbps": 0.0,
+       "content_p50": 14.2,
+       "content_p95": 14.2,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 16,
+       "fps": 1,
+       "mbps": 0.0,
+       "content_p50": 19.1,
+       "content_p95": 19.1,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 17,
+       "fps": 2,
+       "mbps": 0.01,
+       "content_p50": 14.2,
+       "content_p95": 14.5,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 18,
+       "fps": 1,
+       "mbps": 0.0,
+       "content_p50": 13.9,
+       "content_p95": 13.9,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 19,
+       "fps": 1,
+       "mbps": 0.0,
+       "content_p50": 14.4,
+       "content_p95": 14.4,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 20,
+       "fps": 1,
+       "mbps": 0.0,
+       "content_p50": 15.1,
+       "content_p95": 15.1,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      }
+     ],
+     "adapt": [],
+     "content_p50": 14.5,
+     "content_p95": 29.9,
+     "input_p50": 46.6,
+     "input_p95": 71.3,
+     "grades": {
+      "input_replies": "local",
+      "content_p50": "local",
+      "content_p95": "local",
+      "input_p50": "local",
+      "input_p95": "acceptable"
+     },
+     "controller": {
+      "adapt": true,
+      "baseRtt": 5.541,
+      "ceiling": 14860800,
+      "fps": 60,
+      "inFlight": 1,
+      "scale": 1,
+      "slack": 48.292,
+      "target": 14860800,
+      "tier": 0
+     },
+     "events": [],
+     "source_fps": 7.7,
+     "cpu": {
+      "mac_agent_pct": 2.0,
+      "frame_viewer_pct": 10.9,
+      "frame_tailscaled_pct": 2.8,
+      "frame_sshd_pct": 0.4,
+      "frame_gamescope_pct": 5.4,
+      "frame_total_pct": 36.0
+     },
+     "viewer": "h264 software; ANGLE (Mesa, zink Vulkan 1.4(Turnip Adreno (TM) 750 (MESA_TURNIP)), OpenGL 4.6); raf 70 Hz",
+     "show_s": 1.28,
+     "panel": "valve.steam.desktopgame.2001621121",
+     "src": "separate:6829"
+    }
+   ],
+   [
+    {
+     "scenario": "type",
+     "frames_sent": 220,
+     "frames_drawn": 220,
+     "frames_shown": 217,
+     "duration_s": 21.1,
+     "stages_ms": {
+      "capture": {
+       "p50": -5.5,
+       "p95": 3.8,
+       "p99": 14.3,
+       "n": 220
+      },
+      "queue": {
+       "p50": 0.0,
+       "p95": 0.1,
+       "p99": 0.3,
+       "n": 220
+      },
+      "encode": {
+       "p50": 6.5,
+       "p95": 9.0,
+       "p99": 18.8,
+       "n": 220
+      },
+      "socket": {
+       "p50": 0.1,
+       "p95": 0.2,
+       "p99": 1.7,
+       "n": 220
+      },
+      "network": {
+       "p50": 3.1,
+       "p95": 8.9,
+       "p99": 46.7,
+       "n": 220
+      },
+      "decode": {
+       "p50": 2.0,
+       "p95": 4.1,
+       "p99": 7.6,
+       "n": 220
+      },
+      "draw": {
+       "p50": 0.7,
+       "p95": 1.4,
+       "p99": 1.8,
+       "n": 220
+      },
+      "present": {
+       "p50": 0.6,
+       "p95": 10.4,
+       "p99": 13.9,
+       "n": 217
+      },
+      "content": {
+       "p50": 13.0,
+       "p95": 25.6,
+       "p99": 122.5,
+       "n": 220
+      },
+      "content_shown": {
+       "p50": 14.1,
+       "p95": 27.2,
+       "p99": 122.9,
+       "n": 217
+      }
+     },
+     "fps": 10.4,
+     "fps_shown": 10.3,
+     "late_pct": 38.46,
+     "stall_max": 4500.7,
+     "stalls_over_100ms": 64,
+     "mbps": 0.05,
+     "keyframes": 0,
+     "size": "1920x1290",
+     "captured": 220,
+     "viewer_never_drawn": 0,
+     "input_ms": {
+      "p50": 51.4,
+      "p95": 63.8,
+      "p99": 80.7,
+      "n": 64
+     },
+     "input_shown_ms": {
+      "p50": 51.8,
+      "p95": 64.3,
+      "p99": 81.3,
+      "n": 64
+     },
+     "input_parts_ms": {
+      "uplink": {
+       "p50": 4.1,
+       "p95": 17.8,
+       "p99": 29.2,
+       "n": 64
+      },
+      "mac": {
+       "p50": 31.3,
+       "p95": 35.3,
+       "p99": 39.4,
+       "n": 64
+      },
+      "back": {
+       "p50": 13.6,
+       "p95": 19.9,
+       "p99": 26.1,
+       "n": 64
+      }
+     },
+     "inputs": {
+      "asked": 65,
+      "sent": 66,
+      "seen": 64
+     },
+     "timeline": [
+      {
+       "t": 0,
+       "fps": 28,
+       "mbps": 0.27,
+       "content_p50": 16.7,
+       "content_p95": 61.5,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 1,
+       "fps": 8,
+       "mbps": 0.03,
+       "content_p50": 13.7,
+       "content_p95": 19.3,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 2,
+       "fps": 5,
+       "mbps": 0.02,
+       "content_p50": 13.3,
+       "content_p95": 14.8,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 3,
+       "fps": 5,
+       "mbps": 0.02,
+       "content_p50": 13.2,
+       "content_p95": 13.9,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 4,
+       "fps": 5,
+       "mbps": 0.02,
+       "content_p50": 12.9,
+       "content_p95": 14.3,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 5,
+       "fps": 5,
+       "mbps": 0.02,
+       "content_p50": 16.9,
+       "content_p95": 24.9,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 6,
+       "fps": 5,
+       "mbps": 0.02,
+       "content_p50": 13.6,
+       "content_p95": 17.0,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 7,
+       "fps": 5,
+       "mbps": 0.02,
+       "content_p50": 13.1,
+       "content_p95": 15.2,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 8,
+       "fps": 6,
+       "mbps": 0.02,
+       "content_p50": 13.8,
+       "content_p95": 15.3,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 9,
+       "fps": 6,
+       "mbps": 0.02,
+       "content_p50": 14.5,
+       "content_p95": 16.3,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 10,
+       "fps": 6,
+       "mbps": 0.02,
+       "content_p50": 12.6,
+       "content_p95": 19.9,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 11,
+       "fps": 48,
+       "mbps": 0.15,
+       "content_p50": 12.8,
+       "content_p95": 16.7,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 12,
+       "fps": 47,
+       "mbps": 0.15,
+       "content_p50": 12.6,
+       "content_p95": 16.6,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 13,
+       "fps": 30,
+       "mbps": 0.09,
+       "content_p50": 12.8,
+       "content_p95": 15.7,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 14,
+       "fps": 2,
+       "mbps": 0.01,
+       "content_p50": 11.6,
+       "content_p95": 13.3,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 15,
+       "fps": 6,
+       "mbps": 0.11,
+       "content_p50": 42.9,
+       "content_p95": 143.4,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 16,
+       "fps": 3,
+       "mbps": 0.01,
+       "content_p50": 12.8,
+       "content_p95": 13.7,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      }
+     ],
+     "adapt": [],
+     "content_p50": 13.0,
+     "content_p95": 25.6,
+     "input_p50": 51.4,
+     "input_p95": 63.8,
+     "grades": {
+      "input_replies": "local",
+      "content_p50": "local",
+      "content_p95": "local",
+      "input_p50": "acceptable",
+      "input_p95": "local"
+     },
+     "controller": {
+      "adapt": true,
+      "baseRtt": 5.792,
+      "ceiling": 14860800,
+      "fps": 60,
+      "inFlight": 0,
+      "scale": 1,
+      "slack": 41.666,
+      "target": 14860800,
+      "tier": 0
+     },
+     "events": [],
+     "source_fps": 10.4,
+     "cpu": {
+      "mac_agent_pct": 2.5,
+      "frame_viewer_pct": 14.7,
+      "frame_tailscaled_pct": 2.9,
+      "frame_sshd_pct": 0.4,
+      "frame_gamescope_pct": 6.1,
+      "frame_total_pct": 33.5
+     },
+     "viewer": "h264 software; ANGLE (Mesa, zink Vulkan 1.4(Turnip Adreno (TM) 750 (MESA_TURNIP)), OpenGL 4.6); raf 71 Hz",
+     "show_s": 1.27,
+     "panel": "valve.steam.desktopgame.2001606834",
+     "src": "separate:6969"
+    }
+   ],
+   [
+    {
+     "scenario": "type",
+     "frames_sent": 128,
+     "frames_drawn": 128,
+     "frames_shown": 126,
+     "duration_s": 21.1,
+     "stages_ms": {
+      "capture": {
+       "p50": -3.5,
+       "p95": 1.4,
+       "p99": 26.9,
+       "n": 128
+      },
+      "queue": {
+       "p50": 0.0,
+       "p95": 0.1,
+       "p99": 0.7,
+       "n": 128
+      },
+      "encode": {
+       "p50": 6.7,
+       "p95": 9.9,
+       "p99": 23.0,
+       "n": 128
+      },
+      "socket": {
+       "p50": 0.1,
+       "p95": 0.3,
+       "p99": 2.8,
+       "n": 128
+      },
+      "network": {
+       "p50": 3.3,
+       "p95": 5.1,
+       "p99": 205.9,
+       "n": 128
+      },
+      "decode": {
+       "p50": 2.1,
+       "p95": 4.2,
+       "p99": 6.4,
+       "n": 128
+      },
+      "draw": {
+       "p50": 0.7,
+       "p95": 1.7,
+       "p99": 1.9,
+       "n": 128
+      },
+      "present": {
+       "p50": 0.6,
+       "p95": 9.2,
+       "p99": 13.7,
+       "n": 126
+      },
+      "content": {
+       "p50": 13.4,
+       "p95": 21.6,
+       "p99": 264.8,
+       "n": 128
+      },
+      "content_shown": {
+       "p50": 14.5,
+       "p95": 26.1,
+       "p99": 265.4,
+       "n": 126
+      }
+     },
+     "fps": 6.1,
+     "fps_shown": 6.0,
+     "late_pct": 17.83,
+     "stall_max": 9246.3,
+     "stalls_over_100ms": 17,
+     "mbps": 0.02,
+     "keyframes": 0,
+     "size": "1920x1290",
+     "captured": 129,
+     "viewer_never_drawn": 0,
+     "input_ms": {
+      "p50": 42.5,
+      "p95": 194.0,
+      "p99": 404.5,
+      "n": 25
+     },
+     "input_shown_ms": {
+      "p50": 43.2,
+      "p95": 194.6,
+      "p99": 405.1,
+      "n": 25
+     },
+     "input_parts_ms": {
+      "uplink": {
+       "p50": 9.4,
+       "p95": 26.2,
+       "p99": 35.0,
+       "n": 25
+      },
+      "mac": {
+       "p50": 23.3,
+       "p95": 135.9,
+       "p99": 176.2,
+       "n": 25
+      },
+      "back": {
+       "p50": 13.8,
+       "p95": 21.6,
+       "p99": 264.8,
+       "n": 25
+      }
+     },
+     "inputs": {
+      "asked": 65,
+      "sent": 66,
+      "seen": 25
+     },
+     "timeline": [
+      {
+       "t": 0,
+       "fps": 24,
+       "mbps": 0.06,
+       "content_p50": 13.0,
+       "content_p95": 14.4,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 1,
+       "fps": 58,
+       "mbps": 0.19,
+       "content_p50": 13.6,
+       "content_p95": 18.1,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 2,
+       "fps": 26,
+       "mbps": 0.08,
+       "content_p50": 12.9,
+       "content_p95": 15.3,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 3,
+       "fps": 6,
+       "mbps": 0.08,
+       "content_p50": 13.5,
+       "content_p95": 17.2,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 4,
+       "fps": 4,
+       "mbps": 0.05,
+       "content_p50": 18.8,
+       "content_p95": 25.6,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 5,
+       "fps": 3,
+       "mbps": 0.01,
+       "content_p50": 13.3,
+       "content_p95": 13.8,
+       "bitrate": 14860800,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 10,
+       "fps": 4,
+       "mbps": 0.03,
+       "content_p50": 264.8,
+       "content_p95": 354.5,
+       "bitrate": 300000,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      },
+      {
+       "t": 11,
+       "fps": 3,
+       "mbps": 0.01,
+       "content_p50": 13.8,
+       "content_p95": 15.1,
+       "bitrate": 300000,
+       "tier": 0,
+       "w": 1920,
+       "net": null
+      }
+     ],
+     "adapt": [],
+     "content_p50": 13.4,
+     "content_p95": 21.6,
+     "input_p50": 42.5,
+     "input_p95": 194.0,
+     "grades": {
+      "input_replies": "bad",
+      "content_p50": "local",
+      "content_p95": "local",
+      "input_p50": "local",
+      "input_p95": "bad"
+     },
+     "controller": {
+      "adapt": true,
+      "baseRtt": 0,
+      "ceiling": 14860800,
+      "fps": 60,
+      "inFlight": 0,
+      "scale": 1,
+      "slack": 41.666,
+      "target": 14855423,
+      "tier": 0
+     },
+     "events": [
+      {
+       "t": 10.93,
+       "e": "down to 300 kbit/s: queue 0 ms, held 0, oldest 201 ms, base 5 ms, sent 61 got 0 wants 51"
+      }
+     ],
+     "source_fps": 6.1,
+     "cpu": {
+      "mac_agent_pct": 2.1,
+      "frame_viewer_pct": 11.1,
+      "frame_tailscaled_pct": 2.6,
+      "frame_sshd_pct": 0.4,
+      "frame_gamescope_pct": 6.0,
+      "frame_total_pct": 25.6
+     },
+     "viewer": "h264 software; ANGLE (Mesa, zink Vulkan 1.4(Turnip Adreno (TM) 750 (MESA_TURNIP)), OpenGL 4.6); raf 72 Hz",
+     "show_s": 1.32,
+     "panel": "valve.steam.desktopgame.2001763888",
+     "src": "separate:7401"
+    }
+   ]
+  ]
+ },
+ "table": {
+  "type": {
+   "content_p50": {
+    "cold": [
+     13.9,
+     12.8,
+     14.6
+    ],
+    "warm": [
+     14.5,
+     13.0,
+     13.4
+    ]
+   },
+   "content_p95": {
+    "cold": [
+     25.6,
+     19.4,
+     60.4
+    ],
+    "warm": [
+     29.9,
+     25.6,
+     21.6
+    ]
+   },
+   "input_p50": {
+    "cold": [
+     44.5,
+     35.9,
+     44.3
+    ],
+    "warm": [
+     46.6,
+     51.4,
+     42.5
+    ]
+   },
+   "input_p95": {
+    "cold": [
+     68.2,
+     91.9,
+     236.4
+    ],
+    "warm": [
+     71.3,
+     63.8,
+     194.0
+    ]
+   },
+   "fps": {
+    "cold": [
+     6.9,
+     9.0,
+     3.9
+    ],
+    "warm": [
+     5.4,
+     10.4,
+     6.1
+    ]
+   },
+   "late_pct": {
+    "cold": [
+     51.37,
+     41.88,
+     61.45
+    ],
+    "warm": [
+     72.17,
+     38.46,
+     17.83
+    ]
+   },
+   "stall_max": {
+    "cold": [
+     1007.5,
+     2314.7,
+     9230.5
+    ],
+    "warm": [
+     1001.0,
+     4500.7,
+     9246.3
+    ]
+   },
+   "mbps": {
+    "cold": [
+     0.03,
+     0.03,
+     0.15
+    ],
+    "warm": [
+     0.03,
+     0.05,
+     0.02
+    ]
+   }
+  }
+ }
+}

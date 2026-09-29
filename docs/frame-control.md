@@ -72,6 +72,10 @@ counts them while they run.
   Runtime picked from the program's header), listed under **Sideloaded titles**
   with Launch and Remove; see [sideloading.md](sideloading.md). Send typed text, or your computer's clipboard, to the
   Frame clipboard.
+- **Mac in the headset** (macOS): show any Mac window, or a whole screen, as
+  its own panel in the headset. Place it with the SteamVR dashboard, click and
+  scroll with the laser, and type on the Mac. Streams hardware H.264 through
+  an SSH tunnel; see [mac-in-headset.md](mac-in-headset.md).
 - **Flatpaks**: install and remove them (quick picks: Moonlight, Firefox, VLC,
   Remmina).
 - **One-click tools**: SSH or SFTP in a terminal window, Steam Link, and remote
