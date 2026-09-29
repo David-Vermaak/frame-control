@@ -43,6 +43,7 @@ import frame_android  # noqa: E402
 import frame_apk_versions  # noqa: E402
 import frame_catalog  # noqa: E402
 import frame_host  # noqa: E402
+import frame_macview  # noqa: E402
 import frame_media  # noqa: E402
 import frame_report  # noqa: E402
 import frame_store  # noqa: E402
@@ -1358,6 +1359,46 @@ def push_media(path):
             "id": token + "/" + name}
 
 
+# ---- Mac in the headset (frame_macview.py) ----------------------------------
+
+# The tunnel gets its own connection: the shared master's options would win
+# over anything added after them.
+macview = frame_macview.MacView(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8"],
+                                lambda remote, stdin=None, timeout=30: ssh(remote, stdin=stdin, timeout=timeout),
+                                FRAME, track=_live_tunnels.add)
+
+
+def macview_state(query=None):
+    if LOCAL:
+        return {"available": False, "reason": "Runs on your computer, not the headset."}
+    try:
+        # Refresh restarts the helper, which picks up a permission just granted.
+        if (query or {}).get("restart") == ["1"]:
+            macview.restart_agent()
+        return macview.state()
+    except frame_macview.MacViewError as e:
+        raise Failure(str(e), 500)
+
+
+def macview_action(body):
+    """{action: show|stop|permissions, src, quality, w, h}."""
+    if LOCAL:
+        raise Failure("Runs on your computer, not the headset.", 400)
+    action = body.get("action")
+    try:
+        if action == "show":
+            w, h = body.get("w"), body.get("h")
+            return macview.show(str(body.get("src") or ""), str(body.get("quality") or "balanced"),
+                                int(w) if w else None, int(h) if h else None)
+        if action == "stop":
+            return macview.stop(body.get("src") or None)
+        if action == "permissions":
+            return macview.request_permissions()
+    except frame_macview.MacViewError as e:
+        raise Failure(str(e), 502)
+    raise Failure("unknown action", 400)
+
+
 # ---- Report a problem (frame_report.py) --------------------------------------
 
 def report_preview(body):
@@ -1390,7 +1431,7 @@ POST = {"/api/media": media, "/api/agent/call": agent_call, "/api/agent/approval
         "/api/webinstall/check": webinstall_check, "/api/webinstall/start": webinstall_start,
         "/api/webinstall/cancel": webinstall_cancel,
         "/api/telemetry": frame_telemetry.update_settings, "/api/telemetry/event": frame_telemetry.page_event,
-        "/api/report/preview": report_preview, "/api/report": report_send}
+        "/api/report/preview": report_preview, "/api/report": report_send, "/api/macview": macview_action}
 
 
 # ---- HTTP ------------------------------------------------------------------
@@ -1526,6 +1567,8 @@ class Handler(BaseHTTPRequestHandler):
                                 "shared": frame_catalog.compat_db.shared()})
             elif path == "/api/android/catalog":
                 self.send_json({"apps": frame_catalog.catalog()})
+            elif path == "/api/macview":
+                self.send_json(macview_state(parse_qs(url.query)))
             elif path == "/api/telemetry":
                 self.send_json(frame_telemetry.state())
             elif path == "/api/computer/state":
@@ -1708,10 +1751,16 @@ class Handler(BaseHTTPRequestHandler):
                     raise Failure(str(e), 400, {"package": info["package"], "version_code": info.get("version_code"), "blocker": str(e)})
                 ensure_master()
                 try:
-                    m = frame_android.install(str(dest), source=name)
+                    display = self.headers.get("X-APK-Display", "auto")
+                    if display not in ("auto", "flat", "vr"):
+                        raise frame_android.FrameError("invalid APK display mode")
+                    m = frame_android.install(str(dest), source=name,
+                                              flatscreen=None if display == "auto" else display == "flat")
                 except frame_android.FrameError as e:
                     raise Failure(str(e), 400)
-                return {"message": f"Installed {m['label']} as its own app in the Steam library", "app": m}
+                kind = "VR app" if not m['flatscreen'] else "app"
+                notes = " ".join(m.get("vr_issues", []))
+                return {"message": f"Installed {m['label']} as its own {kind} in the Steam library. {notes}".strip(), "app": m}
             return {"message": push_file(dest)}
         finally:
             if not keep:
@@ -1756,6 +1805,7 @@ def main():
         if not frame_host.WINDOWS:
             signal.signal(signal.SIGTERM, signal.SIG_IGN)
         webinstall_shutdown()
+        macview.shutdown()  # close the headset's viewers before the agent goes
         # The master was started with -N, so it stays up until told to exit.
         if CONTROL:
             subprocess.run([*MUX, "-O", "exit", FRAME], capture_output=True, stdin=subprocess.DEVNULL)

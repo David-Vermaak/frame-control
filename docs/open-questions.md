@@ -130,6 +130,19 @@ Still open: 4, 6, 7, 12–15, 16 (off-LAN and after a reboot), 17–21.
 - The Mac EDL flashing script in `~/Downloads/steam-frame-recovery/` hasn't
   been run against a Frame.
 
+## Mac in the headset (2026-09-28)
+
+The test pattern streams to the Frame as its own panel at about 60 fps
+(verified, build 20260925.6191901; see
+[mac-in-headset.md](mac-in-headset.md#checked-so-far-2026-09-28)). Still to
+check in the headset:
+
+- Laser clicks, drags and thumbstick scrolling in a viewer panel.
+- Real window capture and input once Screen Recording and Accessibility are
+  granted to Frame Control.
+- Keys from SteamVR's on-screen keyboard.
+- Whether Flathub Chromium decodes H.264 (otherwise use Compatible).
+
 ## Unconfirmed claims made in these docs
 
 - `/home` and `/etc` persist across Frame OS updates. This is inferred from
