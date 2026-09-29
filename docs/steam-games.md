@@ -110,3 +110,11 @@ returns nothing without `cc`, so Frame Control takes the country from
 - Installing when there's more than one library folder, such as a microSD card.
 - Uninstalling. `steam://uninstall/<appid>` should open a confirmation in the
   headset.
+
+## Optional VR software
+
+The [VR utilities list](vr-utilities.md#optional-software) is separate from our
+controls and HUD. It checks software ownership as well as games; paid utilities
+are installable only when already in the loaded Frame account library. No
+purchase flow is added. Public reports, local results and ownership are shown
+separately, and untested tools remain untested.

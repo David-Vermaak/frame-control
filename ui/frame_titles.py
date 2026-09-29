@@ -16,9 +16,9 @@ checked on a headset; see docs/sideloading.md.
 Python stdlib only. CLI:
   python3 ui/frame_titles.py inspect PATH
   python3 ui/frame_titles.py install PATH [--name N] [--exe REL] [--runtime R]
-  python3 ui/frame_titles.py list | launch ID | remove ID
+  python3 ui/frame_titles.py list | launch ID | remove ID | refresh-art ID|--all
 """
-import hashlib, json, os, posixpath, re, shlex, shutil, stat, struct, subprocess, sys, tempfile, threading, time, zipfile
+import base64, hashlib, json, os, posixpath, re, shlex, shutil, stat, struct, subprocess, sys, tempfile, threading, time, zipfile
 
 import frame_android
 import frame_host
@@ -632,7 +632,7 @@ def _rsync():
 _install_lock = threading.Lock()
 
 
-def install(path, name=None, exe=None, runtime=None, progress=None):
+def install(path, name=None, exe=None, runtime=None, progress=None, artwork=None):
     """Sideload a .zip, folder or executable as a Devkit Game; returns the title dict.
 
     name: the Steam name (sanitised to the title id), default from the file name.
@@ -643,12 +643,12 @@ def install(path, name=None, exe=None, runtime=None, progress=None):
     """
     plan = inspect(path, name)
     try:
-        return install_plan(plan, name=name, exe=exe, runtime=runtime, progress=progress)
+        return install_plan(plan, name=name, exe=exe, runtime=runtime, progress=progress, artwork=artwork)
     finally:
         discard(plan)
 
 
-def install_plan(plan, name=None, exe=None, runtime=None, progress=None):
+def install_plan(plan, name=None, exe=None, runtime=None, progress=None, artwork=None):
     """Install an inspect() plan, optionally with another name, target or runtime."""
     if name:
         plan['name'], plan['id'] = name, title_id(name)
@@ -656,13 +656,21 @@ def install_plan(plan, name=None, exe=None, runtime=None, progress=None):
         _choose(plan, exe or plan['target'], runtime)
     step = progress or (lambda *a: None)
     with _install_lock:
-        return _install(plan, step)
+        return _install(plan, step, artwork)
 
 
-def _install(plan, step):
+def _install(plan, step, artwork=None):
     gid = plan['id']
     if not NEW_ID_RE.match(gid) or gid.lower() in RESERVED_IDS:
         raise FrameError(f'bad title id {gid!r}')
+    icon = None
+    for filename in ('icon.png', 'logo.png'):
+        path = os.path.join(plan['root'], filename)
+        if os.path.isfile(path):
+            with open(path, 'rb') as f:
+                icon = f.read(frame_android.frame_artwork.MAX_IMAGE + 1)
+            break
+    images, warnings = frame_android.frame_artwork.prepare(plan['name'], icon, artwork)
     step("Syncing Valve's devkit tools to the Frame", 0.02)
     ensure_utils()
     existed = ssh(f'test -d {GAMES}/{gid} && echo yes || true', timeout=30).strip() == 'yes'
@@ -672,6 +680,7 @@ def _install(plan, step):
     if not DIR_RE.match(directory) or not directory.endswith(f'/{GAMES}/{gid}'):
         raise FrameError(f'steamos-prepare-upload returned an unexpected folder {directory!r}')
     registered = False
+    library_ready, shortcut, steam_registered = False, None, False
     try:
         step(f"Copying {plan['size'] / 1e6:.0f} MB to the Frame", 0.1)
         if _rsync():
@@ -687,23 +696,130 @@ def _install(plan, step):
         reply = _json_out(ssh(f'{PY}steam-client-create-shortcut --parms {shlex.quote(json.dumps(parms))}',
                               timeout=90), 'steam-client-create-shortcut')
         meta = {'id': gid, 'name': plan['name'], 'target': plan['target'], 'runtime': plan['runtime'],
-                'source': plan['source'], 'size': plan['size'], 'installed': time.strftime('%Y-%m-%dT%H:%M:%S')}
+                'source': plan['source'], 'size': plan['size'], 'installed': time.strftime('%Y-%m-%dT%H:%M:%S'),
+                # Until art is applied: the only entries automatic backfill may touch.
+                'art_pending': True}
         ssh(f'cat > {GAMES}/{gid}-framecontrol.json', input=json.dumps(meta, indent=1), timeout=30)
         registered = True                    # the files stay: Steam registers them once it's running
         if 'error' in reply:
             err = str(reply['error']).strip().rstrip('.')
             hint = ' With Steam running on the Frame, install it again.' if 'not running' in err else ''
             raise FrameError(f"Uploaded, but Steam didn't register it: {err}.{hint}")
+        steam_registered = True
+        shortcut = _library_shortcut(gid, directory)
+        if not shortcut:
+            raise FrameError('Steam registered the title but its shortcut is not available for mandatory artwork; retry install')
+        result = frame_android.apply_library(shortcut, plan['name'], directory + '/.frame-artwork', images,
+                                             category='Sideloaded', details={'source': plan['source']})
+        meta.update(shortcut=shortcut, artwork=result.get('artwork', {}), art_pending=False,
+                    library_warnings=warnings + result.get('warnings', []))
+        ssh(f'cat > {GAMES}/{gid}-framecontrol.json', input=json.dumps(meta, indent=1), timeout=30)
+        library_ready = True
         step('Done', 1.0)
         meta.update(runtime_label=RUNTIMES[plan['runtime']]['label'], steam=str(reply.get('success', '')).strip())
         return meta
     finally:
+        if steam_registered and not library_ready and not existed:
+            # A newly registered title must not remain as a blank library tile. Cleanup
+            # failures are swallowed so the error that got us here is the one reported.
+            try:
+                if shortcut:
+                    frame_android.shortcut_tool('remove', str(shortcut))
+                else:
+                    ssh(f'{PY}steamos-delete --delete-title {gid}', timeout=120)
+            except FrameError:
+                pass
+            registered = False
         if not registered and not existed:
             # A first install that failed part-way: don't leave an orphan folder behind.
             try:
                 ssh(f'rm -rf {GAMES}/{gid} {GAMES}/.{gid}.upload {_json_files(gid)}', timeout=60)
             except FrameError:
                 pass
+
+
+
+def _library_shortcut(gid, directory):
+    """The Steam shortcut of title gid, only ever one that is provably this title's.
+
+    Steam's app overviews don't expose devkit_gameid (checked 2026-09-28, build 20260925.6191901),
+    so after the saved id this matches the shortcut's executable or start folder inside directory.
+    Never by display name: another non-Steam shortcut could share it and would be renamed or deleted.
+    """
+    shortcuts = json.loads(frame_android.shortcut_tool('list'))
+    matches = [s for s in shortcuts if s.get('devkit_gameid') == gid]
+    if not matches:
+        try:
+            meta = json.loads(ssh(f'cat {GAMES}/{gid}-framecontrol.json 2>/dev/null || true') or 'null')
+            matches = [s for s in shortcuts if meta.get('shortcut') and s.get('appid') == meta.get('shortcut')]
+        except (ValueError, AttributeError):
+            pass
+    if not matches:
+        root = posixpath.normpath(directory)
+
+        def inside(path):
+            path = str(path or '').strip().strip('"')
+            return bool(path) and (posixpath.normpath(path) + '/').startswith(root + '/')
+        matches = [s for s in shortcuts if inside(s.get('exe')) or inside(s.get('start_dir'))]
+    if len(matches) > 1:
+        raise FrameError('ambiguous Steam shortcut for ' + gid)
+    return int(matches[0]['appid']) if matches else None
+
+
+def _home():
+    return ssh('echo $HOME', timeout=30).strip()
+
+
+def refresh_art(gid=None, artwork=None, fill_only=False):
+    """Render and apply Steam artwork for Frame Control's titles (all of them when gid is None).
+
+    fill_only: the automatic backfill; it only fills empty Steam slots (see apply_library)."""
+    if gid is None:
+        results = []
+        for t in list_titles():
+            if not t['frame_control']:
+                continue
+            try:
+                results.append(refresh_art(t['id'], artwork, fill_only))
+            except Exception as e:  # report each title; one failure doesn't stop the rest
+                results.append({'id': t['id'], 'name': t['name'], 'error': str(e) or type(e).__name__})
+        return results
+    with _install_lock:
+        gid = _check_id(gid)
+        try:
+            meta = json.loads(ssh(f'cat {GAMES}/{gid}-framecontrol.json', timeout=30))
+        except (FrameError, ValueError):
+            meta = None
+        if not isinstance(meta, dict):
+            raise FrameError(f'{gid} was not installed by Frame Control')
+        directory = f'{_home()}/{GAMES}/{gid}'
+        script = frame_android.cached_art_script(directory + '/.frame-artwork') + f"""
+icon = ''
+for name in ('icon.png', 'logo.png'):
+    try:
+        with open(os.path.join({directory!r}, name), 'rb') as f:
+            icon = base64.b64encode(f.read(12 * 1024 * 1024 + 1)).decode()
+        break
+    except OSError:
+        pass
+print(json.dumps({{'artwork': cached, 'icon': icon}}))
+"""
+        found = _json_out(ssh('python3 -', input=script, timeout=60), 'the title artwork')
+        cached = {k: base64.b64decode(v) for k, v in (found.get('artwork') or {}).items()}
+        icon = base64.b64decode(found.get('icon') or '') or None
+        name = str(meta.get('name') or gid)
+        images, warnings = frame_android.frame_artwork.prepare(name, icon, artwork if artwork is not None else cached)
+        shortcut = _library_shortcut(gid, directory)
+        if not shortcut:
+            raise FrameError(f"Steam hasn't registered {gid} yet; with Steam running on the Frame, refresh again")
+        result = frame_android.apply_library(shortcut, name, directory + '/.frame-artwork', images,
+                                             category='Sideloaded', details={'source': meta.get('source')},
+                                             fill_only=fill_only)
+        meta.update(shortcut=shortcut, artwork=result.get('artwork', {}), art_pending=False,
+                    library_warnings=warnings + result.get('warnings', []),
+                    artwork_refreshed=time.strftime('%Y-%m-%dT%H:%M:%S'))
+        ssh(f'cat > {GAMES}/{gid}-framecontrol.json', input=json.dumps(meta, indent=1), timeout=30)
+        return meta
 
 
 LIST_SCRIPT = r'''
@@ -741,7 +857,9 @@ def list_titles():
                        'runtime': alias, 'runtime_label': RUNTIMES.get(alias, {}).get('label', alias or 'not set'),
                        'source': str(meta.get('source') or ''), 'size': meta.get('size'),
                        'installed': meta.get('installed'), 'registered': t.get('settings') is not None,
-                       'frame_control': bool(meta)})
+                       'frame_control': bool(meta),
+                       # Only a title whose install couldn't apply art; older installs have no flag and keep theirs.
+                       'art_pending': bool(meta.get('art_pending')), 'art_missing': bool(meta.get('art_pending'))})
     return titles
 
 
@@ -772,9 +890,20 @@ def remove(gid):
     try:
         gid = _check_id(gid)
         ensure_utils()
-        # steamos-delete removes the folder and syncs Steam's shortcuts; its json files stay, so clear them too.
+        try:
+            shortcut = _library_shortcut(gid, f'{_home()}/{GAMES}/{gid}')
+        except (FrameError, ValueError):
+            shortcut = None
+        # steamos-delete removes the folder, the shortcut and its Proton prefix (found through the
+        # shortcut), so it runs first; its json files stay, so clear them too.
         ssh(f'{PY}steamos-delete --delete-title {gid}', timeout=120)
         ssh(f'rm -f {_json_files(gid)}', timeout=30)
+        # Then tidy what it leaves (artwork, collections); best effort.
+        if shortcut:
+            try:
+                frame_android.shortcut_tool('remove', str(shortcut))
+            except (FrameError, ValueError):
+                pass
         return {'id': gid}
     finally:
         _install_lock.release()
@@ -815,8 +944,15 @@ def main():
                         progress=lambda text, _: print(text + '…', file=sys.stderr))
         elif cmd == 'list':
             r = list_titles()
+            if any(t['art_missing'] for t in r):
+                print('Some titles have no Steam artwork: python3 ui/frame_titles.py refresh-art --all', file=sys.stderr)
         elif cmd in ('launch', 'remove') and args:
             r = globals()[cmd](args[0])
+        elif cmd == 'refresh-art' and args:
+            r = refresh_art(None if args[0] == '--all' else args[0])
+            if isinstance(r, list) and any('error' in t for t in r):
+                print(json.dumps(r, indent=1))
+                raise SystemExit(1)
         else:
             sys.exit(__doc__)
     except FrameError as e:

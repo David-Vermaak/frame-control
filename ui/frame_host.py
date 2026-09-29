@@ -33,8 +33,11 @@ class HostError(RuntimeError):
 
 
 def data_dir(*parts):
-    """Per-user app data: ~/Library/Application Support, %APPDATA% or $XDG_DATA_HOME."""
-    if MAC:
+    """Per-user app data: ~/Library/Application Support, %APPDATA% or $XDG_DATA_HOME
+    (or $FRAME_CONTROL_DATA_DIR, which the tests point at a throwaway directory)."""
+    if os.environ.get("FRAME_CONTROL_DATA_DIR"):
+        base = Path(os.environ["FRAME_CONTROL_DATA_DIR"])
+    elif MAC:
         base = Path.home() / "Library" / "Application Support" / "Frame Control"
     elif WINDOWS:
         base = Path(os.environ.get("APPDATA") or Path.home() / "AppData" / "Roaming") / "Frame Control"
@@ -53,12 +56,19 @@ def cache_dir(*parts):
     return base.joinpath(*parts)
 
 
-def control_path():
+def control_path(tag="x", *, private=None):
     """ssh ControlPath for the shared connection, or None where it isn't supported.
 
+    `tag` names the headset: ssh's %C hashes only the address, user and port, so two
+    headsets reached at the same address (one of them moved) would otherwise share a
+    connection, and one's commands would run on the other.
     /tmp, not $TMPDIR: macOS's per-user temp path overflows the unix socket path limit.
     """
-    return f"/tmp/frame-ui-{os.getuid()}-%C" if MUX else None
+    # A private server (the MCP adapter's) keeps its own masters: FRAME_PRIVATE_SSH=1.
+    if private is None:
+        private = os.environ.get("FRAME_PRIVATE_SSH") == "1"
+    suffix = f"-{os.getpid()}" if private else ""
+    return f"/tmp/frame-ui-{os.getuid()}{suffix}-{tag}-%C" if MUX else None
 
 
 def which(name, *extra):
@@ -254,9 +264,9 @@ def open_steam_link():
     return "Steam Link isn't installed; opened its download page"
 
 
-def open_rdp(alias):
-    """Remote desktop to the Frame's xrdp (user steamos)."""
-    host = ssh_hostname(alias)
+def open_rdp(alias, host=None):
+    """Remote desktop to the Frame's xrdp (user steamos), at `host` or where the alias points."""
+    host = host or ssh_hostname(alias)
     if MAC:
         if subprocess.run(["open", "-a", "Windows App"], capture_output=True).returncode == 0:
             return "Opened Windows App"

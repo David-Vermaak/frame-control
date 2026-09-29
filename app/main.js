@@ -1,7 +1,7 @@
 // Frame Control as a desktop app (macOS, Windows, Linux): starts ui/server.py on
 // a free loopback port and shows it in a native window. The server does all the
 // work over the `frame` SSH alias; this file only hosts it.
-const { app, BrowserWindow, Menu, clipboard, dialog, ipcMain, shell } = require("electron");
+const { app, BrowserWindow, Menu, Notification, clipboard, dialog, ipcMain, shell } = require("electron");
 const { execFile, spawn } = require("child_process");
 const { promisify } = require("util");
 const fs = require("fs");
@@ -10,6 +10,7 @@ const net = require("net");
 const os = require("os");
 const path = require("path");
 const { SCHEME, parseInstallLink, linkFromArgv } = require("./install-link");
+const updater = require("./updater");
 
 const run = promisify(execFile);
 
@@ -114,7 +115,11 @@ function ping(target) {
 }
 
 async function startServer() {
+  // The version and whether this is a built app go to ui/frame_telemetry.py, which
+  // sends nothing from a source checkout.
   const env = { ...process.env, PATH: await loginPath(), FRAME_CONTROL_APP: "1",
+                FRAME_CONTROL_VERSION: app.getVersion(), FRAME_CONTROL_LOG: LOG,
+                ...(app.isPackaged ? { FRAME_CONTROL_PACKAGED: "1" } : {}),
                 ...(fs.existsSync(TOOLS) ? { FRAME_CONTROL_TOOLS: TOOLS } : {}) };
   python = await findPython(env);
   if (!python) throw new Error(`Frame Control needs Python 3.8 or later. ${PYTHON_HELP}`);
@@ -154,10 +159,16 @@ async function startServer() {
 
 // Closing stdin lets server.py close its SSH connections and exit (the only clean
 // way on Windows); SIGTERM does the same elsewhere.
+// Resolves once it has exited (or after 20 s), so a replacement can take the server
+// lock: server.py allows one per user.
 function endServer(child) {
+  const gone = child.exitCode !== null || child.signalCode !== null ? Promise.resolve()
+    : new Promise((resolve) => child.once("exit", resolve));
   try { child.stdin.end(); } catch {}
   if (!IS_WIN) child.kill("SIGTERM");
-  setTimeout(() => { if (child.exitCode === null && child.signalCode === null) child.kill(); }, 5000).unref();
+  // server.py ignores a second SIGTERM while it shuts down, so the fallback is a hard kill.
+  setTimeout(() => { if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL"); }, 12000).unref();
+  return Promise.race([gone, new Promise((resolve) => setTimeout(resolve, 20000).unref())]);
 }
 
 function stopServer() {
@@ -178,27 +189,37 @@ function serverDied(why) {
   if (win) win.loadURL(errorPage(`The server stopped unexpectedly (${why}). See ${LOG}.`));
 }
 
-async function restartServer() {
-  const old = server;
-  server = null;
-  url = null;
-  if (old) endServer(old);
-  await load();
+// Restarts that overlap share one: two could each start a server, and the one
+// that lost the lock would leave the app pointing at nothing.
+let restarting = null;
+function restartServer() {
+  if (!restarting) {
+    restarting = (async () => {
+      const old = server;
+      server = null;
+      url = null;
+      if (old) await endServer(old);
+      if (starting) await starting.catch(() => {});  // a start it cut short: then start afresh
+      await load();
+    })().finally(() => { restarting = null; });
+  }
+  return restarting;
 }
 
 // On macOS the page's sticky header becomes the title bar, clear of the traffic lights.
 const CHROME_CSS = IS_MAC && `
   header { padding-left: 92px !important; -webkit-app-region: drag; user-select: none; }
-  header a, header button, header input, header .chip { -webkit-app-region: no-drag; }
+  header a, header button, header input, header select, header .chip { -webkit-app-region: no-drag; }
 `;
 
 // Restart Server can start a new load while an older one is still waiting for
 // its server; only the newest load may touch the window.
 let loadGen = 0;
+let starting = null;  // loads that overlap share one server start
 async function load() {
   const gen = ++loadGen;
   try {
-    if (!url) await startServer();
+    if (!url) await (starting ||= startServer().finally(() => { starting = null; }));
     if (gen === loadGen && win) { await win.loadURL(url); firstRunCheck(); }
   } catch (e) {
     if (gen === loadGen && win) await win.loadURL(errorPage(e.message));
@@ -244,6 +265,65 @@ function fromUi(e) {
 
 ipcMain.handle("clipboard:read", (e) => fromUi(e) ? clipboard.readText() : "");
 ipcMain.handle("connection:setup", (e) => { if (fromUi(e)) setUpConnection(); });
+ipcMain.on("keys:capture", (e, on) => { if (fromUi(e)) win.webContents.setIgnoreMenuShortcuts(on === true); });
+ipcMain.handle("update:get", (e) => fromUi(e) ? publicUpdate() : null);
+ipcMain.handle("update:check", (e) => fromUi(e) ? checkForUpdate({ manual: true }).then(publicUpdate) : null);
+ipcMain.handle("update:install", (e) => { if (fromUi(e)) installUpdate(); });
+
+// The page reports the headsets it knows (the server's Devices tab), so the Frame
+// menu can switch between them. Only plain names and ids go into the menu.
+const ALIAS_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+let devices = [];
+ipcMain.on("devices:changed", (e, list) => {
+  if (!fromUi(e) || !Array.isArray(list)) return;
+  const next = list.slice(0, 20).filter(d => d && typeof d.id === "string" && ALIAS_RE.test(d.alias || ""))
+    .map(d => ({ id: d.id.slice(0, 80), name: String(d.name || d.alias).slice(0, 60), alias: d.alias, active: !!d.active }));
+  if (JSON.stringify(next) === JSON.stringify(devices)) return;
+  devices = next;
+  buildMenu();
+});
+const activeAlias = () => (devices.find(d => d.active) || {}).alias || FRAME;
+
+// SSH through the server, so it goes to the headset and address the app is using
+// (with its own pinned identity), and refuses when there's none.
+function openSsh() {
+  if (!url) return dialog.showErrorBox("Couldn't open SSH", "Frame Control's server isn't running.");
+  const body = JSON.stringify({ what: "terminal" });
+  const req = http.request(new URL("/api/open", url), {
+    method: "POST", timeout: 15000,
+    headers: { "Content-Type": "application/json", "X-Frame-UI": "1", "Content-Length": Buffer.byteLength(body) },
+  }, (res) => {
+    let data = "";
+    res.on("data", (c) => { data += c; });
+    res.on("end", () => {
+      if (res.statusCode === 200) return;
+      let why = `HTTP ${res.statusCode}`;
+      try { why = JSON.parse(data).error || why; } catch {}
+      dialog.showErrorBox("Couldn't open SSH", why);
+    });
+  });
+  req.on("error", (e) => dialog.showErrorBox("Couldn't open SSH", e.message));
+  req.on("timeout", () => req.destroy(new Error("the server didn't answer")));
+  req.end(body);
+}
+function showDevices() {
+  if (win && url) win.webContents.executeJavaScript('location.hash = "devices"').catch(() => {});
+}
+
+ipcMain.handle("comfort:notify", (e, message) => {
+  if (!fromUi(e) || typeof message !== "string" || message.length > 500) throw new Error("Invalid notification");
+  if (!Notification.isSupported()) throw new Error("System notifications are unavailable");
+  return new Promise((resolve, reject) => {
+    const notification = new Notification({title: "Frame Control", body: message});
+    const timer = setTimeout(() => reject(new Error("Notification delivery was not confirmed. Check system notification settings.")), 5000);
+    notification.once("show", () => { clearTimeout(timer); resolve(true); });
+    notification.once("failed", (_event, error) => {
+      clearTimeout(timer);
+      reject(new Error("Notification delivery failed. Check system notification settings: " + error));
+    });
+    notification.show();
+  });
+});
 
 // frame-control://install links from websites (docs/web-install.md). They can
 // arrive before the window or server exists (macOS open-url on a cold launch),
@@ -276,6 +356,81 @@ ipcMain.on("install-link:ready", (e) => {
   deliverLinks();
 });
 
+// ---- updates (app/updater.js, docs/releasing.md) ----
+// Checked shortly after launch and every few hours; the page shows a banner and
+// the Update button calls installUpdate.
+const UPDATE_EVERY = 6 * 3600 * 1000;
+const update = { status: "idle", current: app.getVersion(), latest: null, error: null, progress: 0, how: null };
+
+function publicUpdate() {
+  const r = update.latest;
+  return { status: update.status, current: update.current, error: update.error, progress: update.progress,
+           latest: r && { version: r.version, notes: r.notes, page: r.page },
+           canInstall: !!update.how && update.how.method !== "manual", why: update.how && update.how.why };
+}
+
+function setUpdate(fields) {
+  Object.assign(update, fields);
+  if (win && linkPage === win.webContents) win.webContents.send("update:state", publicUpdate());
+}
+
+async function checkForUpdate({ manual = false } = {}) {
+  if (["checking", "downloading", "ready"].includes(update.status)) return;
+  setUpdate({ status: "checking", error: null });
+  try {
+    const latest = await updater.latestRelease();
+    const how = updater.updateMethod({ platform: process.platform, isPackaged: app.isPackaged,
+                                       execPath: process.execPath, env: process.env,
+                                       exists: fs.existsSync, writable: updater.writable });
+    if (updater.isNewer(latest.version, update.current)) {
+      setUpdate({ status: "available", latest, how });
+      if (manual) offerUpdateDialog();
+    } else {
+      setUpdate({ status: "none", latest, how });
+      if (manual) dialog.showMessageBox(win, { type: "info", message: "Frame Control is up to date",
+                                               detail: `You have ${update.current}, the newest version.` });
+    }
+  } catch (e) {
+    // A failed check: nothing to install, and never an older release kept from before.
+    setUpdate({ status: "check-failed", error: e.message, latest: null });
+    if (manual) dialog.showMessageBox(win, { type: "warning", message: "Couldn't check for updates", detail: e.message });
+  }
+}
+
+async function offerUpdateDialog() {
+  const r = update.latest;
+  const { response } = await dialog.showMessageBox(win, {
+    type: "info", message: `Frame Control ${r.version} is available`,
+    detail: `You have ${update.current}.` + (update.how.method === "manual" ? ` Download it from the release page (${update.how.why}).` : ""),
+    buttons: [update.how.method === "manual" ? "Open Release Page" : "Update and Restart", "Later"], defaultId: 0, cancelId: 1,
+  });
+  if (response === 0) installUpdate();
+}
+
+async function installUpdate() {
+  // "error" here only ever means an install failed, so trying again is safe.
+  if (update.status !== "available" && update.status !== "error") return;
+  if (!update.latest || !updater.isNewer(update.latest.version, update.current)) return;
+  if (!update.how || update.how.method === "manual") { shell.openExternal(update.latest.page); return; }
+  setUpdate({ status: "downloading", progress: 0, error: null });
+  try {
+    const start = await updater.prepare(update.latest, update.how,
+      (done, total) => { if (total) setUpdate({ progress: done / total }); }, update.current);
+    setUpdate({ status: "ready", progress: 1 });
+    start();
+    quitting = true;
+    app.quit();
+  } catch (e) {
+    setUpdate({ status: "error", error: e.message });
+  }
+}
+
+function scheduleUpdateChecks() {
+  if (process.env.FRAME_CONTROL_NO_UPDATE_CHECK === "1") return;
+  setTimeout(checkForUpdate, 8000);
+  setInterval(checkForUpdate, UPDATE_EVERY).unref();
+}
+
 function registerScheme() {
   // A checkout runs as `electron .`, so the OS must be told the script too.
   // (macOS takes the scheme from Info.plist, which only the built app has.)
@@ -292,7 +447,7 @@ function createWindow() {
     title: "Frame Control", backgroundColor: BG, show: false,
     ...(IS_MAC ? { titleBarStyle: "hiddenInset", trafficLightPosition: { x: 18, y: 26 } }
                : { icon: path.join(__dirname, "build", "icon.png") }),
-    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true,
+    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, backgroundThrottling: false,
                       preload: path.join(__dirname, "preload.js") },
   });
   win.once("ready-to-show", () => win.show());
@@ -326,25 +481,37 @@ async function runInTerminal(argv) {
   }
 }
 
-async function setUpConnection() {
-  const alias = `FRAME_ALIAS=${FRAME}`;
+// Set Up Connection for the headset in use (or another alias, from the Devices tab).
+async function setUpConnection(name = activeAlias()) {
+  if (!ALIAS_RE.test(name)) return;
+  const alias = `FRAME_ALIAS=${name}`;
   if (IS_MAC) return runInTerminal(["env", alias, "zsh", path.join(SCRIPTS, "connect.sh")]);
   const py = python || await findPython({ ...process.env, PATH: await loginPath() });
-  const setup = [py || "python3", ...PY_FLAGS, path.join(ROOT, "ui", "frame_connect.py")];
-  // A new console inherits our environment on Windows; Linux terminals may not.
-  runInTerminal(IS_WIN ? setup : ["env", alias, ...setup]);
+  // --alias, since a new console on Windows (and some Linux terminals) doesn't get our environment.
+  runInTerminal([py || "python3", ...PY_FLAGS, path.join(ROOT, "ui", "frame_connect.py"), "--alias", name]);
 }
 
 function buildMenu() {
   const template = [
-    ...(IS_MAC ? [{ role: "appMenu" }] : []),
+    ...(IS_MAC ? [{ label: app.name, submenu: [
+      { role: "about" }, { label: "Check for Updates…", click: () => checkForUpdate({ manual: true }) },
+      { type: "separator" }, { role: "services" }, { type: "separator" },
+      { role: "hide" }, { role: "hideOthers" }, { role: "unhide" }, { type: "separator" }, { role: "quit" },
+    ] }] : []),
     { role: "fileMenu" },
     { role: "editMenu" },
     {
       label: "Frame",
       submenu: [
-        { label: "Set Up Connection…", click: setUpConnection },
-        { label: IS_MAC ? "Open SSH in Terminal" : "Open SSH in a Terminal", click: () => runInTerminal(["ssh", FRAME]) },
+        { label: "Set Up Connection…", click: () => setUpConnection() },
+        { label: IS_MAC ? "Open SSH in Terminal" : "Open SSH in a Terminal", click: openSsh },
+        { type: "separator" },
+        ...(devices.length > 1 ? [{
+          label: "Headset",
+          submenu: devices.map(d => ({ label: d.name, type: "radio", checked: d.active,
+                                       click: () => { if (win) win.webContents.send("use-device", d.id); } })),
+        }] : []),
+        { label: "Devices…", accelerator: "CmdOrCtrl+5", click: showDevices },
         { type: "separator" },
         { label: "Open in Browser", click: () => url && shell.openExternal(url) },
         { label: "Restart Server", click: () => win ? restartServer() : createWindow() },
@@ -364,7 +531,15 @@ function buildMenu() {
     ...(IS_MAC ? [{ role: "windowMenu" }] : []),
     {
       role: "help",
-      submenu: [{ label: "Project on GitHub", click: () => shell.openExternal("https://github.com/saphid/steam-frame") }],
+      submenu: [
+        ...(IS_MAC ? [] : [{ label: "Check for Updates…", click: () => checkForUpdate({ manual: true }) }]),
+        { label: "Report a Problem…", click: () => {
+          if (win && url && linkPage === win.webContents) win.webContents.send("report:open");
+          else shell.openExternal("https://frame-control.pages.dev/feedback/");  // the page isn't up
+        } },
+        { label: "Release Notes", click: () => shell.openExternal(updater.RELEASES) },
+        { label: "Project on GitHub", click: () => shell.openExternal("https://github.com/saphid/steam-frame") },
+      ],
     },
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
@@ -387,6 +562,7 @@ if (!app.requestSingleInstanceLock()) {
     registerScheme();
     buildMenu();
     createWindow();
+    scheduleUpdateChecks();
   });
   app.on("activate", () => { if (!win) createWindow(); });
   app.on("window-all-closed", () => app.quit());

@@ -1,0 +1,32 @@
+<!doctype html>
+<!-- Benchmark content: a long page of text that scrolls itself at a steady
+     speed, so every frame changes the way reading a real page does. -->
+<html lang="en"><head><meta charset="utf-8"><title>fmv-bench scroll</title>
+<style>
+  body { font: 17px/1.55 -apple-system, "Helvetica Neue", sans-serif; margin: 0 auto; max-width: 900px; padding: 24px; color: #1d1d1f; background: #fff; }
+  h2 { font-size: 22px; margin: 28px 0 8px; } code { background: #f2f2f5; padding: 1px 4px; border-radius: 3px; }
+</style></head><body><div id="doc"></div>
+<script>
+const words = "latency frame panel stream encoder decoder network display pixel window capture budget quality motion text sharp adaptive controller queue socket clock".split(" ");
+let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+let html = "";
+for (let s = 0; s < 120; s++) {
+  html += `<h2>Section ${s + 1}: ${words[s % words.length]} and ${words[(s * 7) % words.length]}</h2>`;
+  for (let p = 0; p < 4; p++) {
+    let para = [];
+    for (let w = 0; w < 70; w++) para.push(rnd() < 0.05 ? `<code>${words[Math.floor(rnd() * words.length)]}()</code>` : words[Math.floor(rnd() * words.length)]);
+    html += `<p>${para.join(" ")}.</p>`;
+  }
+}
+document.getElementById("doc").innerHTML = html;
+// 240 points a second, whatever the display's refresh rate.
+// The title carries the page's own frame rate, so the source's rate is known.
+let last = performance.now(), frames = 0, since = last;
+function step(now) {
+  const dy = (now - last) * 0.24; last = now;
+  if (++frames && now - since >= 1000) { document.title = `fmv-bench scroll ${frames} fps`; frames = 0; since = now; }
+  if (window.scrollY + innerHeight >= document.body.scrollHeight - 2) window.scrollTo(0, 0); else window.scrollBy(0, dy);
+  requestAnimationFrame(step);
+}
+requestAnimationFrame(step);
+</script></body></html>

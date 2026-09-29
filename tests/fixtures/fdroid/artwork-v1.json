@@ -1,0 +1,54 @@
+{
+  "apps": [
+    {
+      "packageName": "org.example.app",
+      "name": "Example",
+      "license": "MIT",
+      "authorName": "Example Developer",
+      "summary": "Fallback summary",
+      "localized": {
+        "de": {
+          "name": "Beispiel",
+          "summary": "Deutsch",
+          "icon": "german.png",
+          "phoneScreenshots": [
+            "german.png"
+          ]
+        },
+        "en-US": {
+          "name": "Example",
+          "summary": "Offline <b>fixture</b> &amp; music.\n One\t line.",
+          "icon": "icon.png",
+          "phoneScreenshots": [
+            "1.png",
+            "2.png",
+            "3.png",
+            "4.png"
+          ]
+        },
+        "fr": {
+          "featureGraphic": "featureGraphic.png",
+          "sevenInchScreenshots": [
+            "1.png",
+            "2.png",
+            "3.png",
+            "4.png"
+          ]
+        }
+      }
+    }
+  ],
+  "packages": {
+    "org.example.app": [
+      {
+        "versionName": "1",
+        "versionCode": 1,
+        "apkName": "example1.apk",
+        "hash": "3e1e2658aef79aaf21aeb8d6705dbc5b251e51627bfdfc53650da50ed2c38c79",
+        "hashType": "sha256",
+        "size": 51,
+        "minSdkVersion": 21
+      }
+    ]
+  }
+}

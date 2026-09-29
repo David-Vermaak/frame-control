@@ -1,81 +1,176 @@
-# Watching VR video (180°/360°) on the Frame
+# Movies, stereo photos and splats
 
-The confidence labels are the same as in [ssh.md](ssh.md). Everything here
-was checked on SteamOS 0.3.0, build 20260922.6101926.
+Frame Control has its own Frame-side OpenVR player. It uses SteamOS's ffmpeg
+and V4L2 hardware decoder, Python and SteamVR. **No separate player or viewer
+is required.** Chromium and immersive WebXR are not in this playback path.
 
-## The short version
+## Use it
 
-1. Install **DeoVR Video Player** from Steam (free, app 837380) and start it once
-   in the headset. That creates its Proton prefix.
-2. On the Mac: `scripts/push-vr-video.sh --launch ~/Movies/beach_180_LR.mp4`
-3. In the headset, open DeoVR's local file browser → **Videos → VR** and
-   pick the file.
+In **Tools → Media in the headset**, send a file, choose its layout and press
+**Play**. **Theatre** gives it a larger screen and an 85% black surround.
+**Stop** removes both. Refresh reads the library and the player's state.
+The screen follows your head; it isn't a saved world-space panel.
 
-## Why DeoVR
-
-The Frame's Chromium can't play VR video in 3D. It has no immersive WebXR
-([how-the-frame-works.md](how-the-frame-works.md)). DeoVR's Windows build
-runs under Proton ARM64 + FEX as a real SteamVR app. **Verified 2026-09-25:**
-it found the Steam Frame headset and controller over OpenVR, and decoded
-7680×3840 and 8192×4096 H.265 VR180 side-by-side streams through AVPro's
-hardware Media Foundation path, mapped onto a 180° dome or fisheye mesh.
-
-Known quirks (verified):
-
-- The first launch takes about 45 s while it compiles shaders.
-- Grid thumbnails stay blank. Unity's own video player, which DeoVR uses for
-  previews, fails with `0xc00d36bb` under Proton. Full playback uses AVPro
-  and isn't affected.
-- The in-app store and web content are separate from local files. You don't
-  need an account to play your own files.
-
-## Getting files onto the headset
-
-`scripts/push-vr-video.sh` copies files with `rsync --partial`, so an
-interrupted upload resumes. They go to `~/Videos/VR` on the Frame (`/home`
-has about 860 GB free). The script also links that folder into DeoVR's prefix
-as `C:\users\steamuser\Videos\VR`. It's reachable at
-`Z:\home\steamos\Videos\VR` as well. **Verified** that the upload and link
-work. **Not yet checked** whether DeoVR's file browser lands there
-(open question 21).
-
-Speed: a test upload over Wi-Fi ran at about 3–5 MB/s (verified 2026-09-25,
-one sample). At that rate an 8K file of several GB takes tens of minutes, so
-start big uploads before you put the headset on.
-
-## Naming files so they play correctly
-
-DeoVR guesses the projection from the file name. Its binary contains the tags
-`_180`, `_360`, `_fisheye`, `_fisheye190`, `_mkx200`, `_vrca220` and `_rf52`
-(verified). For stereo layout, the common DeoVR convention is `_LR`/`_SBS`
-(side by side) and `_TB` (top/bottom) (inferred). If a video looks wrong
-(doubled, warped, or flat), change the projection and stereo mode in DeoVR's
-player menu.
-
-Examples: `trip_180_LR.mp4`, `concert_360_TB.mp4`, `hike_fisheye190_LR.mp4`.
-
-Codecs: H.265 at 8K played (verified, streamed). Local H.264 and H.265
-files haven't been played yet. The test clips below cover that.
-
-## Test clips
-
-The script doesn't include these. To check a setup, make two 20 s clips:
-3840×1920, 180° side by side, with the left eye tinted red and the right eye
-cyan. In the headset each eye should see only its own colour. A single mixed
-colour means the stereo split is wrong.
+The command-line route uses the same player:
 
 ```sh
-ffmpeg -f lavfi -i testsrc2=size=1920x1920:rate=30:duration=20 \
-  -filter_complex "[0:v]split[a][b];[a]colorchannelmixer=rr=1:gg=0.3:bb=0.3[l];[b]colorchannelmixer=rr=0.3:gg=1:bb=1[r];[l][r]hstack" \
-  -c:v libx264 -pix_fmt yuv420p -b:v 20M frame-test_180_LR_h264.mp4
-scripts/push-vr-video.sh frame-test_180_LR_h264.mp4
+scripts/push-vr-video.sh --launch --theatre ~/Movies/film_SBS.mp4
+scripts/push-vr-video.sh --launch --layout ou ~/Pictures/stereo.png
+scripts/push-vr-video.sh --launch capture.splat
+scripts/push-vr-video.sh --list
+scripts/push-vr-video.sh --stop
 ```
 
-## Streaming from the Mac instead of copying (untested)
+Uploads live in `~/Videos/FrameControl/<id>/` on the Frame. Each upload gets
+its own directory, so sending another file with the same name doesn't replace
+it. The UI's existing upload limit is 8 GiB. Transfers use the app's rsync/scp
+path; resumable large uploads are not implemented here yet. Existing
+`~/Videos/VR` files and Proton prefixes are left alone. The script no longer
+launches DeoVR, links a Proton prefix, or accepts directories.
 
-DeoVR has a DLNA browser (the binary contains `Searching for DLNA
-devices...` and a UPnP ContentDirectory client). A DLNA server on the Mac
-should therefore appear in DeoVR without copying anything, for example
-`brew install rclone` then `rclone serve dlna ~/Movies/VR`. This is **inferred**, not
-tried. 8K VR video needs roughly 50–100 Mbit/s sustained, and the Wi-Fi
-sample above (about 30–40 Mbit/s) suggests copying first is the safer default.
+| Media | Supported preview |
+|---|---|
+| Movies | H.264 / H.265, mono or left-first SBS / top-first OU; audio through the Frame's PulseAudio-compatible server |
+| Stereo photos | PNG / JPEG containing both eyes, SBS or OU |
+| Gaussian splats | Common 32-byte `.splat` records, 1–20,000 Gaussians; a stationary stereo preview |
+
+Auto layout reads delimited filename tags: `_SBS`, `_HSBS`, `_LR`, `_OU`,
+`_TB`, `_HOU`, `_HTB`, `_FSBS`, `_FOU`, `_FTB`. SBS/OU without `F` means
+half-resolution packing. Full packing preserves each eye's original aspect.
+It also accepts FFmpeg's `stereo_mode` metadata (`left_right`, `top_bottom`,
+`mono`); left/right and top/bottom metadata are treated as full packing.
+Choose an explicit layout if that assumption doesn't match the file.
+Unknown or conflicting tags ask for a choice, rather than silently flattening
+stereo. The explicit selector always wins. Layout is not guessed from resolution.
+
+## What was verified
+
+**Verified remotely, 2026-09-28:** SteamOS 0.4.1, BUILD_ID
+`20260925.6191901`, SteamVR 2.18.1. Nobody wore the headset for these checks.
+All test media were generated by us. No paid content or DRM was involved.
+
+- Stock `ffmpeg` `h264_v4l2m2m` decoded 150 frames of our 1920×1080 H.264
+  test in 0.128 s (decode only); converting all frames to RGBA took 0.242 s.
+- Our ffmpeg → Python → OpenVR path submitted all 150 frames and exited 0.
+  The 1280×720 prototype took 4.775 s; the full 1920×1080 player took
+  4.618 s. These are wall times, not in-headset frame-rate measurements.
+  Finishing a 5 s clip early showed those probes weren't paced, so the final
+  player paces output at 30 fps: all 150 frames then completed in **5.025 s**.
+- The H.265 hardware decoder also completed the generated 1080p clip
+  (60 frames, exit 0); this is a short compatibility check, not a 4K/8K benchmark.
+- Our actual player, launched through Frame Control's media API, displayed
+  SBS and OU photos with red only in the left-eye capture and cyan only in
+  the right. OpenVR's `SideBySide_Parallel` flag separates the eyes; we
+  rearrange OU rows ourselves.
+- A generated 48-Gaussian `.splat` rendered in our own CPU renderer and appeared
+  in both eyes with separate perspective projections.
+- Theatre's owned dark surround and screen appeared in captures. Steam's
+  dashboard remained available over them. Stop removed the owned overlays
+  and ended the dedicated user service. No global SteamVR setting was changed.
+- A generated H.264/AAC clip reached the Pulse audio output and completed
+  all 100 video frames with exit 0. This proves the output path, not audible
+  quality or lip sync.
+
+![Frame Control SBS eye-isolation proof: red left, cyan right](img/media-sbs-proof.png)
+
+![Our Gaussian-splat stereo preview on the Frame](img/media-splat-proof.png)
+
+**Verified end to end, 2026-09-29** (same build; headset unworn): uploads
+through the HTTP API, the web UI and `scripts/push-vr-video.sh`, all played by
+the owned player. Our generated test files:
+
+| Case | Result |
+|---|---|
+| H.264 half-SBS 1920×1080 with AAC, theatre | 240/240 frames in 8.09 s; audio stream "Frame Control Media" in PulseAudio |
+| H.265 half-OU 1920×1080 | 180/180 frames in 6.03 s; red left eye, cyan right |
+| H.264 full-SBS 3840×1080, `stereo_mode=left_right` only | Detected from metadata; 150/150 frames in 5.03 s |
+| H.264 1280×720, explicit 2D | 150/150 frames in 5.02 s |
+| SBS PNG, OU JPEG (theatre) | Correct eye in each capture |
+| 3,000-Gaussian `.splat` | Rendered in about 5 s, then held until Stop |
+| 2D file on Auto, `_SBS_OU` file, HEIC, VP9 | Refused with the documented message |
+| Second Play while one runs | Refused: "Stop the current media…" |
+
+Stop always left the unit inactive, and no player process remained.
+
+**Standby (verified):** an unworn Frame turns its displays off a few seconds
+after it wakes. `SetOverlayRaw` then returns `RequestFailed` (23). The
+first run's movie died there. The player now drops frames while the headset
+is in standby, keeps the audio and its clock going, and resumes the picture
+when the headset wakes. The 8 s movie above dropped 40 frames and finished.
+Stills and the theatre surround are re-sent after waking. Five minutes
+without an accepted frame is reported as an error. Headset-view captures
+taken during standby show a flat dark frame, not our screen.
+
+![Media panel in Frame Control while a photo plays on the Frame](img/media-ui-panel.png)
+
+**Verified failed route:** GStreamer 1.24.2's `playbin` selected
+`v4l2h264dec`, delivered the first RGBA sample and then segfaulted (exit 139)
+in the basic appsink probe and the OpenVR probe. We do not ship that route.
+The ffmpeg path above completed instead.
+
+## Limits and blockers
+
+- **Not verified:** worn-headset comfort, sound quality/lip sync, long movies,
+  4K/8K decode, HDR, controller interaction or behaviour on other OS builds.
+  Output is bounded to 1920×1080 packed pixels before OU rearrangement.
+- **Not implemented:** pause, seeking, subtitles, playlists, right-eye-first
+  layouts, non-square pixel correction, VR180/360 projection and fisheye.
+  This preview is a flat stereo screen, not a dome player.
+- **Native spatial-photo blocker:** HEIC/HEIF/AVIF/MPO stereo-container
+  extraction isn't implemented in our viewer. We reject these rather than
+  displaying one image and calling it spatial. Export both eyes to PNG/JPEG
+  first. This is a current implementation gap, not a claim that the Frame
+  cannot support these containers.
+- **Large/immersive splat blocker:** the owned CPU rasterizer projects 3D
+  covariance into each eye and alpha-composites Gaussians, but renders a
+  fixed view at 320×240 per eye. It caps each Gaussian footprint at 32 pixels
+  and normalizes the scene to a two-metre box. Large scenes, PLY/SPZ, live
+  head-position parallax and navigation need a GPU scene renderer; this
+  version rejects files above 20,000 records. It is a stereo preview, not
+  an immersive walk-through.
+- A single player can run at a time. It stops at EOF, on **Stop**, or after
+  four hours in any case, so longer movies are cut off. Still images remain
+  until Stop or that timeout. There is no delete action yet: remove old
+  uploads from `~/Videos/FrameControl/` over SSH. The log is
+  `~/.local/share/frame-control/media/player.log` on the Frame.
+- **Panel/stream theatre remains outside this media slice:** SteamVR's
+  `vrcmd --dock-overlay` accepts `theater`, but docking an existing panel
+  and its dimming behaviour were not verified here. The shared headset had
+  workspace and stream tests active. We did not reposition their panels.
+  Integration with [#22](https://github.com/saphid/frame-control/issues/22)
+  and [#31](https://github.com/saphid/frame-control/issues/31) can use the
+  owned rendering hook below; no second stream/window manager is introduced.
+
+## Integration hook
+
+`POST /api/upload` with `X-Mode: media` and `X-Filename` sends a file and
+returns its `id`. `POST /api/media` accepts:
+
+```json
+{"action":"play","id":"<32 hex characters>/film_SBS.mp4","layout":"auto","theatre":true}
+```
+
+Other actions are `list`, `status`, `stop`. These use the normal `X-Frame-UI`
+guard. Play reports **starting**, not a claim that frames reached the headset;
+read status for `playing`, `ended`, `stopped` or `error`.
+The own-code files are copied to `~/.local/share/frame-control/media/` and
+run in the `frame-control-media.service` systemd user unit. Stop affects only
+that unit, including its decoder child.
+
+For a Frame-side stream producer, `frame_media_player.Overlay` exposes
+`create(key, width, distance, stereo=False, aspect=1, order=1)`,
+`pixels(handle, rgba, width, height)` and `close()`. Use an owned unique key,
+pass interleaved RGBA bytes (left/right halves for stereo) and always close in
+`finally`. `create` uses a head-relative transform; it does not move another
+app's panel. The player demonstrates a separate black surround overlay.
+`frame_media.stereo_pixels` converts OU to SBS. This is the narrow rendering
+hook for stream/workspace work; it doesn't capture or manage a Mac/PC stream.
+
+## Optional separate app
+
+You can independently install **DeoVR Video Player** (free Steam app 837380)
+if you prefer its VR180/360 features. Earlier tests on SteamOS 0.3.0,
+build `20260922.6101926` (2026-09-25), verified its OpenVR initialization and
+8K H.265 streamed VR180 decoding under Proton. Frame Control's media features
+neither install nor launch it, and do not depend on it. Its behaviour and
+file-naming conventions are not evidence about our player.

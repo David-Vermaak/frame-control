@@ -21,6 +21,8 @@
 set -euo pipefail
 
 FRAME_ALIAS=${FRAME_ALIAS:-frame}
+# Frame Control passes the headset it has chosen: its address and pinned identity.
+ssh_opts=(${(Q)${(z)FRAME_SSH_OPTS:-}})
 REMMINA_PROFILE="~/.var/app/org.remmina.Remmina/data/remmina/mac-screen-sharing.remmina"
 id="" name=""
 
@@ -109,4 +111,4 @@ EOF
 )
 b64=$(print -rn -- "$remote" | base64)
 
-ssh "$FRAME_ALIAS" "bash -c \"\$(echo $b64 | base64 -d)\" panel-on-frame $id ${(j: :)${(@q)cmd}}"
+ssh "${ssh_opts[@]}" "$FRAME_ALIAS" "bash -c \"\$(echo $b64 | base64 -d)\" panel-on-frame $id ${(j: :)${(@q)cmd}}"

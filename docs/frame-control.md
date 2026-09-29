@@ -17,13 +17,16 @@ python3 ui/server.py         # anywhere: then open http://127.0.0.1:47810
 
 ## Features
 
-The window has four tabs: **Home** (headset view, status, screenshots),
+The window has five tabs: **Home** (headset view, status, screenshots),
 **Games** (installed games, sideloaded titles, getting games), **Android** (apps,
-the catalogue, display settings, reports) and **Tools** (sending files and text,
-Flatpaks, remote and power). Keys 1–4 switch between them. Files can be dropped
-anywhere in the window. When the Frame can't be reached, one banner says why in
-plain words and the app retries every few seconds, filling everything in once it
-answers. Flatpak and Android installs run in the background; the bottom bar
+the catalogue, display settings, reports), **Tools** (sending files and text,
+Flatpaks, remote and power) and **Devices** (your headsets and their addresses).
+Keys 1–5 switch between them. Files can be dropped anywhere in the window. A
+connection pill in the header always shows which headset, which network this
+computer is on, the address in use or being tried, and each step of connecting
+as it happens; click it for the whole timeline. When the Frame can't be
+reached, a banner says why in plain words, what was tried, and counts down to
+the next try, filling everything in once it answers. Flatpak and Android installs run in the background; the bottom bar
 counts them while they run.
 
 - **Headset view**: what the lenses show, as SteamVR composites it (the room,
@@ -56,9 +59,11 @@ counts them while they run.
   Steam library), then launch, stop, test or remove it. **Report an APK** records
   whether any APK worked (F-Droid or not: pick a file, type a package, or use an
   installed app). Your reports are saved on your computer and change the verdicts
-  you see. They aren't uploaded anywhere: the shared database is maintainer-only
-  for now (see [compat-db/README.md](../compat-db/README.md)). Uses the app's bundled
-  `adb`, or yours if you have one.
+  you see. With **Share compatibility results** on (Privacy & updates), they also
+  go to the shared database ([privacy.md](privacy.md),
+  [compat-db/README.md](../compat-db/README.md)). A failed install records
+  itself when the APK was the problem, and after an install the app offers a
+  20-second test. Uses the app's bundled `adb`, or yours if you have one.
 - **Android display**: pick a running Lepton instance (by the app in it) and set
   its resolution (Native 1920×1080, or Sharp 2560×1440 with density scaled to
   match), UI scale (Smaller / Default / Larger, or an exact dpi) and text size
@@ -70,8 +75,17 @@ counts them while they run.
   Runtime picked from the program's header), listed under **Sideloaded titles**
   with Launch and Remove; see [sideloading.md](sideloading.md). Send typed text, or your computer's clipboard, to the
   Frame clipboard.
+- **Mac in the headset** (macOS): show any Mac window, or a whole screen, as
+  its own panel in the headset. Place it with the SteamVR dashboard, click and
+  scroll with the laser, and type on the Mac. Streams hardware H.264 through
+  an SSH tunnel; see [mac-in-headset.md](mac-in-headset.md).
 - **Flatpaks**: install and remove them (quick picks: Moonlight, Firefox, VLC,
   Remmina).
+- **Devices**: several headsets, each with several addresses (LAN IPs per
+  network, its `.local` mDNS name, its Tailscale IP or MagicDNS name). The app
+  tries them all at once and learns which worked on which network. Add, edit,
+  reorder and test addresses, find a headset on Tailscale or on this network,
+  name your networks, and switch headsets. See [devices.md](devices.md).
 - **One-click tools**: SSH or SFTP in a terminal window, Steam Link, and remote
   desktop (Windows App on macOS, Remote Desktop on Windows, Remmina or FreeRDP on
   Linux). Sleep, restart and shut down open a terminal window because SteamOS
@@ -86,13 +100,18 @@ app bundles `ui/`, `scripts/`, `frame/android/`, Valve's `frame/devkit-utils/` a
 ([python-build-standalone](https://github.com/astral-sh/python-build-standalone))
 and `adb` from Google's platform-tools, so there's nothing else to install. It
 also bundles curl's copy of Mozilla's CA list, because Python on Windows only
-trusts root certificates already in the Windows store.
-`app/build/fetch-deps.js` downloads both, pinned by SHA-256.
+trusts root certificates already in the Windows store. And it bundles KDE
+Connect for the Frame (Valve's arm64 build and five libraries, 3.6 MB,
+[`frame/kdeconnect`](../frame/kdeconnect/NOTICE.md)), which it copies to the
+Frame for the keyboard and trackpad.
+`app/build/fetch-deps.js` downloads all of it, pinned by SHA-256.
 
 The server is Python stdlib only and listens on 127.0.0.1. It rejects requests
 with a non-local `Host` header, and any `/api/` request without a custom
 header, so other websites can't drive it or read captures. Everything reaches
-the headset through the `frame` SSH alias. On macOS and Linux it keeps one
+the headset through its SSH alias (`frame` for the first one), pointed at the
+address that answered with `-o HostName=` (`ui/frame_link.py`, described in
+[devices.md](devices.md)). On macOS and Linux it keeps one
 multiplexed SSH connection open, so status and each capture take about 0.3 s.
 Windows' OpenSSH can't share a connection, so there each request connects on
 its own and the app is a little slower. What differs between the three
@@ -148,5 +167,16 @@ npm run dist:win       # Windows: installer and .zip
 npm run dist:linux     # Linux: AppImage and .deb, x64 and arm64
 ```
 
-Pushing a `v*` tag builds all three in GitHub Actions and attaches them to the
-release (`.github/workflows/release.yml`).
+Pushing a `v*` tag builds all three in GitHub Actions and attaches them to a
+draft release (`.github/workflows/release.yml`). Running copies are offered it
+once you publish it: see [releasing.md](releasing.md).
+
+## AI agents and assistant
+
+**Documented:** [the MCP adapter and assistant panel](agents.md) are Frame
+Control implementations. MCP wraps this HTTP API without API keys. Changes
+require a separate user approval; power also retains its password prompt. The
+assistant uses a user-chosen endpoint and sends nothing until the user opts in
+for a message. Screenshot context is separately opt-in. Model replies cannot
+operate the headset. Tools → Open assistant opens the page; the linked guide
+covers putting it in a Chromium panel on the Frame.

@@ -25,6 +25,10 @@ containers = {n: c for n, c in fs.read()['lepton'].items() if alive(c)}
 if cmd == 'ps':
     for name, c in sorted(containers.items()):
         print(f"{name} {c['port']}")
+elif cmd == 'inspect':
+    if args[-1] not in containers:
+        sys.exit(1)
+    print('true')
 elif cmd == 'stop':
     name = args[-1]
     c = containers.get(name)

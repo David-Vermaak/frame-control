@@ -101,10 +101,22 @@ make_key() {  # path type comment [extra ssh-keygen args]
   fi
 }
 
-# Checks each step itself: pair_with_devkit calls this from an `elif`, where set -e is off.
+# Takes the lock Frame Control uses to edit ~/.ssh/config (ui/frame_devices.py), so a
+# running app and this script never write over each other's change.
 write_config() {
+  local lockfd="" rc
+  zmodload zsh/system 2>/dev/null
+  touch "$CONFIG.frame-control.lock" 2>/dev/null
+  zsystem flock -t 30 -f lockfd "$CONFIG.frame-control.lock" 2>/dev/null || lockfd=""
+  write_config_locked; rc=$?
+  [[ -n "$lockfd" ]] && zsystem flock -u "$lockfd"
+  return $rc
+}
+
+# Checks each step itself: pair_with_devkit calls this from an `elif`, where set -e is off.
+write_config_locked() {
   touch "$CONFIG" && chmod 600 "$CONFIG" || return 1
-  local tmp
+  local tmp new="$CONFIG.frame-control.$$"
   tmp=$(mktemp) || return 1
   # Drop any previous managed block, then PREPEND a fresh one: ssh uses the first
   # value it sees per option, so this block must precede any other "Host frame"
@@ -126,7 +138,8 @@ write_config() {
     print -r -- "Host *"
     print -r -- "$END_MARK"
     cat "$tmp"
-  } > "$CONFIG" || { print -u2 "!! Writing $CONFIG failed; its previous contents are in $tmp"; return 1; }
+  } > "$new" && chmod 600 "$new" && mv -f "$new" "$CONFIG" \
+    || { rm -f "$new"; print -u2 "!! Writing $CONFIG failed; its previous contents are in $tmp"; return 1; }
   rm -f "$tmp"
 }
 

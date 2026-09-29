@@ -141,6 +141,21 @@ OWNED_JS = r"""
 })()
 """
 
+# Software has app_type 2, so utility ownership must not use OWNED_JS's games filter.
+# Steam prices checked 2026-09-28: OVR Advanced Settings is paid on Steam too.
+UTILITY_IDS = (1009850, 1173510, 1068820, 908520, 1494460)
+FREE_UTILITIES = (1494460,)
+UTILITIES_JS = """(() => {
+  const apps = appStore.allApps;
+  if (!apps || !apps.length) throw new Error("Steam library is not loaded; ownership is unknown");
+  return [1009850,1173510,1068820,908520,1494460].map(id => {
+    const a = apps.find(a => a.appid === id);
+    return {id, owned: !!a, installed: !!a?.local_per_client_data?.installed,
+            frame: a ? (a.steam_hw_compat_category_packed >> 8) & 3 : 0};
+  });
+})()"""
+
+
 WIZARD_JS = """SteamClient.Installs.GetInstallManagerInfo().then(i => ({
   state: i?.eInstallState ?? 0, app: i?.currentAppID ?? 0, need: i?.nDiskSpaceRequired || 0,
   free: i?.nDiskSpaceAvailable || 0, error: i?.eAppError, detail: i?.errorDetail }))"""
@@ -158,6 +173,10 @@ def owned():
 
 def install(appid):
     page = Page()
+    if appid in UTILITY_IDS and appid not in FREE_UTILITIES:
+        rows = page.eval(UTILITIES_JS)
+        if not any(r['id'] == appid and r['owned'] for r in rows):
+            raise Fail("This paid utility is not owned by the Frame account. No install or store action was taken.")
     app = page.eval(f"(a => a && {{name: a.display_name, installed: !!a.local_per_client_data?.installed}})"
                     f"(appStore.GetAppOverviewByAppID({appid}))")
     if app and app["installed"]:
@@ -216,6 +235,8 @@ def main():
         cmd = sys.argv[1] if len(sys.argv) > 1 else ""
         if cmd == "owned":
             out = owned()
+        elif cmd == "utilities":
+            out = {"utilities": Page().eval(UTILITIES_JS)}
         elif cmd in ("install", "store") and len(sys.argv) == 3 and sys.argv[2].isdigit():
             out = (install if cmd == "install" else store)(int(sys.argv[2]))
         else:

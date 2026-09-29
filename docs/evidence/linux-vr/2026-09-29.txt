@@ -1,0 +1,29 @@
+Locked real-Frame repeat, 2026-09-29
+SteamOS 0.4.1, BUILD_ID 20260925.6191901; aarch64.
+mkdir /tmp/frame-test.lock succeeded before installs/launches; rmdir issued after cleanup.
+Preflight battery 44%, charging; before WiVRn 46%, before ALVR 47%, cleanup 47%.
+Original Steam PID 49823 and vrserver PID 49571 present after cleanup.
+Same unmodified upstream release APKs and SHA-256s as 2026-09-28.txt.
+Installer functions loaded from a613735 before checkout was fast-forwarded to current main.
+No compatibility layer injected. Per-app immersive Lepton instances, Steam shortcut launches.
+Headset unworn. No Linux gaming host. No pairing or streaming session reached.
+
+WIVRN: selected journal lines (local +1000 prefix, Android timestamps UTC).
+Sep 29 11:03:15 frame lepton-steamlaunch-2817846116[1967]: 09-29 01:03:15.202  1153  1181 E OpenXR-Loader: Error [GENERAL | xrCreateInstance | OpenXR-Loader] : LoaderInstance::CreateInstance, no support found for requested extension: XR_KHR_convert_timespec_time
+Sep 29 11:03:15 frame lepton-steamlaunch-2817846116[1967]: 09-29 01:03:15.210  1153  1181 I WiVRn   : [2026-09-29 01:03:15.210] [WiVRn] [info] Failed to create OpenXR instance version 1.1.58: XR_ERROR_EXTENSION_NOT_PRESENT
+Sep 29 11:03:15 frame lepton-steamlaunch-2817846116[1967]: 09-29 01:03:15.248  1153  1181 E OpenXR-Loader: Error [GENERAL | xrCreateInstance | OpenXR-Loader] : LoaderInstance::CreateInstance, no support found for requested extension: XR_KHR_convert_timespec_time
+Sep 29 11:03:15 frame lepton-steamlaunch-2817846116[1967]: 09-29 01:03:15.256  1153  1181 I WiVRn   : [2026-09-29 01:03:15.256] [WiVRn] [info] Failed to create OpenXR instance version 1.0.58: XR_ERROR_EXTENSION_NOT_PRESENT
+Sep 29 11:03:15 frame lepton-steamlaunch-2817846116[1967]: 09-29 01:03:15.257  1153  1181 E WiVRn   : [2026-09-29 01:03:15.257] [WiVRn] [error] Error during initialization: Failed to create OpenXR instance: XR_ERROR_EXTENSION_NOT_PRESENT
+Screenshot API exit 0; 1920x1080 uniformly dark image; no client scene visible.
+
+ALVR: selected journal lines (local +1000 prefix, Android timestamps UTC).
+Sep 29 11:03:36 frame lepton-steamlaunch-2831623938[1967]: 09-29 01:03:35.553  1139  1167 E OpenXR-Loader: Error [GENERAL | xrCreateInstance | OpenXR-Loader] : LoaderInstance::CreateInstance, no support found for requested extension: XR_KHR_convert_timespec_time
+Sep 29 11:03:36 frame lepton-steamlaunch-2831623938[1967]: 09-29 01:03:35.553  1139  1165 I RustStdoutStderr: Error [GENERAL | xrCreateInstance | OpenXR-Loader] : LoaderInstance::CreateInstance, no support found for requested extension: XR_KHR_convert_timespec_time
+Sep 29 11:03:36 frame lepton-steamlaunch-2831623938[1967]: 09-29 01:03:35.611  1139  1167 E [ALVR NATIVE-RUST]: panicked at alvr/client_openxr/src/lib.rs:220:10:
+Sep 29 11:03:36 frame lepton-steamlaunch-2831623938[1967]: 09-29 01:03:35.611  1139  1167 E [ALVR NATIVE-RUST]: called `Result::unwrap()` on an `Err` value: ERROR_EXTENSION_NOT_PRESENT
+Screenshot API exit 0; 1920x1080 uniformly dark image; no client scene visible.
+
+Cleanup: both test app directories, compatdata, shadercache, containers and shortcuts absent.
+Capture output directory removed. No global settings changed; Steam/SteamVR not stopped.
+The shared lock was subsequently acquired by another thread (new directory timestamp 11:03:49 +1000).
+Native clients and Valve host streaming not exercised: no native build or Linux gaming host available.

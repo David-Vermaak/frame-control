@@ -1,0 +1,7 @@
+[
+ {"source":"one","id":"brush","package":"org.brush","name":"Open Brush","free":true,"downloadable":true,"verified":true,"version":"1","version_code":1,"min_sdk":29,"abis":["arm64-v8a"],"vr":true,"updated":"2025-01-01"},
+ {"source":"two","id":"brush2","package":"org.brush","name":"Open Brush","free":true,"downloadable":true,"verified":false,"version":"2","version_code":2,"min_sdk":29,"abis":["arm64-v8a"],"vr":true,"updated":"2026-01-01"},
+ {"source":"one","id":"other","package":"org.other","name":"Open Brush","free":true,"downloadable":true,"min_sdk":31,"abis":["arm64-v8a"],"vr":true},
+ {"source":"one","id":"unknown","package":null,"name":"Pocket Radio!","free":true,"downloadable":false,"vr":false},
+ {"source":"two","id":"unknown2","package":null,"name":"pocket  radio","free":true,"downloadable":false,"vr":false}
+]
