@@ -468,3 +468,18 @@ versus on, medians of the runs, ms):
   window to the front first.
 - Ctrl stays Ctrl. On the Mac, copy is ⌘C, so use Meta+C on a keyboard paired
   with the Frame.
+
+## Switching panels and workspace limits
+
+**Tools → Panel switcher** lists open SteamVR panels, including Mac viewers.
+Use **Show** to request focus or **Open in headset** for Frame Control's own
+switcher panel. It uses SteamVR/gamescope and Chromium, with no third-party
+overlay app. [Device checks and limits](panels.md#frame-controls-panel-switcher)
+include the difference between a panel surviving a scene launch and staying
+visible over it.
+
+Saved spatial layouts are blocked on this build: the public OpenVR transform
+setter denies access to gamescope-owned panels. Reconnecting an existing viewer
+is supported; restoring its room position after a reboot is not. We do not
+save short-lived Mac window IDs or viewer access keys as if they were a durable
+workspace. See [the feasibility evidence](panels.md#saved-spatial-layouts-blocked-on-the-current-panel-route).

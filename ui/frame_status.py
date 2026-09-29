@@ -1,9 +1,12 @@
 """Runs ON the Steam Frame (piped over SSH as `python3 -`); prints one JSON object.
 
 Read-only. Every probe is best effort: a missing tool or file gives null, not an
-error. Paths verified on SteamOS 0.3.0 (vr), build 20260922.
+error. Sensor paths verified on SteamOS 0.3.0; OpenVR timing on 0.4.1
+(build 20260925.6191901). See docs/vr-utilities.md.
 """
+import ctypes as C
 import glob
+import math
 import json
 import os
 import re
@@ -156,27 +159,156 @@ def flatpaks():
     return out
 
 
-uptime = read("/proc/uptime")
-procs = process_names()
-print(json.dumps({
-    "time": time.time(),
-    "hostname": socket.gethostname(),
-    "os": os_release(),
-    "uptime": float(uptime.split()[0]) if uptime else None,
-    "battery": battery(),
-    "power": power_source(),
-    "disk": {"root": disk("/"), "home": disk("/home")},
-    "memory": memory(),
-    "temp": max_temp(),
-    "wifi": wifi(),
-    "ip": ip_addr(),
-    "volume": volume(),
-    "services": {
-        "steamvr": "vrserver" in procs,
-        "desktop": "plasmashell" in procs,
-        "lepton": port_listening(5555),
-        "rdp": "xrdp" in procs,
-    },
-    "games": games(),
-    "flatpaks": flatpaks(),
-}))
+def thermal_alerts():
+    """Use the kernel's per-zone hot/critical trips, never a guessed chip limit."""
+    alerts, known = [], False
+    for z in glob.glob("/sys/class/thermal/thermal_zone*"):
+        t = num(z + "/temp", 0.001)
+        for trip in glob.glob(z + "/trip_point_*_type"):
+            if read(trip) not in ("hot", "critical"):
+                continue
+            limit = num(trip[:-4] + "temp", 0.001)
+            if t is not None and limit is not None and limit > 0:
+                known = True
+                if t >= limit:
+                    alerts.append({"zone": read(z + "/type"), "tempC": t, "limitC": limit})
+    return alerts if known else None
+
+
+def activity_level():
+    try:
+        rows = json.loads(run("/opt/steamvr/bin/linuxarm64/vrcmd", "--stats"))
+        if not isinstance(rows, list):
+            return None
+        return next((r.get("activity_level") for r in rows
+                     if isinstance(r, dict) and r.get("operation") == "status"), None)
+    except (ValueError, TypeError):
+        return None
+
+
+# OpenVR C ABI, ValveSoftware/openvr headers/openvr_capi.h (IVRCompositor_029).
+# Exact interface version: never guess an index against a different table.
+class Pose(C.Structure):
+    _fields_ = [('matrix', C.c_float * 12), ('velocity', C.c_float * 3),
+                ('angular', C.c_float * 3), ('result', C.c_int),
+                ('valid', C.c_bool), ('connected', C.c_bool)]
+
+
+class Timing(C.Structure):
+    _fields_ = [(n, C.c_uint32) for n in ('size', 'index', 'presents', 'mis', 'dropped', 'flags')] + [
+        ('time', C.c_double)] + [(n, C.c_float) for n in (
+        'gpuPre', 'gpuPost', 'gpu', 'compositorGpu', 'compositorCpu', 'idleCpu', 'interval',
+        'presentCpu', 'waitCpu', 'submit', 'posesCalled', 'posesReady', 'frameReady',
+        'updateStart', 'updateEnd', 'renderStart')] + [
+        ('pose', Pose), ('ready', C.c_uint32), ('first', C.c_uint32), ('transfer', C.c_float)]
+
+
+class OpenVR:
+    def __enter__(self):
+        self.lib = C.CDLL('/opt/steamvr/bin/linuxarm64/libopenvr_api.so')
+        self.lib.VR_InitInternal2.argtypes = [C.POINTER(C.c_int), C.c_int, C.c_char_p]
+        self.lib.VR_GetGenericInterface.argtypes = [C.c_char_p, C.POINTER(C.c_int)]
+        self.lib.VR_GetGenericInterface.restype = C.c_void_p
+        err = C.c_int()
+        self.lib.VR_InitInternal2(C.byref(err), 3, None)  # background: never start or keep SteamVR running
+        if err.value:
+            raise RuntimeError(f'SteamVR unavailable (init {err.value})')
+        return self
+
+    def __exit__(self, *args):
+        self.lib.VR_ShutdownInternal()
+
+    def function(self, interface, index, result, *args):
+        err = C.c_int()
+        ptr = self.lib.VR_GetGenericInterface(('FnTable:' + interface).encode(), C.byref(err))
+        if err.value or not ptr:
+            raise RuntimeError(f'{interface} unavailable ({err.value})')
+        return C.CFUNCTYPE(result, *args)(C.cast(ptr, C.POINTER(C.c_void_p))[index])
+
+
+def cpu_ticks():
+    line = (read('/proc/stat') or '').splitlines()
+    if not line or not line[0].startswith('cpu '):
+        return None
+    try:
+        # guest/guest_nice are already included in user/nice.
+        ticks = [int(x) for x in line[0].split()[1:9]]
+        return sum(ticks), ticks[3] + ticks[4]
+    except (ValueError, IndexError):
+        return None
+
+
+def cpu_percent(before, after):
+    if before is None or after is None or after[0] <= before[0]:
+        return None
+    return round(max(0, min(100, 100 * (1 - (after[1] - before[1]) / (after[0] - before[0])))), 1)
+
+
+def positive(value):
+    return round(value, 2) if math.isfinite(value) and value > 0 else None
+
+
+def timing_values(before, after):
+    dt, frames = after.time - before.time, after.index - before.index
+    if dt <= 0 or frames <= 0 or frames / dt > 1000:
+        return {}  # standby or old data; never present stale timings as live
+    return {'compositorFps': positive(frames / dt),
+            'frameMs': positive(1000 * dt / frames),
+            'appFps': positive(1000 / after.interval) if after.interval > 0 else None,
+            'gpuMs': positive(after.gpu), 'compositorCpuMs': positive(after.compositorCpu)}
+
+
+def performance():
+    out = {'compositorFps': None, 'frameMs': None, 'appFps': None,
+           'gpuMs': None, 'compositorCpuMs': None, 'cpuPercent': None,
+           'gpuMHz': num('/sys/class/devfreq/3d00000.gpu/cur_freq', 1e-6)}
+    before = cpu_ticks()
+    try:
+        with OpenVR() as vr:
+            get = vr.function('IVRCompositor_029', 10, C.c_bool, C.POINTER(Timing), C.c_uint32)
+            a, b = Timing(), Timing()
+            a.size = b.size = C.sizeof(Timing)
+            first = get(C.byref(a), 0)
+            time.sleep(0.2)
+            if first and get(C.byref(b), 0):
+                out.update(timing_values(a, b))
+    except (OSError, RuntimeError, AttributeError):  # AttributeError: a SteamVR build without these exports
+        time.sleep(0.2)
+    out['cpuPercent'] = cpu_percent(before, cpu_ticks())
+    return out
+
+
+def status():
+    uptime = read("/proc/uptime")
+    procs = process_names()
+    return {
+        "time": time.time(),
+        "performance": performance(),
+        "hostname": socket.gethostname(),
+        "os": os_release(),
+        "uptime": float(uptime.split()[0]) if uptime else None,
+        "battery": battery(),
+        "power": power_source(),
+        "disk": {"root": disk("/"), "home": disk("/home")},
+        "memory": memory(),
+        "temp": max_temp(),
+        "wifi": wifi(),
+        "ip": ip_addr(),
+        "volume": volume(),
+        "services": {
+            "steamvr": "vrserver" in procs,
+            "desktop": "plasmashell" in procs,
+            "lepton": port_listening(5555),
+            "rdp": "xrdp" in procs,
+        },
+        "games": games(),
+        "flatpaks": flatpaks(),
+    }
+
+
+def main():
+    print(json.dumps(status()))
+
+
+if __name__ == "__main__":
+    main()

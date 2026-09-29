@@ -86,6 +86,7 @@ class ServerGuards(unittest.TestCase):
 
     def test_api_needs_custom_header(self):
         # <img src> and plain form posts from other sites can't set it.
+        self.assertEqual(self.request("POST", "/api/comfort", {"action": "start"})[0], 403)
         self.assertEqual(self.request("GET", "/api/status")[0], 403)
         self.assertEqual(self.request("GET", "/api/screenshot?view=headset")[0], 403)
         self.assertEqual(self.request("GET", "/api/shots")[0], 403)
@@ -101,6 +102,8 @@ class ServerGuards(unittest.TestCase):
 
     def test_input_validation(self):
         cases = [
+            ("/api/comfort", {"action": "poweroff"}),
+            ("/api/comfort", {"action": "start", "minutes": 0}),
             ("/api/launch", {"appid": "620; rm -rf ~"}),
             ("/api/launch", {"appid": ""}),
             ("/api/flatpak", {"id": "org.example.App;id", "action": "install"}),
@@ -275,6 +278,56 @@ class OneServer(unittest.TestCase):
                      headers={"Content-Type": "application/json", "X-Frame-UI": "1", "Host": f"127.0.0.1:{port}"})
         r = conn.getresponse()
         self.assertEqual(r.status, 403, r.read())
+
+
+class ArtworkSettings(unittest.TestCase):
+    """The settings panel's endpoints, with and without the page's X-Frame-UI key."""
+
+    def test_settings_need_and_accept_the_ui_key(self):
+        with tempfile.TemporaryDirectory() as home:
+            port = free_port()
+            env = {**os.environ, "FRAME_ALIAS": "frame-control-test.invalid", "PYTHONDONTWRITEBYTECODE": "1",
+                   "HOME": home, "APPDATA": home, "XDG_DATA_HOME": home}
+            for name in ("STEAMGRIDDB_API_KEY", "FRAME_STEAMGRIDDB_API_KEY", "FRAME_UI_KEY"):
+                env.pop(name, None)
+            proc = subprocess.Popen([sys.executable, str(ROOT / "ui" / "server.py"), "--port", str(port)],
+                                    env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            try:
+                def request(method, path, body=None, headers=None):
+                    conn = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
+                    conn.request(method, path, body=json.dumps(body).encode() if body is not None else None,
+                                 headers=headers or {})
+                    r = conn.getresponse()
+                    payload = r.read()
+                    conn.close()
+                    return r.status, payload
+                for _ in range(100):
+                    try:
+                        if request("GET", "/")[0] == 200:
+                            break
+                    except OSError:
+                        time.sleep(0.05)
+                key = {"X-Frame-UI": "1", "Content-Type": "application/json"}
+                self.assertEqual(request("GET", "/api/settings/artwork")[0], 403)
+                self.assertEqual(request("POST", "/api/settings/artwork", {"steamgriddb_api_key": "abc"})[0], 403)
+                status, payload = request("GET", "/api/settings/artwork", headers=key)
+                self.assertEqual((status, json.loads(payload)["steamgriddb_configured"]), (200, False))
+                status, payload = request("POST", "/api/settings/artwork", {"steamgriddb_api_key": "abc_1"}, key)
+                self.assertEqual((status, json.loads(payload)["steamgriddb_configured"]), (200, True))
+                self.assertNotIn(b"abc_1", payload)
+                status, payload = request("GET", "/api/settings/artwork", headers=key)
+                self.assertTrue(json.loads(payload)["steamgriddb_configured"])
+                self.assertEqual(request("POST", "/api/settings/artwork", {"steamgriddb_api_key": "a b"}, key)[0], 400)
+            finally:
+                proc.terminate()
+                proc.wait(timeout=10)
+
+    def test_panel_script_uses_the_keyed_api_helper(self):
+        script = (ROOT / "ui" / "artwork-settings.js").read_text(encoding="utf-8")
+        self.assertNotIn("fetch(", script)
+        self.assertIn("api('/api/settings/artwork'", script)
+        page = (ROOT / "ui" / "index.html").read_text(encoding="utf-8")
+        self.assertLess(page.index("async function api("), page.index('<script src="/artwork-settings.js">'))
 
 
 @unittest.skipIf(os.name == "nt", "runs on the Frame (Linux); local-bin/ssh is a POSIX shell script")

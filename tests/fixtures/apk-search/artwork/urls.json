@@ -1,0 +1,16 @@
+{
+  "brush-banner.jpg": "https://raw.githubusercontent.com/icosa-foundation/openbrush.app/main/assets/bg.jpg",
+  "brush-icon.png": "https://raw.githubusercontent.com/icosa-foundation/openbrush.app/main/assets/icon.png",
+  "brush-shot1.png": "https://raw.githubusercontent.com/icosa-foundation/openbrush.app/main/assets/carousel/1.png",
+  "brush-shot2.webp": "https://raw.githubusercontent.com/icosa-foundation/openbrush.app/main/assets/carousel/2.webp",
+  "brush-shot3.webp": "https://raw.githubusercontent.com/icosa-foundation/openbrush.app/main/assets/carousel/3.webp",
+  "luanti.png": "https://opengraph.githubassets.com/1/luanti-org/luanti",
+  "kart.png": "https://opengraph.githubassets.com/1/supertuxkart/stk-code",
+  "luanti-icon.png": "https://raw.githubusercontent.com/luanti-org/luanti/master/textures/base/pack/logo.png",
+  "pod-icon.png": "https://f-droid.org/repo/de.danoeh.antennapod/en-US/icon_w44b41PyuNt3pI7Gh8zYHJrWgu__3HT7YSWZtttfenk=.png",
+  "mindustry-icon.png": "https://f-droid.org/repo/io.anuke.mindustry/en-US/icon_Eno3XvqCZUcHRm3eMjiUleAxgzLopPe6-hkI7BHx1lU=.png",
+  "mindustry-shot.png": "https://f-droid.org/repo/io.anuke.mindustry/en-US/phoneScreenshots/1.png",
+  "pod-shot.png": "https://f-droid.org/repo/de.danoeh.antennapod/en-US/phoneScreenshots/00.png",
+  "newpipe-icon.png": "https://f-droid.org/repo/org.schabi.newpipe/en-US/icon_OHy4y1W-fJCNhHHOBCM9V_cxZNJJgbcNkB-x7UDTY9Q=.png",
+  "newpipe-shot.png": "https://f-droid.org/repo/org.schabi.newpipe/en-US/phoneScreenshots/00.png"
+}

@@ -10,6 +10,7 @@
 const { contextBridge, ipcRenderer, webUtils } = require("electron");
 
 contextBridge.exposeInMainWorld("frameApp", {
+  notify: (message, request) => ipcRenderer.invoke("comfort:notify", message, request),
   readClipboard: () => ipcRenderer.invoke("clipboard:read"),
   setUpConnection: () => ipcRenderer.invoke("connection:setup"),
   // The Frame menu's headset switcher: the page tells it the headsets, and hears picks.

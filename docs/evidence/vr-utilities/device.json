@@ -1,0 +1,53 @@
+{
+  "date": "2026-09-28",
+  "os": {
+    "version": "0.4.1",
+    "build": "20260925.6191901",
+    "variant": "vr"
+  },
+  "performance": {
+    "compositorFps": 72.0,
+    "frameMs": 13.89,
+    "appFps": null,
+    "gpuMs": 3.07,
+    "compositorCpuMs": 0.61,
+    "cpuPercent": 40.6,
+    "gpuMHz": 903.0
+  },
+  "batteryPercent": 16,
+  "maxTempC": 73.5,
+  "ownership": [
+    {
+      "id": 1009850,
+      "owned": false,
+      "installed": false,
+      "frame": 0
+    },
+    {
+      "id": 1173510,
+      "owned": false,
+      "installed": false,
+      "frame": 0
+    },
+    {
+      "id": 1068820,
+      "owned": false,
+      "installed": false,
+      "frame": 0
+    },
+    {
+      "id": 908520,
+      "owned": false,
+      "installed": false,
+      "frame": 0
+    },
+    {
+      "id": 1494460,
+      "owned": false,
+      "installed": false,
+      "frame": 0
+    }
+  ],
+  "hudLifecycle": "open, duplicate-open, close passed before control-test pause; overlay probe removal verified",
+  "comfort": "Initial 1cm seated probe restored exactly. Later commits/readback disagreed while Frame in use; Alex paused control tests. No controls shipped."
+}

@@ -255,7 +255,10 @@ def _icon_png(z, names, icons):
     # Adaptive icons are XML; fall back to the largest launcher PNG.
     pngs = sorted((n for n in names if n.endswith('.png') and 'ic_launcher' in n and 'foreground' not in n),
                   key=lambda n: z.getinfo(n).file_size)
-    return _read(z, pngs[-1], MAX_ICON) if pngs else None
+    if pngs:
+        return _read(z, pngs[-1], MAX_ICON)
+    # Godot exports can keep only an adaptive launcher plus the project icon.
+    return _read(z, 'assets/icon.png', MAX_ICON) if 'assets/icon.png' in names else None
 
 
 if __name__ == '__main__':

@@ -1,0 +1,410 @@
+[
+  {
+    "tag_name": "release-1.1.63",
+    "draft": false,
+    "prerelease": false,
+    "published_at": "2026-09-02T21:22:32Z",
+    "assets": [
+      {
+        "id": 541779948,
+        "name": "apilayer_api_dump-1.1.63.aar",
+        "size": 5120886,
+        "browser_download_url": "https://github.com/KhronosGroup/OpenXR-SDK-Source/releases/download/release-1.1.63/apilayer_api_dump-1.1.63.aar",
+        "digest": "sha256:9cab975cc8df3a99f6530f47a1fbabfa0527109a138f5a3ef5150672a658c61c"
+      },
+      {
+        "id": 541779969,
+        "name": "apilayer_api_dump-1.1.63.aar.asc",
+        "size": 215,
+        "browser_download_url": "https://github.com/KhronosGroup/OpenXR-SDK-Source/releases/download/release-1.1.63/apilayer_api_dump-1.1.63.aar.asc",
+        "digest": "sha256:419ec65d3f526c617176f272d8a481488181ade017cb05ef42205cb2c5a86f05"
+      },
+      {
+        "id": 541779983,
+        "name": "apilayer_api_dump-1.1.63.pom",
+        "size": 1462,
+        "browser_download_url": "https://github.com/KhronosGroup/OpenXR-SDK-Source/releases/download/release-1.1.63/apilayer_api_dump-1.1.63.pom",
+        "digest": "sha256:9a5b3e470830ae471fe317bc63f43b33bc063458239238fe27e234232c45ff28"
+      },
+      {
+        "id": 541780002,
+        "name": "apilayer_api_dump-1.1.63.pom.asc",
+        "size": 215,
+        "browser_download_url": "https://github.com/KhronosGroup/OpenXR-SDK-Source/releases/download/release-1.1.63/apilayer_api_dump-1.1.63.pom.asc",
+        "digest": "sha256:7cbf9f1af504ca68fc36e0985dadb74d1fbf4d2bbdcde3e00bfe9ea6168fc4a8"
+      },
+      {
+        "id": 541780126,
+        "name": "apilayer_best_practices_validation-1.1.63.aar",
+        "size": 484596,
+        "browser_download_url": "https://github.com/KhronosGroup/OpenXR-SDK-Source/releases/download/release-1.1.63/apilayer_best_practices_validation-1.1.63.aar",
+        "digest": "sha256:0c56cb3dc0b093b28f4e5490820d3cb3f7b201b48444134f347455d4ee99abd2"
+      },
+      {
+        "id": 541780150,
+        "name": "apilayer_best_practices_validation-1.1.63.aar.asc",
+        "size": 215,
+        "browser_download_url": "https://github.com/KhronosGroup/OpenXR-SDK-Source/releases/download/release-1.1.63/apilayer_best_practices_validation-1.1.63.aar.asc",
+        "digest": "sha256:7eb9ab3efe939c367e4661d5a75836c1d9e0799ab627e99211253546935defa7"
+      },
+      {
+        "id": 541780162,
+        "name": "apilayer_best_practices_validation-1.1.63.pom",
+        "size": 1487,
+        "browser_download_url": "https://github.com/KhronosGroup/OpenXR-SDK-Source/releases/download/release-1.1.63/apilayer_best_practices_validation-1.1.63.pom",
+        "digest": "sha256:97d410936f5f051ab2a73cdac196c744ac56b2dde6279a5e46e944ed61316147"
+      },
+      {
+        "id": 541780192,
+        "name": "apilayer_best_practices_validation-1.1.63.pom.asc",
+        "size": 215,
+        "browser_download_url": "https://github.com/KhronosGroup/OpenXR-SDK-Source/releases/download/release-1.1.63/apilayer_best_practices_validation-1.1.63.pom.asc",
+        "digest": "sha256:7f9fa0cd33627c4ecc2a4410e53dedadb5731b3cddae59a3c0d4fcd467b3472d"
+      },
+      {
+        "id": 541780025,
+        "name": "apilayer_core_validation-1.1.63.aar",
+        "size": 6386964,
+        "browser_download_url": "https://github.com/KhronosGroup/OpenXR-SDK-Source/releases/download/release-1.1.63/apilayer_core_validation-1.1.63.aar",
+        "digest": "sha256:9663ce94a5076b6707502cf5503bac456987ccf1f39a3f7c8f350d4521db8647"
+      },
+      {
+        "id": 541780057,
+        "name": "apilayer_core_validation-1.1.63.aar.asc",
+        "size": 215,
+        "browser_download_url": "https://github.com/KhronosGroup/OpenXR-SDK-Source/releases/download/release-1.1.63/apilayer_core_validation-1.1.63.aar.asc",
+        "digest": "sha256:c6e75df848ca6d436fe24f680bde73a9e69972b67eef46e49aba4b77dec366e9"
+      },
+      {
+        "id": 541780090,
+        "name": "apilayer_core_validation-1.1.63.pom",
+        "size": 1455,
+        "browser_download_url": "https://github.com/KhronosGroup/OpenXR-SDK-Source/releases/download/release-1.1.63/apilayer_core_validation-1.1.63.pom",
+        "digest": "sha256:6aa9337f5e645baf489c05e562cd074dc696bad87db70a0cdd661dffc63b2c89"
+      },
+      {
+        "id": 541780108,
+        "name": "apilayer_core_validation-1.1.63.pom.asc",
+        "size": 215,
+        "browser_download_url": "https://github.com/KhronosGroup/OpenXR-SDK-Source/releases/download/release-1.1.63/apilayer_core_validation-1.1.63.pom.asc",
+        "digest": "sha256:0fe8ded9fdf0660bf28a544ae405b9b58682a8d9648dacedf4e4ceef2f827869"
+      },
+      {
+        "id": 541777706,
+        "name": "hello_xr-OpenGLES-release-1.1.63.apk",
+        "size": 9557049,
+        "browser_download_url": "https://github.com/KhronosGroup/OpenXR-SDK-Source/releases/download/release-1.1.63/hello_xr-OpenGLES-release-1.1.63.apk",
+        "digest": "sha256:7c96022ac002cb0c72e3cd14c11a817767b7b5dbdf5a1d1c85d0c083b5719056"
+      },
+      {
+        "id": 541777527,
+        "name": "hello_xr-Vulkan-release-1.1.63.apk",
+        "size": 9557441,
+        "browser_download_url": "https://github.com/KhronosGroup/OpenXR-SDK-Source/releases/download/release-1.1.63/hello_xr-Vulkan-release-1.1.63.apk",
+        "digest": "sha256:f24bbe8ba6f6339fca658628868ba8189cbc33390d6ac508f69d76fb67b5fa34"
+      },
+      {
+        "id": 541800362,
+        "name": "OpenXR-SDK-Source-release-1.1.63.tar.gz",
+        "size": 4857593,
+        "browser_download_url": "https://github.com/KhronosGroup/OpenXR-SDK-Source/releases/download/release-1.1.63/OpenXR-SDK-Source-release-1.1.63.tar.gz",
+        "digest": "sha256:a3b97a36f11abe256a7ea1668a0a468aac9b738e94bea6b468f0ae31ad537a46"
+      },
+      {
+        "id": 541800378,
+        "name": "OpenXR-SDK-Source-release-1.1.63.tar.gz.asc",
+        "size": 870,
+        "browser_download_url": "https://github.com/KhronosGroup/OpenXR-SDK-Source/releases/download/release-1.1.63/OpenXR-SDK-Source-release-1.1.63.tar.gz.asc",
+        "digest": "sha256:4f97028306ae219f599e9960adbf9bb072e8da2bfbedffd1f0de312516a61f87"
+      },
+      {
+        "id": 541821806,
+        "name": "OpenXR.Loader.1.1.63.nupkg",
+        "size": 1916162,
+        "browser_download_url": "https://github.com/KhronosGroup/OpenXR-SDK-Source/releases/download/release-1.1.63/OpenXR.Loader.1.1.63.nupkg",
+        "digest": "sha256:4e5a50a8807ef66f25180ff224e7d8150b594aa8ee4b07590f9ade55a8e98703"
+      },
+      {
+        "id": 541821827,
+        "name": "OpenXR.Loader.1.1.63.nupkg.asc",
+        "size": 870,
+        "browser_download_url": "https://github.com/KhronosGroup/OpenXR-SDK-Source/releases/download/release-1.1.63/OpenXR.Loader.1.1.63.nupkg.asc",
+        "digest": "sha256:9d66a6e958f7c2d5c4a0a4aef8df90a7beecab13547440c9fa2069979eab7ac7"
+      },
+      {
+        "id": 541779892,
+        "name": "openxr_loader_for_android-1.1.63-sources.jar",
+        "size": 1141287,
+        "browser_download_url": "https://github.com/KhronosGroup/OpenXR-SDK-Source/releases/download/release-1.1.63/openxr_loader_for_android-1.1.63-sources.jar",
+        "digest": "sha256:6f964ad09c4afa3f42f451cada86e61503392b018660b22dd34b61dfbf71a555"
+      },
+      {
+        "id": 541779920,
+        "name": "openxr_loader_for_android-1.1.63-sources.jar.asc",
+        "size": 215,
+        "browser_download_url": "https://github.com/KhronosGroup/OpenXR-SDK-Source/releases/download/release-1.1.63/openxr_loader_for_android-1.1.63-sources.jar.asc",
+        "digest": "sha256:b98cba20f5c3b202b887307cb19196f4459f895413e55b68823a606f50d045fa"
+      },
+      {
+        "id": 541779720,
+        "name": "openxr_loader_for_android-1.1.63.aar",
+        "size": 4170279,
+        "browser_download_url": "https://github.com/KhronosGroup/OpenXR-SDK-Source/releases/download/release-1.1.63/openxr_loader_for_android-1.1.63.aar",
+        "digest": "sha256:622419d2f6741c3443a3beb4779af0764318edd01830de967f24c741ebcded73"
+      },
+      {
+        "id": 541779762,
+        "name": "openxr_loader_for_android-1.1.63.aar.asc",
+        "size": 215,
+        "browser_download_url": "https://github.com/KhronosGroup/OpenXR-SDK-Source/releases/download/release-1.1.63/openxr_loader_for_android-1.1.63.aar.asc",
+        "digest": "sha256:3bb68b26d7def68b4fe8506bf09f302116290c2de9cf91fdfdba753978bff5ed"
+      },
+      {
+        "id": 541779849,
+        "name": "openxr_loader_for_android-1.1.63.pom",
+        "size": 1598,
+        "browser_download_url": "https://github.com/KhronosGroup/OpenXR-SDK-Source/releases/download/release-1.1.63/openxr_loader_for_android-1.1.63.pom",
+        "digest": "sha256:c98f38fa8acf4cf1bd8bcb40774f9815ae6ed9da94c8a7be2ed9db7815c85404"
+      },
+      {
+        "id": 541779867,
+        "name": "openxr_loader_for_android-1.1.63.pom.asc",
+        "size": 215,
+        "browser_download_url": "https://github.com/KhronosGroup/OpenXR-SDK-Source/releases/download/release-1.1.63/openxr_loader_for_android-1.1.63.pom.asc",
+        "digest": "sha256:1c2625f5b889c7ed967c8a6010294ca94bbd96091d879b2fc989c6f40f9a6af1"
+      },
+      {
+        "id": 541793000,
+        "name": "openxr_loader_macos-1.1.63.zip",
+        "size": 826298,
+        "browser_download_url": "https://github.com/KhronosGroup/OpenXR-SDK-Source/releases/download/release-1.1.63/openxr_loader_macos-1.1.63.zip",
+        "digest": "sha256:b243eebcdfa8683d17ccc8cfbfb9036be94b3f5a22b3eb73c39da0877694a3ab"
+      },
+      {
+        "id": 541793027,
+        "name": "openxr_loader_macos-1.1.63.zip.asc",
+        "size": 870,
+        "browser_download_url": "https://github.com/KhronosGroup/OpenXR-SDK-Source/releases/download/release-1.1.63/openxr_loader_macos-1.1.63.zip.asc",
+        "digest": "sha256:3e95172aabc4bd2537a7125060abbb8efbdd0cee19bdf1bf30cbd9736b7dcbd2"
+      },
+      {
+        "id": 541784717,
+        "name": "openxr_loader_windows-1.1.63.zip",
+        "size": 31961521,
+        "browser_download_url": "https://github.com/KhronosGroup/OpenXR-SDK-Source/releases/download/release-1.1.63/openxr_loader_windows-1.1.63.zip",
+        "digest": "sha256:01c631aeabbfe0879540f77ef833416c532a20746285b494630160c23588b771"
+      },
+      {
+        "id": 541784760,
+        "name": "openxr_loader_windows-1.1.63.zip.asc",
+        "size": 870,
+        "browser_download_url": "https://github.com/KhronosGroup/OpenXR-SDK-Source/releases/download/release-1.1.63/openxr_loader_windows-1.1.63.zip.asc",
+        "digest": "sha256:e9384e2a94d82c5059d1d83c57d0da585056d95e393255048b0955b0ce69b3fc"
+      }
+    ]
+  },
+  {
+    "tag_name": "release-1.1.62",
+    "draft": false,
+    "prerelease": false,
+    "published_at": "2026-08-01T01:32:30Z",
+    "assets": [
+      {
+        "id": 500510340,
+        "name": "apilayer_api_dump-1.1.62.aar",
+        "size": 4800443,
+        "browser_download_url": "https://github.com/KhronosGroup/OpenXR-SDK-Source/releases/download/release-1.1.62/apilayer_api_dump-1.1.62.aar",
+        "digest": "sha256:2a7c2d1bb14d94dfed8c1aaf170a9dda649756477fbcba4a143c76d08a50bed8"
+      },
+      {
+        "id": 500510366,
+        "name": "apilayer_api_dump-1.1.62.aar.asc",
+        "size": 215,
+        "browser_download_url": "https://github.com/KhronosGroup/OpenXR-SDK-Source/releases/download/release-1.1.62/apilayer_api_dump-1.1.62.aar.asc",
+        "digest": "sha256:7ab53e3c1fcaabf49561737fe8ed5df9ad9a5a761615f05e1d5eed2799e85c5f"
+      },
+      {
+        "id": 500510378,
+        "name": "apilayer_api_dump-1.1.62.pom",
+        "size": 1462,
+        "browser_download_url": "https://github.com/KhronosGroup/OpenXR-SDK-Source/releases/download/release-1.1.62/apilayer_api_dump-1.1.62.pom",
+        "digest": "sha256:fcd4358d7582ce0787b96aacb9840afc086a28499767a6aa7491dbb682bcc921"
+      },
+      {
+        "id": 500510385,
+        "name": "apilayer_api_dump-1.1.62.pom.asc",
+        "size": 215,
+        "browser_download_url": "https://github.com/KhronosGroup/OpenXR-SDK-Source/releases/download/release-1.1.62/apilayer_api_dump-1.1.62.pom.asc",
+        "digest": "sha256:4832ce5c8835d1880ae5adbc535b774d50f8c86f9870650a50fbf3b9993ec5fa"
+      },
+      {
+        "id": 500510464,
+        "name": "apilayer_best_practices_validation-1.1.62.aar",
+        "size": 482607,
+        "browser_download_url": "https://github.com/KhronosGroup/OpenXR-SDK-Source/releases/download/release-1.1.62/apilayer_best_practices_validation-1.1.62.aar",
+        "digest": "sha256:6d1a369ba367049aff23ae554b284ccc17cb3be8832869de0c1d151228a26502"
+      },
+      {
+        "id": 500510477,
+        "name": "apilayer_best_practices_validation-1.1.62.aar.asc",
+        "size": 215,
+        "browser_download_url": "https://github.com/KhronosGroup/OpenXR-SDK-Source/releases/download/release-1.1.62/apilayer_best_practices_validation-1.1.62.aar.asc",
+        "digest": "sha256:658ecbb7f871e97ed0d659ed55b27ca6ff6cc6e1853699498ee7b1d5583d7313"
+      },
+      {
+        "id": 500510480,
+        "name": "apilayer_best_practices_validation-1.1.62.pom",
+        "size": 1487,
+        "browser_download_url": "https://github.com/KhronosGroup/OpenXR-SDK-Source/releases/download/release-1.1.62/apilayer_best_practices_validation-1.1.62.pom",
+        "digest": "sha256:571d7c5587075e83ca0a4d2382d87515de614ab8c34416a82a1b9b1a7eb5f9c0"
+      },
+      {
+        "id": 500510489,
+        "name": "apilayer_best_practices_validation-1.1.62.pom.asc",
+        "size": 215,
+        "browser_download_url": "https://github.com/KhronosGroup/OpenXR-SDK-Source/releases/download/release-1.1.62/apilayer_best_practices_validation-1.1.62.pom.asc",
+        "digest": "sha256:342d0ed7080e92399dbc8648df4fe9378086718f1abc73f79f3a52de211ed36e"
+      },
+      {
+        "id": 500510395,
+        "name": "apilayer_core_validation-1.1.62.aar",
+        "size": 5910024,
+        "browser_download_url": "https://github.com/KhronosGroup/OpenXR-SDK-Source/releases/download/release-1.1.62/apilayer_core_validation-1.1.62.aar",
+        "digest": "sha256:5692ccd5563a0963c4d842614af11d7c280960687a221643a46266ef968c4d70"
+      },
+      {
+        "id": 500510422,
+        "name": "apilayer_core_validation-1.1.62.aar.asc",
+        "size": 215,
+        "browser_download_url": "https://github.com/KhronosGroup/OpenXR-SDK-Source/releases/download/release-1.1.62/apilayer_core_validation-1.1.62.aar.asc",
+        "digest": "sha256:1e39ff48d4cd87231d931515968317c717a6811da84585650f0623c49329ec41"
+      },
+      {
+        "id": 500510432,
+        "name": "apilayer_core_validation-1.1.62.pom",
+        "size": 1455,
+        "browser_download_url": "https://github.com/KhronosGroup/OpenXR-SDK-Source/releases/download/release-1.1.62/apilayer_core_validation-1.1.62.pom",
+        "digest": "sha256:1917e5cee9b979c9032c7819c386ea62e4498c30ffbbcf0c25578ebcd0c1e441"
+      },
+      {
+        "id": 500510453,
+        "name": "apilayer_core_validation-1.1.62.pom.asc",
+        "size": 215,
+        "browser_download_url": "https://github.com/KhronosGroup/OpenXR-SDK-Source/releases/download/release-1.1.62/apilayer_core_validation-1.1.62.pom.asc",
+        "digest": "sha256:8aed84009daa5e388b7d179ab90837e9537b4f762a1676aab922e03dc633ed18"
+      },
+      {
+        "id": 497398718,
+        "name": "hello_xr-OpenGLES-release-1.1.62.apk",
+        "size": 9548745,
+        "browser_download_url": "https://github.com/KhronosGroup/OpenXR-SDK-Source/releases/download/release-1.1.62/hello_xr-OpenGLES-release-1.1.62.apk",
+        "digest": "sha256:da5e421795b801684cab50156c572422b73cd98fc8c75aeeb968962b43a2ab46"
+      },
+      {
+        "id": 497398704,
+        "name": "hello_xr-Vulkan-release-1.1.62.apk",
+        "size": 9549137,
+        "browser_download_url": "https://github.com/KhronosGroup/OpenXR-SDK-Source/releases/download/release-1.1.62/hello_xr-Vulkan-release-1.1.62.apk",
+        "digest": "sha256:a154b2353983f8c0cb1827ddf51d7e80fc105085253fe524502f35c5ddac3284"
+      },
+      {
+        "id": 500514717,
+        "name": "OpenXR-SDK-Source-release-1.1.62.tar.gz",
+        "size": 4834887,
+        "browser_download_url": "https://github.com/KhronosGroup/OpenXR-SDK-Source/releases/download/release-1.1.62/OpenXR-SDK-Source-release-1.1.62.tar.gz",
+        "digest": "sha256:977073d7f4c0d1af8ab975f57e4b6ffd1c4e9209be66075812b890576e0e1e5f"
+      },
+      {
+        "id": 500514735,
+        "name": "OpenXR-SDK-Source-release-1.1.62.tar.gz.asc",
+        "size": 870,
+        "browser_download_url": "https://github.com/KhronosGroup/OpenXR-SDK-Source/releases/download/release-1.1.62/OpenXR-SDK-Source-release-1.1.62.tar.gz.asc",
+        "digest": "sha256:3ea4d6e47da6a8b3480931636af3e85eb2e0cddaf582153ee97973a8b05a5214"
+      },
+      {
+        "id": 500514501,
+        "name": "OpenXR.Loader.1.1.62.nupkg",
+        "size": 1902954,
+        "browser_download_url": "https://github.com/KhronosGroup/OpenXR-SDK-Source/releases/download/release-1.1.62/OpenXR.Loader.1.1.62.nupkg",
+        "digest": "sha256:6bb16b4dbe3c11f29605def2def5b7d1177784c0403dc9a24bc2e13d7eb82604"
+      },
+      {
+        "id": 500514512,
+        "name": "OpenXR.Loader.1.1.62.nupkg.asc",
+        "size": 870,
+        "browser_download_url": "https://github.com/KhronosGroup/OpenXR-SDK-Source/releases/download/release-1.1.62/OpenXR.Loader.1.1.62.nupkg.asc",
+        "digest": "sha256:386dfd33e9c2db9c9c37d881b77eec9b74d181fda394b47c473b2bce37fd7005"
+      },
+      {
+        "id": 500510319,
+        "name": "openxr_loader_for_android-1.1.62-sources.jar",
+        "size": 1110593,
+        "browser_download_url": "https://github.com/KhronosGroup/OpenXR-SDK-Source/releases/download/release-1.1.62/openxr_loader_for_android-1.1.62-sources.jar",
+        "digest": "sha256:b83318394b30bb129b069dd854de2b1e21df4376dda1a7fa342aeaff17a71d3d"
+      },
+      {
+        "id": 500510327,
+        "name": "openxr_loader_for_android-1.1.62-sources.jar.asc",
+        "size": 215,
+        "browser_download_url": "https://github.com/KhronosGroup/OpenXR-SDK-Source/releases/download/release-1.1.62/openxr_loader_for_android-1.1.62-sources.jar.asc",
+        "digest": "sha256:838b5f5a23329eb7f0e13afde7a7d6ae73b439c7cbf6d3ec0af3e65efd7d5bd6"
+      },
+      {
+        "id": 500510263,
+        "name": "openxr_loader_for_android-1.1.62.aar",
+        "size": 4158815,
+        "browser_download_url": "https://github.com/KhronosGroup/OpenXR-SDK-Source/releases/download/release-1.1.62/openxr_loader_for_android-1.1.62.aar",
+        "digest": "sha256:c03c689fed9a48f9394af953660982c998b00f6d2d2d8d150bc3f890c75a7465"
+      },
+      {
+        "id": 500510280,
+        "name": "openxr_loader_for_android-1.1.62.aar.asc",
+        "size": 215,
+        "browser_download_url": "https://github.com/KhronosGroup/OpenXR-SDK-Source/releases/download/release-1.1.62/openxr_loader_for_android-1.1.62.aar.asc",
+        "digest": "sha256:883ccab775776c65ee35bf3120553f6a3f0f47de2dd661e074469e98d3caea46"
+      },
+      {
+        "id": 500510292,
+        "name": "openxr_loader_for_android-1.1.62.pom",
+        "size": 1598,
+        "browser_download_url": "https://github.com/KhronosGroup/OpenXR-SDK-Source/releases/download/release-1.1.62/openxr_loader_for_android-1.1.62.pom",
+        "digest": "sha256:9b1047158a416984fd6d60c472da09bb324aec74709f83a1516435917fa05064"
+      },
+      {
+        "id": 500510305,
+        "name": "openxr_loader_for_android-1.1.62.pom.asc",
+        "size": 215,
+        "browser_download_url": "https://github.com/KhronosGroup/OpenXR-SDK-Source/releases/download/release-1.1.62/openxr_loader_for_android-1.1.62.pom.asc",
+        "digest": "sha256:9dd7d3f79ad76a48f709f55d8c205892ae30f70b10a44c4afbd51f50603c4478"
+      },
+      {
+        "id": 500514048,
+        "name": "openxr_loader_macos-1.1.62.zip",
+        "size": 817438,
+        "browser_download_url": "https://github.com/KhronosGroup/OpenXR-SDK-Source/releases/download/release-1.1.62/openxr_loader_macos-1.1.62.zip",
+        "digest": "sha256:400bf9ab932d04cf8a315fe8e63d5cd9824015b64ad2e5d72b2ffc086c54313c"
+      },
+      {
+        "id": 500514061,
+        "name": "openxr_loader_macos-1.1.62.zip.asc",
+        "size": 870,
+        "browser_download_url": "https://github.com/KhronosGroup/OpenXR-SDK-Source/releases/download/release-1.1.62/openxr_loader_macos-1.1.62.zip.asc",
+        "digest": "sha256:034a3575bbee545926dc59558aa5d62ea9fc2de9e23c426ac640cbb68bd8db88"
+      },
+      {
+        "id": 500513308,
+        "name": "openxr_loader_windows-1.1.62.zip",
+        "size": 30975472,
+        "browser_download_url": "https://github.com/KhronosGroup/OpenXR-SDK-Source/releases/download/release-1.1.62/openxr_loader_windows-1.1.62.zip",
+        "digest": "sha256:800ec772e2f9448a26ab9f579f4914d984346dd9d0d7c007841abe21d2c8ff2f"
+      },
+      {
+        "id": 500513351,
+        "name": "openxr_loader_windows-1.1.62.zip.asc",
+        "size": 870,
+        "browser_download_url": "https://github.com/KhronosGroup/OpenXR-SDK-Source/releases/download/release-1.1.62/openxr_loader_windows-1.1.62.zip.asc",
+        "digest": "sha256:8117563bfc5092895e17112366cb954ca78f84964e5c09526dfd69656c1713fd"
+      }
+    ]
+  }
+]

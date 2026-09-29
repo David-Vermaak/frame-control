@@ -154,6 +154,7 @@
   .shelf-head .count { color: var(--muted); font-size: 13px; }
   .shelf-head .spacer { flex: 1; }
   .sub { color: var(--muted); font-size: 12.5px; }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .hint { color: var(--muted); font-size: 12.5px; margin-top: 11px; line-height: 1.5; }
 
   /* ---- buttons ---- */
@@ -174,7 +175,7 @@
   .seg { display: inline-flex; background: rgba(0,0,0,.3); border-radius: 3px; padding: 2px; }
   .seg button { background: transparent; height: 28px; font-size: 12.5px; letter-spacing: .6px; text-transform: uppercase; }
   .seg button.on { background: var(--btn-hi); color: var(--bright); }
-  input[type=text], input[type=password], textarea { width: 100%; background: rgba(0,0,0,.28); color: var(--text); border: 1px solid transparent;
+  input[type=text], input[type=search], input[type=url], input[type=password], textarea { width: 100%; background: rgba(0,0,0,.28); color: var(--text); border: 1px solid transparent;
                                border-radius: 3px; padding: 9px 11px; font: inherit; }
   textarea { resize: vertical; min-height: 76px; }
   input:focus, textarea:focus { outline: none; border-color: var(--blue); background: rgba(0,0,0,.4); }
@@ -199,6 +200,18 @@
   .viewer .badge { position: absolute; left: 12px; top: 12px; font-size: 11px; letter-spacing: 1.2px; text-transform: uppercase;
                    background: rgba(0,0,0,.6); color: var(--text); padding: 4px 9px; border-radius: 2px; }
   .viewer .badge.live { left: auto; right: 12px; background: var(--bad); color: #fff; font-weight: 700; }
+  .view-actions { display: flex; gap: 10px; }
+  .ctrl-status { margin-top: 10px; font-size: 13px; color: var(--blue); }
+  .ctrl-status::before { content: "● "; }
+  .ctrl-status.warn { color: var(--warn); }
+  /* Control: the view takes taps, clicks, drags and keys, and none of them zoom or pan it. */
+  .viewer.control { outline: 1px solid var(--blue); }
+  .viewer.control canvas { cursor: crosshair; touch-action: none; }
+  .viewer.control.rel canvas { cursor: move; }
+  .viewer.immersive { position: fixed; z-index: 40; inset: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left);
+                      max-height: none; aspect-ratio: auto; border-radius: 0; }
+  .ctrl-keys { margin-top: 10px; }
+  #panelPick { max-width: 240px; height: 30px; }
   .viewer .stamp { position: absolute; right: 12px; bottom: 12px; font-size: 11px; color: #c7d5e0;
                    background: rgba(0,0,0,.6); padding: 3px 8px; border-radius: 2px; }
   .viewer .asleep { position: absolute; inset: auto 0 0 0; padding: 14px 18px; text-align: center; color: var(--text);
@@ -357,8 +370,8 @@
   .and-btns { flex-basis: 100%; padding-left: 46px; }
   .and-icon { width: 36px; height: 36px; border-radius: 8px; flex: none; background: rgba(0,0,0,.25); object-fit: cover; }
   .cat-tools { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
-  .cat-tools input[type=text] { flex: 1 1 240px; width: auto; }
-  .cat-tools select { background: rgba(0,0,0,.28); color: var(--text); border: 1px solid transparent; border-radius: 3px;
+  .cat-tools input[type=text], .cat-tools input[type=search] { flex: 1 1 240px; width: auto; }
+  .cat-tools select, .source-offer select { background: rgba(0,0,0,.28); color: var(--text); border: 1px solid transparent; border-radius: 3px;
                       padding: 9px 10px; font: inherit; font-size: 13px; max-width: 220px; }
   .vchips { display: flex; gap: 6px; flex-wrap: wrap; margin: 10px 0 14px; }
   .vchip { height: 26px; font-size: 12px; padding: 0 10px; opacity: .55; }
@@ -400,7 +413,7 @@
   .disp .k2 { color: var(--muted); font-size: 11px; letter-spacing: 1px; text-transform: uppercase; margin: 12px 0 5px; }
   .disp .seg { flex-wrap: wrap; }
   .disp .seg button { padding: 0 10px; }
-  .disp input[type=number] { width: 72px; background: rgba(0,0,0,.28); color: var(--text); border: 1px solid transparent;
+  .disp input[type=number], #comfort input[type=number] { width: 72px; background: rgba(0,0,0,.28); color: var(--text); border: 1px solid transparent;
                              border-radius: 3px; height: 32px; padding: 0 8px; font: inherit; font-size: 13px; }
   /* Touch screens can't hover: keep the library's name and Play button showing. */
   @media (hover: none) { .capsule .over { opacity: 1; } .capsule:hover { transform: none; } }
@@ -442,6 +455,9 @@
     .grid-top, .grid-3, .and-grid, .and-col { gap: 14px; }
     .toolbar { gap: 8px; }
     .toolbar .spacer { display: none; }
+    .view-actions { flex: 1 1 100%; display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+    .view-actions button { justify-content: center; padding: 0 4px; }
+    #panelPick { flex: 1 1 100%; max-width: none; }
     .shelf-head { flex-wrap: wrap; row-gap: 8px; }
     .shelf { grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 10px; }
     .cat-grid { grid-template-columns: 1fr; }
@@ -452,7 +468,7 @@
     button { height: 38px; }
     button.small { height: 32px; }
     .actions button { height: 46px; }
-    .cat-tools select { max-width: none; flex: 1 1 100%; }
+    .cat-tools select, .source-offer select { max-width: none; flex: 1 1 100%; }
     .pad-area { height: 240px; }
     .pad-keys .seg { flex: 1 1 100%; display: grid; grid-template-columns: repeat(4, 1fr); }
     .pad-keys .pad-clicks { grid-template-columns: repeat(2, 1fr); }
@@ -460,6 +476,155 @@
     /* The on-screen keyboard covers the bottom of the screen; the tab bar would ride on top of it. */
     body.typing nav { display: none; }
   }
+  /* ---- Discover: artwork first, details when you need them ---- */
+  .sr-only { position:absolute; width:1px; height:1px; padding:0; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; }
+  #androidLibrary { grid-template-columns:1fr; }
+  #androidLibrary .and-col { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr)); align-items:start; }
+  .store-tabs { display:flex; align-items:center; gap:8px; margin-bottom:20px; border-bottom:1px solid #ffffff12; padding-bottom:14px; }
+  .store-tabs > button { background:transparent; color:var(--muted); border-radius:6px; }
+  .store-tabs > button.on { color:var(--bright); background:#ffffff0e; }
+  .store-heading h1 { font-size:clamp(28px,3.2vw,38px); letter-spacing:-1.2px; line-height:1.15; margin:8px 0 10px; font-weight:700; color:var(--bright); }
+  .store-heading p, .sources-intro p { color:#a8b5c2; margin:0 0 24px; font-size:15px; }
+  .store-eyebrow { color:var(--link); font-size:11px; text-transform:uppercase; font-weight:700; letter-spacing:1.8px; }
+  .store-toolbar { display:grid; grid-template-columns:minmax(0,1fr) minmax(300px,400px); align-items:center; gap:32px; }
+  .store-toolbar .store-heading p { margin-bottom:0; }
+  @media(max-width:900px) { .store-toolbar { display:block; } .store-toolbar .store-heading p { margin-bottom:20px; } }
+  .store-search { display:flex; align-items:center; gap:12px; border:1px solid #ffffff12; background:#0e1723a6; border-radius:8px; padding:6px 8px 6px 16px; }
+  .store-search svg { width:21px; height:21px; color:var(--muted); flex:none; }
+  .store-search input[type=search] { background:transparent; padding:9px 0; font-size:15px; border:0; box-shadow:none; min-width:0; }
+  .store-search:focus-within { border-color:var(--link); }
+  .store-search button { border-radius:5px; }
+  .store-filters { display:flex; justify-content:space-between; align-items:center; gap:16px; margin:16px 0 24px; }
+  .store-chips { display:flex; flex-wrap:wrap; gap:7px; }
+  .store-chips button { border-radius:20px; font-size:12px; height:34px; padding:0 14px; background:#ffffff07; color:#b5c0cb; border:1px solid #ffffff0c; }
+  .store-chips button[aria-pressed=true] { background:#235779; border-color:#5287a5; color:white; }
+  .store-source-select select { max-width:180px; padding:8px 26px 8px 10px; font:inherit; font-size:12px; border:0; border-radius:5px; color:var(--text); background:#1d2b3b; }
+  .store-notice { color:#a8b5c2; font-size:12px; margin:12px 0; }
+  body:has(.page.on #appStore:not([hidden])) #offline { padding:10px 16px; background:#ffffff06; box-shadow:inset 3px 0 0 var(--dim); }
+  body:has(.page.on #appStore:not([hidden])) #offline .s { display:none; }
+  .store-result-count { font-size:13px; color:var(--muted); margin-bottom:14px; }
+  .store-result-count:empty { display:none; }
+  .store-hero { position:relative; display:block; width:100%; height:270px; border:0; padding:0; border-radius:12px; overflow:hidden; text-align:left; margin:0 0 32px; isolation:isolate; }
+  .store-art { position:relative; display:block; overflow:hidden; background:radial-gradient(ellipse at 75% 10%, hsl(var(--hue) 50% 40%),transparent 70%),linear-gradient(140deg,hsl(var(--hue) 35% 18%),#101827); }
+  .store-art > img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; z-index:1; }
+  .art-initial { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:70px; font-weight:700; color:#ffffff45; letter-spacing:-4px; }
+  .store-hero > .store-art { position:absolute; inset:0; }
+  .store-hero::after { content:""; position:absolute; inset:0; background:linear-gradient(90deg,#081421ec 0%,#08142175 48%,#08142108 80%),linear-gradient(0deg,#08142170,transparent); z-index:2; }
+  .hero-copy { position:relative; z-index:3; padding:30px; max-width:550px; display:flex; align-items:flex-start; flex-direction:column; gap:12px; }
+  .hero-copy .store-eyebrow { color:#c2e7ff; }
+  .hero-copy strong { color:white; font-size:38px; letter-spacing:-.8px; line-height:1.1; }
+  .hero-copy > span:not(.store-eyebrow):not(.hero-cta) { color:#e0e8ef; font-size:16px; font-weight:400; max-width:380px; line-height:1.6; }
+  .hero-cta { color:white; display:inline-flex; align-items:center; background:#ffffff20; border:1px solid #ffffff40; border-radius:6px; padding:10px 18px; font-size:13px; margin-top:6px; }
+  .store-row { margin-bottom:34px; }
+  .store-row-head { display:flex; align-items:baseline; gap:12px; margin-bottom:14px; }
+  .store-row-head h2 { text-transform:none; letter-spacing:-.3px; font-size:21px; font-weight:600; color:var(--bright); margin:0; }
+  .store-row-head p { color:var(--muted); font-size:12px; margin:0; }
+  .store-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(225px,1fr)); gap:18px; }
+  .store-card { display:block; width:100%; height:auto; min-width:0; padding:0; border:1px solid #ffffff0b; border-radius:9px; overflow:hidden; text-align:left; background:#1b2938; color:var(--text); transition:transform .18s,box-shadow .18s; font-weight:400; }
+  .store-card:hover { transform:translateY(-4px); background:#223448; box-shadow:0 12px 28px #0004; }
+  .store-card .store-art { aspect-ratio:16/9; width:100%; }
+  .store-card-content { padding:15px 14px; display:block; }
+  .store-card-title { display:flex; align-items:center; gap:9px; margin-bottom:9px; min-width:0; }
+  .store-icon { display:inline-flex; align-items:center; justify-content:center; width:34px; height:34px; border-radius:8px; overflow:hidden; flex:none; background:hsl(var(--hue) 35% 28%); color:#fff; font-size:17px; position:relative; }
+  .store-icon img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
+  .store-card-title strong { font-size:15px; color:var(--bright); text-overflow:ellipsis; overflow:hidden; white-space:nowrap; }
+  .store-summary { display:block; color:#a8b5c2; font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .store-card-foot { display:flex; justify-content:space-between; align-items:center; gap:6px; margin-top:16px; font-size:11px; color:#a8b5c2; }
+  .store-card-foot b { color:#dbeecf; font-weight:500; }
+  .store-badges { display:flex; flex-wrap:wrap; gap:7px; }
+  .store-badge { font-size:11px; color:#b7d8ec; background:#6ec9ff14; padding:4px 9px; border-radius:5px; }
+  .store-badge.works { color:#b8e2ab; background:#70bb5418; }
+  .store-empty { display:flex; flex-direction:column; align-items:center; text-align:center; padding:58px 20px 70px; }
+  .store-empty svg { width:110px; height:90px; color:var(--link); margin-bottom:14px; }
+  .store-empty h2 { font-size:23px; color:var(--bright); margin:8px 0; text-transform:none; letter-spacing:0; }
+  .store-empty p { max-width:390px; color:var(--muted); margin:0 0 22px; }
+  .store-skeleton { aspect-ratio:1.2; background:linear-gradient(110deg,#233446 30%,#30455b 45%,#233446 60%); background-size:250% 100%; border-radius:9px; animation:store-shimmer 1.8s ease infinite; }
+  @keyframes store-shimmer { to { background-position:-150% 0; } }
+  .store-dialog { padding:0; border:1px solid #ffffff1a; border-radius:14px; background:#172331; color:var(--text); width:min(980px,calc(100vw - 40px)); max-width:none; max-height:calc(100dvh - 48px); overflow:auto; box-shadow:0 30px 100px #0009; }
+  .store-dialog::backdrop { background:#030a13c9; backdrop-filter:blur(7px); }
+  .store-close { position:sticky; float:right; top:14px; margin:14px 14px -54px 0; z-index:6; height:36px; width:36px; padding:0; border-radius:50%; background:#09131dcc; color:white; font-size:25px; line-height:1; border:1px solid #ffffff30; }
+  .detail-banner { height:195px; }
+  .detail-banner::after { content:""; position:absolute; inset:0; z-index:2; background:linear-gradient(0deg,#172331,transparent 70%); }
+  .detail-content { padding:0 30px 30px; position:relative; }
+  .detail-heading { display:flex; gap:16px; align-items:center; margin-top:-24px; position:relative; z-index:3; }
+  .detail-heading .store-icon { width:70px; height:70px; border-radius:15px; box-shadow:0 3px 18px #0004; font-size:32px; }
+  .detail-heading h1 { font-size:30px; color:white; letter-spacing:-.7px; margin:0 0 4px; }
+  .detail-heading p { margin:0; color:#a8b5c2; font-size:13px; }
+  .detail-content > .store-badges { margin:20px 0; }
+  .detail-layout { display:grid; grid-template-columns:minmax(0,1fr) 290px; gap:30px; margin-top:22px; }
+  .detail-layout h2 { text-transform:none; letter-spacing:0; font-size:17px; color:white; margin:0 0 14px; }
+  .detail-description { color:#b5c2ce; font-size:14px; line-height:1.75; white-space:pre-line; }
+  .detail-gallery { display:flex; gap:10px; overflow-x:auto; scroll-snap-type:x mandatory; margin:0 0 10px; }
+  .detail-gallery .store-art { flex:0 0 86%; aspect-ratio:16/9; border-radius:7px; scroll-snap-align:start; }
+  .detail-gallery .store-art img { object-fit:contain; background:#0b1420; }
+  .gallery-controls { display:flex; justify-content:space-between; align-items:center; margin-bottom:24px; font-size:11px; color:var(--muted); }
+  .gallery-controls button { height:30px; width:34px; padding:0; border-radius:5px; }
+  .detail-buy { align-self:start; background:#0e1926; padding:18px; border:1px solid #ffffff0a; border-radius:10px; }
+  .detail-buy .store-primary { width:100%; min-height:46px; border-radius:7px; margin:8px 0; font-size:15px; }
+  .detail-verdict { color:#b6d6a8; font-size:12px; line-height:1.55; margin:0 0 15px; }
+  .detail-verdict.blocked { color:#e3b77a; }
+  .detail-verdict.unknown { color:#adbac7; }
+  .detail-price { font-size:23px; color:white; font-weight:600; }
+  .detail-small { font-size:11px; color:var(--muted); margin:4px 0 18px; }
+  .offer-choice { display:flex; align-items:flex-start; gap:9px; padding:11px 9px; margin-top:8px; border:1px solid #ffffff12; border-radius:7px; cursor:pointer; }
+  .offer-choice:has(input:checked) { background:#1e3c52; border-color:#5386a6; }
+  .offer-choice input { margin:4px 0 0; accent-color:var(--blue); }
+  .offer-choice strong { font-size:12px; display:block; color:var(--bright); }
+  .offer-choice small { display:block; font-size:10px; color:#a8bbc9; margin-top:4px; }
+  .offer-mark { display:inline-flex; justify-content:center; align-items:center; height:26px; width:26px; flex:none; border-radius:6px; background:hsl(var(--hue) 30% 30%); color:white; font-size:11px; }
+  .detail-technical { border-top:1px solid #ffffff14; margin-top:25px; padding-top:16px; font-size:12px; color:var(--muted); }
+  .detail-technical summary { cursor:pointer; }
+  .detail-technical dl { display:grid; grid-template-columns:110px minmax(0,1fr); gap:6px; }
+  .detail-technical dd { margin:0; overflow-wrap:anywhere; }
+  .detail-buy .store-primary:disabled { opacity:1; color:#d6e8f7; background:#274f71; cursor:default; }
+  #detailProgress::-webkit-progress-bar { background:#283b4d; border-radius:3px; }
+  #detailProgress::-webkit-progress-value { background:var(--blue); border-radius:3px; }
+  #detailProgress { height:4px; width:100%; accent-color:var(--blue); display:block; margin-bottom:10px; }
+  .sources-dialog { width:min(560px,calc(100vw - 32px)); padding:30px; }
+  .sources-dialog .store-close { margin:-16px -16px -20px 0; top:0; }
+  .sources-intro h1 { font-size:28px; color:white; letter-spacing:-.7px; margin:9px 0; }
+  .source-setting { display:flex; align-items:center; gap:13px; padding:17px 0; border-top:1px solid #ffffff0c; }
+  .source-setting .offer-mark { width:42px; height:42px; font-size:16px; border-radius:10px; }
+  .source-setting .grow { flex:1; min-width:0; }
+  .store-dialog a { color:var(--link); }
+  .source-setting strong { display:block; font-size:14px; color:white; }
+  .source-setting p { color:#a3b4c3; font-size:12px; margin:3px 0; }
+  .source-setting small { color:var(--muted); font-size:10px; }
+  .source-toggle { appearance:none; width:38px; height:23px; flex:none; border-radius:15px; background:#465463; position:relative; cursor:pointer; margin:0; }
+  .source-toggle::after { content:""; position:absolute; top:3px; left:3px; width:17px; height:17px; background:#fff; border-radius:50%; transition:transform .15s; }
+  .source-toggle:checked { background:#208dca; }
+  .source-toggle:checked::after { transform:translateX(15px); }
+  .source-repo-form { display:grid; gap:12px; border-top:1px solid #ffffff14; margin-top:10px; padding-top:24px; }
+  .source-repo-form h2 { font-size:19px; letter-spacing:0; text-transform:none; color:white; margin:0; }
+  .source-repo-form p { color:var(--muted); font-size:12px; margin:0; }
+  .source-repo-form label { font-size:12px; }
+  .source-repo-form input { margin-top:7px; display:block; border-radius:6px; }
+  .source-repo-form details { font-size:11px; color:var(--muted); }
+  .source-repo-form button { justify-self:start; border-radius:6px; }
+  #appStore :focus-visible, .store-dialog :focus-visible, .store-tabs :focus-visible { outline:2px solid var(--link); outline-offset:4px; }
+  .store-search input:focus-visible { outline:0!important; }
+  @media(min-width:1400px) { .store-grid { grid-template-columns:repeat(5,minmax(0,1fr)); } }
+  @media(max-width:1000px) { .store-grid { grid-template-columns:repeat(3,minmax(0,1fr)); } .detail-layout { grid-template-columns:minmax(0,1fr) 260px; gap:20px; } }
+  @media(max-width:680px) {
+    .store-grid { grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+    .store-tabs { margin-bottom:24px; gap:2px; } .store-tabs button { padding:0 10px; font-size:12px; }
+    .store-heading p { font-size:13px; max-width:320px; }
+    .store-filters { align-items:flex-start; flex-direction:column; gap:10px; margin-bottom:18px; }
+    .store-chips { gap:5px; } .store-chips button { font-size:11px; padding:0 10px; }
+    .store-hero { height:285px; border-radius:9px; margin-bottom:26px; }
+    .hero-copy { padding:26px 22px; } .hero-copy strong { font-size:29px; }
+    .hero-copy > span:not(.store-eyebrow):not(.hero-cta) { font-size:13px; max-width:260px; }
+    .store-row-head { display:block; } .store-row-head h2 { font-size:18px; } .store-row-head p { margin-top:3px; }
+    .store-card-content { padding:10px; } .store-card-title { gap:6px; } .store-card-title strong { font-size:13px; }
+    .store-card-title .store-icon { width:25px; height:25px; font-size:12px; border-radius:6px; }
+    .store-card-foot { font-size:10px; margin-top:12px; } .store-summary { font-size:11px; }
+    .store-dialog { width:calc(100vw - 16px); max-height:calc(100dvh - 20px); border-radius:10px; }
+    .detail-banner { height:190px; } .detail-content { padding:0 18px 24px; } .detail-heading h1 { font-size:24px; }
+    .detail-layout { display:flex; flex-direction:column; gap:24px; } .detail-buy { order:-1; width:100%; }
+    .sources-dialog { padding:24px; } .sources-dialog .store-close { margin:-12px -12px -20px 0; }
+  }
+  @media(prefers-reduced-motion:reduce) { html { scroll-behavior:auto; } .store-card, .source-toggle::after { transition:none; } .store-skeleton { animation:none; } }
+
 </style>
 </head>
 <body>
@@ -524,16 +689,20 @@
       <div class="toolbar">
         <div class="seg" aria-label="What to capture">
           <button data-view="headset" class="on" title="What the headset shows, via the SteamVR compositor">Headset view</button>
-          <button data-view="flat" title="gamescope's 2D layer: the desktop panel and Steam's flat UI">Desktop panel</button>
+          <button data-view="flat" title="The app panel in use, flat: it stays still however the wearer looks around">Desktop</button>
         </div>
+        <select id="panelPick" class="small" hidden aria-label="Which panel to show"></select>
         <div class="seg" id="eyeSeg" aria-label="Crop">
           <button data-eye="left" class="on" title="One eye, like pointing a camera into one lens">Left eye</button>
           <button data-eye="both" title="Both eyes side by side">Both eyes</button>
         </div>
         <div class="spacer"></div>
-        <button class="action" id="shotBtn">Capture</button>
-        <button id="liveBtn" title="Keep updating: video of the headset view, or repeated captures of the desktop panel">Live</button>
-        <button id="saveBtn" disabled>Save</button>
+        <span class="view-actions">
+          <button class="action" id="shotBtn">Capture</button>
+          <button id="liveBtn" title="Keep updating, as video">Live</button>
+          <button id="ctrlBtn" title="Control the Frame by tapping or clicking on the view (C)">Control</button>
+          <button id="saveBtn" disabled>Save</button>
+        </span>
       </div>
       <div class="viewer" id="viewer">
         <div class="empty" id="viewerEmpty">
@@ -554,6 +723,25 @@
         </div>
         <div class="asleep" id="asleep" hidden>The headset is showing a blank frame. It's probably asleep or not being worn. Put it on and capture again.</div>
         <div class="loading"><div class="spinner"></div></div>
+      </div>
+      <div class="ctrl-status" id="ctrlBadge" role="status" hidden></div>
+      <div class="pad-keys ctrl-keys" id="ctrlKeys" hidden aria-label="Keys and clicks for the Frame">
+        <input id="ctrlType" type="text" placeholder="Type here to type on the Frame" autocomplete="off" autocapitalize="off"
+               autocorrect="off" spellcheck="false" enterkeyhint="send">
+        <span class="seg pad-clicks">
+          <button data-ctrl-click="left" title="Left click where the pointer is">Click</button>
+          <button data-ctrl-click="right" title="Right click where the pointer is">Right-click</button>
+        </span>
+        <span class="seg pad-special">
+          <button data-ctrl-key="1" title="Escape">Esc</button>
+          <button data-ctrl-key="15" title="Tab">Tab</button>
+          <button data-ctrl-key="105" title="Left arrow" aria-label="Left arrow">←</button>
+          <button data-ctrl-key="103" title="Up arrow" aria-label="Up arrow">↑</button>
+          <button data-ctrl-key="108" title="Down arrow" aria-label="Down arrow">↓</button>
+          <button data-ctrl-key="106" title="Right arrow" aria-label="Right arrow">→</button>
+          <button data-ctrl-key="14" title="Backspace" aria-label="Backspace">⌫</button>
+          <button data-ctrl-key="28" title="Enter">Enter</button>
+        </span>
       </div>
       <div class="hint" id="viewHint"></div>
     </section>
@@ -591,6 +779,55 @@
       </div>
     </section>
   </div>
+
+  <section class="panel" id="vrTools">
+    <div class="shelf-head"><h2>VR comfort and performance</h2><span class="spacer"></span><span class="sub" id="vrUpdated">Waiting for the Frame</span></div>
+    <div class="stats" id="vrMetrics"></div>
+    <div class="hint">Compositor FPS measures SteamVR output, not game FPS. Application FPS is unavailable when no app supplies timing. GPU time is render time, not GPU utilisation. Temperature is the hottest readable sensor.</div>
+    <div class="chips">
+      <button class="small" id="hudStart">Open HUD in headset</button>
+      <button class="small" id="hudStop">Close HUD</button>
+    </div>
+    <div class="hint">The HUD is ours and uses the Frame’s built-in tools. Place its panel with SteamVR’s Float in World or controller docking controls. It updates every two seconds until closed.</div>
+    <h3>Playspace and seated comfort</h3>
+    <p class="sub" id="comfortNote">Tracking-origin controls are not available yet: reversible changes still need an idle-headset test. Use SteamVR’s recenter and room setup for now. A seated origin only affects apps that use seated tracking; it cannot force a game into seated mode.</p>
+    <div class="hint">For motion comfort, choose snap-turn, teleport movement and a movement vignette in each game’s settings. SteamVR has no verified universal snap-turn or locomotion-vignette switch.</div>
+    <details style="margin-top:16px"><summary>Optional VR software</summary>
+      <p class="sub">None of Frame Control’s features needs these apps. Compatibility reports and account ownership are separate. Paid apps can only be installed here when already owned.</p>
+      <button class="small" id="vrUtilitiesRefresh">Check ownership and reports</button>
+      <div class="list" id="vrUtilities"><div class="sub">Load this optional list to check the Frame account.</div></div>
+    </details>
+  </section>
+
+  <section class="panel" id="comfort" style="margin:20px 0;padding:16px">
+    <div class="shelf-head"><h2>Family and comfort</h2><span class="spacer"></span>
+      <button class="action small" id="castBtn">Cast headset view</button>
+    </div>
+    <p class="hint">Share this screen with people in the room. Casting shows everything the wearer sees, including private content.</p>
+    <form id="comfortForm">
+      <div class="row" style="flex-wrap:wrap;gap:12px">
+        <label>Session limit (minutes) <input id="sessionMinutes" type="number" min="1" max="240" value="30" required style="width:75px"></label>
+        <label>Break every <input id="breakMinutes" type="number" min="0" max="120" value="20" required style="width:75px"> minutes</label>
+        <label>Check in after <input id="stillMinutes" type="number" min="0" max="240" value="30" required style="width:75px"> active minutes</label>
+      </div>
+      <div class="row" style="flex-wrap:wrap;margin:14px 0;gap:14px">
+        <label><input id="batteryAlert" type="checkbox" checked> Alert on low battery</label>
+        <label><input id="heatAlert" type="checkbox" checked> Alert on overheating</label>
+        <button class="action small" id="sessionStart" type="submit">Start session</button>
+        <button class="small" id="sessionCancel" type="button" disabled>Cancel session</button>
+        <button class="small" id="testNotification" type="button">Enable / test notifications</button>
+      </div>
+    </form>
+    <p id="comfortStatus" role="status">Checking session…</p>
+    <p id="comfortNotificationStatus" class="hint" role="status" hidden></p>
+    <p class="hint">A one-minute warning, then Steam Home. Games stay running: save and pause first. Keep this app open and connected for notifications.</p>
+    <details class="hint"><summary>How sessions and alerts work</summary>
+      <p>This is a reminder, not a parental lock. The timer continues on the Frame if you disconnect; a headset restart cancels it. Cancel before changing settings. Set break/check-in to 0 to turn them off.</p>
+      <p>Battery, heat and check-in alerts appear on connected companions during a session. Headset warnings and break reminders continue without a companion. iOS may suspend phone notifications in the background. Breaks and check-ins count SteamVR activity, not confirmed wear time.</p>
+    </details>
+    <div id="comfortEvents" class="hint"></div>
+    <span id="comfortAnnouncement" class="sr-only" aria-live="polite"></span>
+  </section>
 
   <section class="panel" id="pad">
     <div class="shelf-head"><h2>Keyboard and trackpad</h2><span class="sub" id="padState"></span><span class="spacer"></span>
@@ -673,9 +910,16 @@
 
   <div class="page" data-page="android">
   <section id="android">
-    <div class="shelf-head"><h2>Android apps</h2><span class="count" id="andCount"></span><span class="spacer"></span>
-      <button class="action small" id="repNew" title="Report how any APK worked on the Frame">+ Report an APK</button></div>
-    <div class="and-grid">
+    <div class="store-tabs" aria-label="Android sections"><button class="on" data-store-tab="browse" aria-pressed="true">Discover</button><button data-store-tab="library" aria-pressed="false">On your Frame <span id="andCount"></span></button><span class="spacer"></span><button id="sourcesOpen" class="small">Sources <span aria-hidden="true">⚙</span></button><button class="small" id="repNew" hidden>+ Report an APK</button></div>
+    <section id="appStore" aria-label="Discover apps">
+      <div class="store-toolbar"><div class="store-heading"><div><div class="store-eyebrow">A little more possibility</div><h1>Find your next favorite.</h1><p>Great games and useful apps. All in one place, all free to explore.</p></div></div>
+      <form id="sourceSearch" class="store-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg><input id="sourceQ" type="search" aria-label="Search games and apps" placeholder="Search games and apps"><button type="submit" class="small">Search</button></form></div>
+      <div class="store-filters"><div id="searchFilters" class="store-chips"><button data-filter="all" aria-pressed="true">For you</button><button data-filter="vr" aria-pressed="false">VR experiences</button><button data-filter="flat" aria-pressed="false">Flat-screen apps</button><button data-filter="installable" aria-pressed="false">Fits your Frame</button></div><label class="store-source-select"><span class="sr-only">Filter by source</span><select id="sourceFilter"><option value="">All sources</option></select></label></div>
+      <div id="sourceStatus" class="store-notice" role="status" aria-live="polite" hidden></div>
+      <div id="searchCount" class="store-result-count" aria-live="polite"></div>
+      <div id="searchGrid" aria-busy="false"></div>
+    </section>
+    <div class="and-grid" id="androidLibrary" hidden>
       <div class="and-col">
       <div class="panel">
         <div class="shelf-head"><h2>On the Frame</h2></div>
@@ -726,8 +970,8 @@
           reported, including ones not on F-Droid.</div>
       </div>
       </div>
-      <div class="panel">
-        <div class="shelf-head"><h2>Find apps</h2><span class="count" id="catCount"></span></div>
+      <div hidden>
+<div hidden>        <div class="shelf-head"><h2>Find apps</h2><span class="count" id="catCount"></span></div>
         <div class="cat-tools">
           <input type="text" id="catQ" placeholder="Search F-Droid apps rated for the Frame…">
           <select id="catCat" aria-label="Category"><option value="">All categories</option></select>
@@ -736,7 +980,7 @@
         <div class="cat-grid" id="catGrid"><div class="sub">Loading the catalogue…</div></div>
         <div class="row" style="margin-top:12px"><button class="small" id="catMore" hidden>Show more</button></div>
         <div class="hint">Verdicts come from checks of each APK against what Lepton supports (Android 11,
-          64-bit ARM, no clipboard or Play Services) and from reports made on a Frame. See docs/apks.md.</div>
+          64-bit ARM, no clipboard or Play Services) and from reports made on a Frame. See docs/apks.md.</div></div>
       </div>
     </div>
   </section>
@@ -806,6 +1050,19 @@
     </section>
 
 
+    <section class="panel" id="artworkSettings">
+      <div class="shelf-head"><h2>Library artwork settings</h2></div>
+      <p class="sub">SteamGridDB supplies community artwork for sideloaded games. Without a key, Frame Control uses source images and creates the remaining art.</p>
+      <label for="steamGridKey">SteamGridDB API key</label>
+      <input type="password" id="steamGridKey" autocomplete="off" spellcheck="false" placeholder="Optional API key">
+      <div class="row" style="margin-top:8px">
+        <button id="saveSteamGridKey" class="action small">Save key</button>
+        <button id="clearSteamGridKey" class="small">Remove saved key</button>
+        <a href="https://www.steamgriddb.com/profile/preferences/api" target="_blank" rel="noreferrer">Get a free key</a>
+      </div>
+      <div id="steamGridStatus" class="hint" role="status"></div>
+      <button id="refreshAndroidArt" class="small" style="margin-top:12px">Refresh artwork for installed apps and titles</button>
+    </section>
     <section class="panel" id="power">
       <div class="shelf-head"><h2>Remote &amp; power</h2></div>
       <div class="actions">
@@ -826,6 +1083,15 @@
         <div><a href="https://streamframe.app/" target="_blank">Stream Frame</a>: third-party recorder (macOS 14+)</div>
         <div><a href="https://framedropvr.com" target="_blank">FrameDrop</a>: sideloader (Windows only for now)</div>
       </div>
+    </section>
+
+    <section class="panel" id="panels">
+      <div class="shelf-head"><h2>Panel switcher</h2><span class="spacer"></span>
+        <button class="small" id="panelsRefresh">Refresh</button>
+        <button class="small action" id="panelsOpen">Open in headset</button></div>
+      <div class="list" id="panelList"><div class="sub">Refresh to see open panels.</div></div>
+      <div class="hint">Choose a panel to show it in SteamVR. The headset switcher stays available from Steam's dashboard.
+        Saved spatial layouts are not available yet.</div>
     </section>
 
     <section class="panel" id="macview" hidden>
@@ -899,6 +1165,18 @@
   <span class="last" id="lastLog">Ready</span>
   <span class="sub" id="drawerHint">Show ▴</span>
 </div>
+<dialog id="appDetail" class="store-dialog" aria-labelledby="detailTitle">
+  <button class="store-close" data-close="appDetail" aria-label="Close app details">×</button>
+  <div id="detailBody"></div>
+</dialog>
+<dialog id="sourcesDialog" class="store-dialog sources-dialog" aria-labelledby="sourcesTitle">
+  <button class="store-close" data-close="sourcesDialog" aria-label="Close source settings">×</button>
+  <div class="sources-intro"><div class="store-eyebrow">Your app shelves</div><h1 id="sourcesTitle">A world of apps.</h1><p>Choose where you discover games and apps. We bring them together for you.</p></div>
+  <div id="sourcesList"></div>
+  <form id="addSource" class="source-repo-form"><h2>Add a source</h2><p>Have a favorite F-Droid repository? Add its address to browse its apps here.</p><label>Repository address<input name="url" type="url" required placeholder="https://example.org/fdroid/repo"></label><details><summary>Verify this source (optional)</summary><label>Repository fingerprint<input name="fingerprint" type="text" autocomplete="off" placeholder="Paste the fingerprint from the repository owner"></label></details><button class="action">Add source</button></form>
+  <p id="sourceError" class="store-notice" role="status" aria-live="polite"></p>
+</dialog>
+
 <dialog id="apkAltDlg" aria-labelledby="apkAltTitle">
   <h2 id="apkAltTitle">Try another APK version</h2>
   <p id="apkAltReason"></p>
@@ -1056,9 +1334,9 @@ const QUICK = [["Remmina", "org.remmina.Remmina"], ["Moonlight", "com.moonlight_
 const CDN = "https://cdn.cloudflare.steamstatic.com/steam/apps";
 const HINTS = {
   headset: "What the lenses show, composited by SteamVR: the room, floating panels, dashboard and controllers. Live streams it as video (one eye, about 30 fps); Capture takes a still of both eyes. Captures show everything on screen, including anything private.",
-  flat: "gamescope's 2D layer: the desktop panel and Steam's flat UI, without the room or VR scene.",
+  flat: "The app panel in use in the headset, flat and still: it doesn't move as the wearer looks around. Pick another panel to watch it. Control lets you tap or click right where you want on it.",
 };
-const SOURCE_LABEL = { steamvr: "Headset view", gamescope: "Desktop panel", shot: "Screenshot" };
+const SOURCE_LABEL = { steamvr: "Headset view", gamescope: "Desktop panel", panel: "Desktop", shot: "Screenshot" };
 let state = null, view = "headset", eye = "left", live = false, liveTimer = null, volTimer = null;
 let lastImg = null, lastSource = null, lastShot = null, viewGen = 0;
 
@@ -1217,6 +1495,7 @@ function refresh() {
       setConn(true, state.hostname);
       setOnline(true);
     } catch (e) {
+      renderPerformance(null);
       if (!e.offline) { setConn(false, "Error"); log("Status failed: " + e.message, "e"); }
       if (!state) ["games", "flatpaks"].forEach(id => failed($(id), e));
     } finally {
@@ -1226,6 +1505,133 @@ function refresh() {
   })();
   return refreshing;
 }
+
+// ---- our VR HUD and optional third-party catalogue ----
+function renderPerformance(s) {
+  const p = s?.performance || {};
+  const values = [["Compositor FPS", p.compositorFps, ""], ["Compositor period", p.frameMs, " ms"],
+    ["Application FPS", p.appFps, ""], ["Render GPU time", p.gpuMs, " ms"],
+    ["Compositor CPU", p.compositorCpuMs, " ms"], ["System CPU", p.cpuPercent, "%"],
+    ["GPU clock", p.gpuMHz, " MHz"], ["Hottest sensor", s?.temp, "°C"], ["Battery", s?.battery?.percent, "%"]];
+  $("vrMetrics").innerHTML = values.map(([label, v, unit]) => `<div class="stat"><div class="k">${label}</div><div class="v">${Number.isFinite(v) ? v.toFixed(1) + unit : "Unavailable"}</div></div>`).join("");
+  $("vrUpdated").textContent = s ? `Sampled ${new Date(s.time * 1000).toLocaleTimeString()} · refreshes with status` : "No live sample";
+}
+$("hudStart").onclick = () => act("Open HUD", () => api("/api/vr", {action: "hud-start"}), $("hudStart"));
+$("hudStop").onclick = () => act("Close HUD", () => api("/api/vr", {action: "hud-stop"}), $("hudStop"));
+async function loadUtilities() {
+  $("vrUtilitiesRefresh").disabled = true;
+  try {
+    const data = await api("/api/vr/utilities");
+    $("vrUtilities").innerHTML = data.utilities.map(u => `<div class="item">
+      <div class="grow"><strong>${esc(u.name)}</strong> · ${esc(u.status)} · ${u.free ? "Free" : "Paid"} · ${u.owned == null ? "Ownership unknown" : u.owned ? "Owned" : "Not in library"}
+      <div class="sub">${esc(u.note)} <a href="${esc(u.source)}" target="_blank" rel="noopener">Source</a></div>
+      ${u.report ? `<div class="sub">Report ${esc(u.report.date || "")}: ${esc(u.report.notes || "")} · SteamOS ${esc(u.report.steamos || "unspecified")}</div>` : ""}</div>
+      <button class="small" data-utility="${u.id}" ${u.installed || !u.canInstall ? "disabled" : ""}>${u.installed ? "Installed" : "Install (optional)"}</button></div>`).join("");
+  } catch(e) { failed($("vrUtilities"), e); }
+  finally { $("vrUtilitiesRefresh").disabled = false; }
+}
+$("vrUtilitiesRefresh").onclick = loadUtilities;
+$("vrUtilities").onclick = async e => {
+  const b = e.target.closest("[data-utility]");
+  if (!b) return;
+  await act("Install optional utility", () => api("/api/steam", {action:"install", appid:b.dataset.utility}), b);
+  await loadUtilities();
+};
+
+// The Frame owns the clock. Poll independently of status and the selected tab.
+let comfortBusy = false, comfortSeen = new Set(), comfortSession = null, comfortHydrated = false;
+async function localNotification(message, request = false) {
+  try {
+    if (window.frameApp?.notify) await window.frameApp.notify(message, request);
+    else {
+      if (!("Notification" in window)) throw new Error("This browser has no notifications; use the Frame Control app.");
+      const permission = request ? await Notification.requestPermission() : Notification.permission;
+      if (permission !== "granted") throw new Error("Notifications are off. Enable them in system settings.");
+      new Notification("Frame Control", {body: message});
+    }
+    $("comfortNotificationStatus").hidden = true;
+  } catch (e) {
+    $("comfortNotificationStatus").hidden = false;
+    $("comfortNotificationStatus").textContent = "Notifications aren't available on this device. Check system notification settings, then use Enable / test notifications. Headset reminders continue during an active session.";
+    throw e;
+  }
+}
+
+function renderComfort(s) {
+  const firstSnapshot = !comfortHydrated;
+  comfortHydrated = true;
+  $("sessionStart").disabled = !!s.active;
+  for (const id of ["sessionMinutes", "breakMinutes", "stillMinutes", "batteryAlert", "heatAlert"])
+    $(id).disabled = !!s.active;
+  $("sessionCancel").disabled = !s.active;
+  if (s.id !== comfortSession) {
+    comfortSession = s.id;
+    comfortSeen.clear();
+    if (s.options) for (const [key, value] of Object.entries(s.options)) {
+      const el = $(key === "minutes" ? "sessionMinutes" : key);
+      if (!el) continue;
+      if (el.type === "checkbox") el.checked = value; else el.value = value;
+    }
+  }
+  let statusText = s.error || (s.active
+    ? `${Math.ceil(s.remaining / 60)} min until Steam Home · ${s.activity == null ? "activity unknown" : s.activity === 3 ? "headset in standby" : "monitoring"}`
+    : "No session running.");
+  if (s.active && s.unavailable?.length)
+    statusText += " · No readings: " + s.unavailable.join(", ");
+  if ($("comfortStatus").textContent !== statusText) $("comfortStatus").textContent = statusText;
+  let latest = null;
+  for (const e of s.events || []) {
+    if (comfortSeen.has(e.id)) continue;
+    comfortSeen.add(e.id);
+    // Historical events remain visible but never produce a burst on reconnect.
+    if (!firstSnapshot && s.time - e.time >= 0 && s.time - e.time < 30 && !["started", "cancelled"].includes(e.kind)) {
+      latest = e.message;
+      log(e.message); toast(e.message, e.kind === "error");
+      localNotification(e.message).catch(() => {});  // the notification status keeps the failure visible
+    }
+  }
+  // Keep only the server's bounded history; a new page seeds it without replay.
+  comfortSeen = new Set((s.events || []).map(e => e.id));
+  if (latest !== null) $("comfortAnnouncement").textContent = latest;
+  const history = (s.events || []).slice(-3).map(e => e.message).join(" · ");
+  if ($("comfortEvents").textContent !== history) $("comfortEvents").textContent = history;
+}
+async function pollComfort() {
+  if (!comfortBusy) {
+    comfortBusy = true;
+    try { renderComfort(await api("/api/comfort", {action: "status"})); }
+    catch (e) {
+      const message = "Session status unavailable: " + e.message;
+      if ($("comfortStatus").textContent !== message) $("comfortStatus").textContent = message;
+    }
+    finally { comfortBusy = false; }
+  }
+  setTimeout(pollComfort, 5000);
+}
+$("comfortForm").onsubmit = async e => {
+  e.preventDefault();
+  const result = await act("Start session", () => api("/api/comfort", {
+    action: "start", minutes: Number($("sessionMinutes").value), breakMinutes: Number($("breakMinutes").value),
+    stillMinutes: Number($("stillMinutes").value), batteryAlert: $("batteryAlert").checked, heatAlert: $("heatAlert").checked,
+  }), $("sessionStart"));
+  if (result) renderComfort(result);
+};
+$("sessionCancel").onclick = async () => {
+  const result = await act("Cancel session", () => api("/api/comfort", {action: "cancel"}), $("sessionCancel"));
+  if (result) renderComfort(result);
+};
+$("testNotification").onclick = () => act("Test notification", async () => {
+  await localNotification("Comfort notifications are enabled on this device.", true);
+  return {message: "Test notification sent. Check your device's notification settings if it didn't appear."};
+});
+$("castBtn").onclick = () => {
+  setView("headset");
+  if (!live) toggleLive(true);
+  $("viewer").scrollIntoView({behavior: "smooth", block: "center"});
+  // Fullscreen is a direct user gesture; iPhone falls back to its inline viewer.
+  $("viewer").requestFullscreen?.().catch(() => {});
+};
+pollComfort();
 
 // ---- battery ----
 function battery(b, power) {
@@ -1271,6 +1677,7 @@ function battery(b, power) {
 }
 
 function render(s) {
+  renderPerformance(s);
   battery(s.battery, s.power);
   $("devName").textContent = `${s.hostname} · ${s.ip ?? "no IP"}`;
   $("updated").textContent = new Date(s.time * 1000).toLocaleTimeString();
@@ -1335,8 +1742,12 @@ function setView(v) {
   view = v;
   document.querySelectorAll("[data-view]").forEach(b => b.classList.toggle("on", b.dataset.view === v));
   $("eyeSeg").style.visibility = v === "headset" && !video.ctl ? "visible" : "hidden";
+  $("eyeSeg").style.display = v === "flat" ? "none" : "";  // the Desktop view has no eyes to pick
   $("viewHint").textContent = HINTS[v];
-  if (live && changed) { toggleLive(false); toggleLive(true); }  // video for the headset, captures for the panel
+  $("panelPick").hidden = v !== "flat";
+  if (v === "flat") watchPanels(); else clearTimeout(desk.timer);
+  if (live && changed) { toggleLive(false); toggleLive(true); }
+  ctrlShow();
 }
 function setEye(e) {
   eye = e;
@@ -1363,20 +1774,27 @@ function setZoom(z, cx, cy) {
 $("zoomIn").onclick = () => setZoom(zoom * 1.5);
 $("zoomOut").onclick = () => setZoom(zoom / 1.5);
 $("zoomFit").onclick = () => setZoom(1);
-$("fullBtn").onclick = () => document.fullscreenElement ? document.exitFullscreen() : $("viewer").requestFullscreen();
+// Full screen, or on phones (no element full screen there) the viewer filling the window.
+$("fullBtn").onclick = () => {
+  if (document.fullscreenElement) return document.exitFullscreen();
+  if ($("viewer").requestFullscreen && !TOUCH) return $("viewer").requestFullscreen().catch(() => $("viewer").classList.toggle("immersive"));
+  $("viewer").classList.toggle("immersive");
+  setZoom(1);
+};
 document.addEventListener("fullscreenchange", () => setZoom(1));
 $("viewer").addEventListener("wheel", e => {
-  if ($("canvas").hidden) return;
+  if ($("canvas").hidden || ctrl.on) return;
   e.preventDefault();
   const v = $("viewer").getBoundingClientRect();
   setZoom(zoom * Math.exp(-e.deltaY * 0.002), e.clientX - v.left, e.clientY - v.top);
 }, { passive: false });
 $("canvas").addEventListener("dblclick", e => {
+  if (ctrl.on) return;
   const v = $("viewer").getBoundingClientRect();
   setZoom(zoom > 1 ? 1 : 2.5, e.clientX - v.left, e.clientY - v.top);
 });
 $("canvas").addEventListener("pointerdown", e => {
-  if (zoom === 1) return;
+  if (zoom === 1 || ctrl.on) return;
   const start = { x: e.clientX - panX, y: e.clientY - panY };
   $("viewer").classList.add("panning");
   $("canvas").setPointerCapture(e.pointerId);
@@ -1386,7 +1804,10 @@ $("canvas").addEventListener("pointerdown", e => {
   $("canvas").addEventListener("pointerup", up, { once: true });
 });
 document.addEventListener("keydown", e => {
-  if (page !== "home" || $("canvas").hidden || /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName) || e.metaKey || e.ctrlKey) return;
+  if (page !== "home" || /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName) || e.metaKey || e.ctrlKey) return;
+  if (ctrl.on && document.activeElement === $("viewer")) return;  // keys are going to the Frame
+  if (e.key === "c") return $("ctrlBtn").click();
+  if ($("canvas").hidden) return;
   if (e.key === "+" || e.key === "=") setZoom(zoom * 1.5);
   else if (e.key === "-") setZoom(zoom / 1.5);
   else if (e.key === "0") setZoom(1);
@@ -1428,8 +1849,14 @@ async function capture() {
   if (!live) $("viewer").classList.add("busy");  // no spinner flashing over a live stream
   let url = null;
   try {
-    const r = await fetch(view === "headset" ? "/api/screenshot?view=headset" : "/api/screenshot",
-                          { headers: {"X-Frame-UI": UI_KEY} });
+    let url_ = "/api/screenshot?view=headset";
+    var shotPanel = null;
+    if (view === "flat") {
+      shotPanel = deskPanel() || (await loadPanels(), deskPanel());
+      if (!shotPanel) throw new Error("no app panel is open in the headset");
+      url_ = `/api/screenshot?view=panel&window=${shotPanel.window}&display=${encodeURIComponent(shotPanel.display)}`;
+    }
+    const r = await fetch(url_, { headers: {"X-Frame-UI": UI_KEY} });
     if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `HTTP ${r.status}`);
     const source = r.headers.get("X-Capture-Source") || "gamescope";
     url = URL.createObjectURL(await r.blob());
@@ -1438,6 +1865,9 @@ async function capture() {
     if (gen !== viewGen) return true;
     lastImg = img; lastSource = source; lastShot = null;
     draw();
+    desk.shown = source === "panel" ? panelKey(shotPanel) : null;
+    if (source === "panel") $("srcBadge").textContent = `Desktop · ${shotPanel?.name || "panel"}`;
+    ctrlShow();
     $("stamp").hidden = false; $("stamp").textContent = new Date().toLocaleTimeString();
     $("saveBtn").disabled = false;
     return true;
@@ -1450,26 +1880,29 @@ async function capture() {
     $("viewer").classList.remove("busy");
   }
 }
-let liveFailures = 0;
-async function liveLoop() {
-  if (!live) return;
-  liveFailures = (await capture()) ? 0 : liveFailures + 1;
+let liveFailures = 0, liveGen = 0;
+async function liveLoop(gen = liveGen) {
+  if (!live || gen !== liveGen) return;
+  const ok = await capture();
+  if (gen !== liveGen) return;  // Live was restarted (say, as video) while this capture ran
+  liveFailures = ok ? 0 : liveFailures + 1;
   if (liveFailures >= 5) {
     toggleLive(false);
-    toast("Live stopped after 5 failed captures. Is the headset on?", true);
+    toast(view === "flat" ? "Live stopped: couldn't capture the panel." : "Live stopped after 5 failed captures. Is the headset on?", true);
     return;
   }
-  if (live) liveTimer = setTimeout(liveLoop, view === "headset" ? 300 : 700);
+  if (live) liveTimer = setTimeout(() => liveLoop(gen), view === "headset" ? 300 : 700);
 }
 function toggleLive(on) {
   live = on;
+  liveGen++;
   liveFailures = 0;
   $("liveBtn").classList.toggle("on", live);
   $("liveBadge").hidden = !live;
   clearTimeout(liveTimer);
   stopVideo();
   if (!live) return;
-  if (view === "headset" && "VideoDecoder" in window) {
+  if ("VideoDecoder" in window && (view === "headset" || deskPanel())) {
     const started = startVideo();
     const ctl = video.ctl;
     started.catch(e => {
@@ -1514,9 +1947,10 @@ async function startVideo() {
       if (!shown++) {
         viewGen++;  // a capture still in flight mustn't replace the video
         lastImg = null; lastSource = "video"; lastShot = null;
+        desk.shown = panelKey(panel); ctrlShow();
         $("viewer").classList.remove("busy");
         c.hidden = false; $("viewerEmpty").hidden = true; $("zoombar").hidden = false; $("asleep").hidden = true;
-        $("srcBadge").hidden = false; $("srcBadge").textContent = "Headset view · video";
+        $("srcBadge").hidden = false; $("srcBadge").textContent = `${video.label} · video`;
         $("stamp").hidden = false; $("saveBtn").disabled = false;
       }
       frames++;
@@ -1528,7 +1962,11 @@ async function startVideo() {
     },
     error: e => log("Video decoder: " + e.message, "e"),
   });
-  const r = await fetch(`/api/stream?${STREAM_QUERY}`, { headers: {"X-Frame-UI": UI_KEY}, signal: ctl.signal });
+  const panel = view === "flat" ? deskPanel() : null;
+  desk.shown = null;  // until this stream's first picture
+  video.label = panel ? `Desktop · ${panel.name || "panel"}` : "Headset view";
+  const query = panel ? `src=panel&window=${panel.window}&display=${encodeURIComponent(panel.display)}&${STREAM_QUERY}` : STREAM_QUERY;
+  const r = await fetch(`/api/stream?${query}`, { headers: {"X-Frame-UI": UI_KEY}, signal: ctl.signal });
   if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `HTTP ${r.status}`);
   const reader = r.body.getReader();
   let buf = new Uint8Array(0), scan = 0, auStart = -1;
@@ -1573,7 +2011,7 @@ function stopVideo() {
   if (video.dec && video.dec.state !== "closed") video.dec.close();
   video.ctl = video.dec = null;
   $("viewer").classList.remove("busy");
-  if (lastSource === "video") { $("srcBadge").textContent = "Headset view · video (stopped)"; $("stamp").hidden = true; }
+  if (lastSource === "video") { $("srcBadge").textContent = `${video.label || "Headset view"} · video (stopped)`; $("stamp").hidden = true; }
   $("eyeSeg").style.visibility = view === "headset" ? "visible" : "hidden";
 }
 $("shotBtn").onclick = () => capture();
@@ -1592,6 +2030,421 @@ function download(blob, name) {
 }
 document.querySelectorAll("[data-view]").forEach(b => b.onclick = () => setView(b.dataset.view));
 document.querySelectorAll("[data-eye]").forEach(b => b.onclick = () => setEye(b.dataset.eye));
+
+// ---- Desktop view: the app panel in use in the headset (or one picked to watch) ----
+// gamescope says which panel has focus: the one the wearer last used. That's the one
+// Control reaches, so the view follows it unless you pick another to watch.
+// Panels are "display/window": window ids are per X display, and the Frame has two.
+// desk.shown is the panel whose picture is on screen now; Control only acts on that one.
+const desk = { panels: [], focus: null, pick: "", timer: null, loaded: false, shown: null };
+const panelKey = p => p ? `${p.display}/${p.window}` : null;
+function deskPanel() {
+  const want = desk.pick || desk.focus;
+  // Nothing in use and nothing picked: show the first panel rather than nothing.
+  return desk.panels.find(p => panelKey(p) === want) || (!desk.pick && !desk.focus && desk.panels[0]) || null;
+}
+async function loadPanels() {
+  try {
+    const before = panelKey(deskPanel());
+    const r = await api("/api/panels");
+    desk.panels = r.panels || []; desk.loaded = true;
+    desk.focus = r.focus ? `${r.focus_display}/${r.focus}` : null;
+    if (desk.pick && !desk.panels.some(p => panelKey(p) === desk.pick)) desk.pick = "";
+    renderPanelPick();
+    const now = panelKey(deskPanel());
+    if (view === "flat" && live && now !== before) { toggleLive(false); toggleLive(true); }
+    ctrlShow();
+  } catch (e) {
+    log("Couldn't list the headset's panels: " + e.message, "e");
+  }
+}
+function watchPanels() {
+  clearTimeout(desk.timer);
+  if (view !== "flat") return;
+  loadPanels().finally(() => { if (view === "flat") desk.timer = setTimeout(watchPanels, document.hidden ? 10000 : 3000); });
+}
+function renderPanelPick() {
+  const sel = $("panelPick");
+  sel.innerHTML = `<option value="">${desk.focus ? "Panel in use" : "Panel in use (none yet)"}</option>` +
+    desk.panels.map(p => `<option value="${esc(panelKey(p))}">${esc(p.name || "Untitled")}${p.focused ? " (in use)" : ""}</option>`).join("");
+  sel.value = desk.pick;
+}
+$("panelPick").onchange = () => {
+  desk.pick = $("panelPick").value;
+  ctrlShow();
+  if (live) { toggleLive(false); toggleLive(true); } else if (lastImg || lastSource) capture();
+};
+
+// ---- Control: tap or click on the view to use the Frame ----
+// Through gamescope's own input (frame_touch.py). On the Desktop view a tap lands
+// exactly where you tapped; on the headset view, which moves with the wearer's head,
+// the view is a trackpad for the pointer instead.
+const ctrl = { on: false, queue: [], sending: false, state: "off", message: "", move: null, rel: [0, 0], raf: 0,
+               held: new Set(), keys: new Set(), pointers: new Map(), g: null, retry: null };
+const EVDEV = { Escape: 1, Minus: 12, Equal: 13, Backspace: 14, Tab: 15, BracketLeft: 26, BracketRight: 27, Enter: 28,
+  ControlLeft: 29, Semicolon: 39, Quote: 40, Backquote: 41, ShiftLeft: 42, Backslash: 43, Comma: 51, Period: 52,
+  Slash: 53, ShiftRight: 54, NumpadMultiply: 55, AltLeft: 56, Space: 57, CapsLock: 58, F11: 87, F12: 88,
+  IntlBackslash: 86, NumpadEnter: 96, ControlRight: 97, NumpadDivide: 98, AltRight: 100, Home: 102, ArrowUp: 103,
+  PageUp: 104, ArrowLeft: 105, ArrowRight: 106, End: 107, ArrowDown: 108, PageDown: 109, Insert: 110, Delete: 111,
+  MetaLeft: 125, MetaRight: 126, ContextMenu: 127, NumpadSubtract: 74, NumpadAdd: 78, NumpadDecimal: 83 };
+[..."qwertyuiop"].forEach((c, i) => EVDEV["Key" + c.toUpperCase()] = 16 + i);
+[..."asdfghjkl"].forEach((c, i) => EVDEV["Key" + c.toUpperCase()] = 30 + i);
+[..."zxcvbnm"].forEach((c, i) => EVDEV["Key" + c.toUpperCase()] = 44 + i);
+[..."1234567890"].forEach((c, i) => EVDEV["Digit" + c] = 2 + i);
+for (let i = 1; i <= 10; i++) EVDEV["F" + i] = 58 + i;
+[[7, 71], [8, 72], [9, 73], [4, 75], [5, 76], [6, 77], [1, 79], [2, 80], [3, 81], [0, 82]].forEach(([n, k]) => EVDEV["Numpad" + n] = k);
+const CTRL_BUTTONS = ["left", "middle", "right"];  // MouseEvent.button 0, 1, 2
+
+function ctrlMode() { return view === "flat" ? "abs" : "rel"; }
+// Where taps go on the Desktop view, or why they can't.
+function ctrlTarget() {
+  if (ctrlMode() === "rel") return { ok: true };
+  const p = deskPanel();
+  if (!desk.loaded) return { why: "Finding the headset's panels…" };
+  if (!p) return { why: "No app panel is open in the headset." };
+  if (!desk.focus) return { why: "Nobody's using a panel in the headset yet. Taps work once one is in use." };
+  if (panelKey(p) !== desk.focus) return { why: "Only the panel in use takes taps. Pick “Panel in use” to control it." };
+  if (desk.shown !== desk.focus) return { why: live ? "Waiting for the picture of the panel in use…"
+                                                    : "The panel in use has changed. Press Capture or Live to see it first." };
+  return { ok: true, panel: p };
+}
+function ctrlShow() {
+  const v = $("viewer"), b = $("ctrlBadge");
+  $("ctrlBtn").classList.toggle("on", ctrl.on);
+  v.classList.toggle("control", ctrl.on);
+  v.classList.toggle("rel", ctrl.on && ctrlMode() === "rel");
+  $("ctrlKeys").hidden = !ctrl.on;
+  b.hidden = !ctrl.on;
+  if (!ctrl.on) return;
+  const t = ctrlTarget();
+  let text = ctrlMode() === "abs" ? `Tap or click to use ${t.panel ? t.panel.name || "the panel" : "the panel"}`
+                                  : "Drag to move the pointer, tap to click, two fingers to scroll";
+  let warn = false;
+  if (!t.ok) { text = t.why; warn = true; }
+  else if (ctrl.state === "error") { text = ctrl.message || "Control isn't working"; warn = true; }
+  else if (ctrl.state === "starting") text = "Connecting…";
+  b.textContent = text;
+  b.classList.toggle("warn", warn);
+}
+function ctrlToggle(on) {
+  if (!on) ctrlRelease();
+  ctrl.on = on;
+  if (on) {
+    setZoom(1);
+    ctrlPoll(0);
+    if (view === "flat" && !desk.loaded) watchPanels();
+    if (!TOUCH) $("viewer").focus({ preventScroll: true });
+  }
+  if (window.frameApp && window.frameApp.captureKeys) window.frameApp.captureKeys(on && document.activeElement === $("viewer"));
+  ctrlShow();
+}
+$("ctrlBtn").onclick = () => ctrlToggle(!ctrl.on);
+// Until it's ready, check on the Frame side every half second (for up to 15 s).
+async function ctrlPoll(n) {
+  if (!ctrl.on) return;
+  try {
+    const r = await api(n ? "/api/touch" : "/api/touch?start=1");
+    ctrl.state = r.state; ctrl.message = r.message || "";
+  } catch (e) { ctrl.state = "error"; ctrl.message = e.message; }
+  if (!ctrl.on) return;  // turned off while connecting
+  ctrlShow();
+  if (ctrl.state !== "ready" && ctrl.state !== "error" && n < 30) return setTimeout(() => ctrlPoll(n + 1), 500);
+  if (ctrl.state === "ready") return ctrlFlush();
+  if (ctrl.state !== "error") {
+    ctrl.state = "error"; ctrl.message = "The Frame didn't answer. Turn Control off and on to try again.";
+    ctrlShow();
+  }
+}
+$("viewer").tabIndex = 0;
+$("viewer").addEventListener("focus", () => { if (ctrl.on && window.frameApp?.captureKeys) window.frameApp.captureKeys(true); });
+$("viewer").addEventListener("blur", () => { ctrlRelease(); if (window.frameApp?.captureKeys) window.frameApp.captureKeys(false); });
+document.addEventListener("visibilitychange", () => { if (document.hidden) ctrlRelease(); });
+window.addEventListener("blur", () => ctrlRelease());  // another app took the keyboard
+
+const isMoveEvent = e => ("fx" in e || "dx" in e) && !("button" in e) && !("key" in e);
+const isRelease = e => ("button" in e || "key" in e) && e.down === false;
+// While it connects, keep clicks and keys, each with the last position before it, so a
+// tap still lands where it was made; lone moves are stale by then.
+function ctrlKeepable(events) {
+  const out = [];
+  let move = null;
+  for (const e of events) {
+    if (isMoveEvent(e)) { if ("fx" in e) move = e; continue; }
+    if (move && "button" in e && e.down !== false) out.push(move);
+    move = null;
+    out.push(e);
+  }
+  if (move) out.push(move);  // the last position: a click queued after it needs it
+  return out;
+}
+function ctrlSend(events) {
+  ctrl.queue.push(...events.map(e => isMoveEvent(e) ? e : ctrlAim(e)).filter(Boolean));
+  // Keep order; if the Frame is slow to answer, drop pointer moves first, then the oldest
+  // presses and scrolls, never a release.
+  if (ctrl.queue.length > 300) {
+    const q = ctrlKeepable(ctrl.queue), keep = new Set();
+    q.forEach((e, i) => { if (isRelease(e) || i >= q.length - 200) keep.add(i); });
+    // A kept press keeps the position before it, so it lands where it was made.
+    for (const i of [...keep]) if (i > 0 && "button" in q[i] && q[i].down !== false && "fx" in q[i - 1]) keep.add(i - 1);
+    ctrl.queue = q.filter((e, i) => keep.has(i));
+  }
+  ctrlFlush();
+}
+async function ctrlFlush() {
+  if (ctrl.sending || !ctrl.queue.length) return;
+  // Backing off after a failure: new input waits for the same retry.
+  const wait = (ctrl.retryAt || 0) - Date.now();
+  if (wait > 0) {
+    clearTimeout(ctrl.retry);
+    ctrl.retry = setTimeout(ctrlFlush, wait);
+    return;
+  }
+  ctrl.sending = true;
+  // Up to 200 events, and at most about 100 characters of text: the Frame types a batch
+  // key by key before reading the next, and a release mustn't wait behind a long paste.
+  let n = 0, chars = 0;
+  while (n < ctrl.queue.length && n < 200 && (n === 0 || chars + (ctrl.queue[n].text?.length || 0) <= 100)) {
+    chars += ctrl.queue[n].text?.length || 0;
+    n++;
+  }
+  const batch = ctrl.queue.splice(0, n);
+  let again = 0;
+  try {
+    const r = await api("/api/touch", { events: batch });
+    ctrl.state = r.state; ctrl.message = r.message || "";
+    if (r.stale && typeof loadPanels === "function") loadPanels();  // focus moved on: catch up now
+    if (!r.sent && r.state === "error") {
+      // Broken: presses would be stale by the time it's back; releases still matter.
+      ctrl.queue.unshift(...batch.filter(isRelease));
+      again = 2000;
+    } else if (!r.sent) {
+      ctrl.queue.unshift(...ctrlKeepable(batch));  // connecting: send them once it's ready
+      again = 300;
+    }
+  } catch (e) {
+    ctrl.state = "error"; ctrl.message = e.message;
+    ctrl.queue.unshift(...batch.filter(isRelease));
+    again = 1000;  // try the releases again in a moment, not in a tight loop
+  } finally {
+    ctrl.sending = false;
+    ctrlShow();
+    clearTimeout(ctrl.retry);
+    ctrl.retryAt = again ? Date.now() + again : 0;
+    if (again) { if (ctrl.queue.length) ctrl.retry = setTimeout(ctrlFlush, again); }
+    else if (ctrl.queue.length) ctrlFlush();
+  }
+}
+// Pointer moves: at most one per animation frame.
+function ctrlMoveTo(fx, fy) {
+  const p = ctrlTarget().panel;
+  if (!p) return;
+  ctrl.move = { fx, fy, window: p.window, display: p.display };
+  ctrlSchedule();
+}
+function ctrlMoveBy(dx, dy) { ctrl.rel[0] += dx; ctrl.rel[1] += dy; ctrlSchedule(); }
+function ctrlSchedule() { if (!ctrl.raf) ctrl.raf = requestAnimationFrame(ctrlFlushMoves); }
+function ctrlFlushMoves() {
+  ctrl.raf = 0;
+  const out = [];
+  if (ctrl.move) { out.push(ctrl.move); ctrl.move = null; }
+  if (ctrl.rel[0] || ctrl.rel[1]) { out.push({ dx: Math.round(ctrl.rel[0]), dy: Math.round(ctrl.rel[1]) }); ctrl.rel = [0, 0]; }
+  if (out.length) ctrlSend(out);
+}
+// On the Desktop view, presses name the panel they're for, so the Frame drops them if
+// focus has moved on (releases always go).
+// A press with no panel to aim at (the Desktop view lost its target) isn't sent at all.
+function ctrlAim(e) {
+  if (ctrlMode() !== "abs" || e.down === false) return e;
+  const p = ctrlTarget().panel;
+  return p ? { ...e, window: p.window, display: p.display } : null;
+}
+function ctrlButton(name, down) {
+  ctrlFlushMoves();  // the click lands where the pointer was sent
+  if (down) ctrl.held.add(name); else ctrl.held.delete(name);
+  ctrlSend([ctrlAim({ button: name, down })]);
+}
+function ctrlKeyEvent(code, down) {
+  ctrlFlushMoves();
+  if (down) ctrl.keys.add(code); else ctrl.keys.delete(code);
+  ctrlSend([ctrlAim({ key: code, down })]);
+}
+function ctrlClick(name = "left") { ctrlButton(name, true); ctrlButton(name, false); }
+function ctrlRelease() {
+  for (const b of [...ctrl.held]) ctrlButton(b, false);
+  for (const k of [...ctrl.keys]) ctrlKeyEvent(k, false);
+  if (ctrl.g && ctrl.g.timer) clearTimeout(ctrl.g.timer);
+  ctrl.pointers.clear(); ctrl.g = null;
+}
+// Where a pointer event falls on the panel, as fractions (the canvas box includes any letterboxing).
+function ctrlFraction(e) {
+  const c = $("canvas"), r = c.getBoundingClientRect();
+  const scale = Math.min(r.width / c.width, r.height / c.height);
+  const w = c.width * scale, h = c.height * scale;
+  const x = (e.clientX - r.left - (r.width - w) / 2) / w, y = (e.clientY - r.top - (r.height - h) / 2) / h;
+  return x >= 0 && x <= 1 && y >= 0 && y <= 1 ? [x, y] : null;
+}
+
+// Mouse (and pen) on a computer: the view is the Frame's screen.
+function ctrlMouse(e) {
+  if (ctrlMode() === "abs") {
+    const f = ctrlFraction(e);
+    if (f) ctrlMoveTo(...f);
+  } else if (e.type === "pointermove" && (e.movementX || e.movementY)) {
+    ctrlMoveBy(e.movementX * 1.5, e.movementY * 1.5);
+  }
+}
+// Touch: tap to click, press and hold to right-click, two fingers to scroll. Dragging is a
+// mouse drag on the Desktop view (sliders, selecting text) and moves the pointer on the headset view.
+const TAP_MOVE = 8, HOLD_MS = 550, TOUCH_SPEED = 1.6, SCROLL_SPEED = 2;
+function ctrlTouchDown(e) {
+  ctrl.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (ctrl.pointers.size === 1) {
+    const g = ctrl.g = { kind: "maybe", x: e.clientX, y: e.clientY, e, target: ctrlAimedAt() };
+    g.timer = setTimeout(() => {
+      if (ctrl.g !== g || g.kind !== "maybe" || !ctrlSameTarget(g)) return;
+      g.kind = "held";
+      if (ctrlMode() === "abs") {
+        const f = ctrlFraction(g.e);
+        if (!f) return;  // on the bars around the picture: nothing to press
+        ctrlMoveTo(...f);
+      }
+      ctrlClick("right");
+      navigator.vibrate?.(10);
+    }, HOLD_MS);
+  } else if (ctrl.pointers.size === 2) {
+    if (ctrl.g?.timer) clearTimeout(ctrl.g.timer);
+    if (ctrl.held.has("left")) ctrlButton("left", false);
+    ctrl.g = { kind: "scroll", ...centroid() };
+  }
+}
+// The panel a gesture started on; if that stops being the one in use, the gesture
+// does nothing more (except let go of what it holds).
+function ctrlAimedAt() { return ctrlMode() === "abs" ? panelKey(ctrlTarget().panel) : "headset"; }
+function ctrlSameTarget(g) { return g.target && g.target === ctrlAimedAt(); }
+function centroid() {
+  const ps = [...ctrl.pointers.values()];
+  return { x: ps.reduce((a, p) => a + p.x, 0) / ps.length, y: ps.reduce((a, p) => a + p.y, 0) / ps.length };
+}
+function ctrlTouchMove(e) {
+  const prev = ctrl.pointers.get(e.pointerId);
+  if (!prev || !ctrl.g) return;
+  const g = ctrl.g, dx = e.clientX - prev.x, dy = e.clientY - prev.y;
+  ctrl.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (g.kind === "scroll") {
+    const c = centroid();
+    // Content follows the fingers, as on the phone itself.
+    ctrlSend([{ scroll: [-(c.x - g.x) * SCROLL_SPEED, -(c.y - g.y) * SCROLL_SPEED] }]);
+    g.x = c.x; g.y = c.y;
+    return;
+  }
+  if (g.kind === "maybe" && Math.hypot(e.clientX - g.x, e.clientY - g.y) > TAP_MOVE) {
+    clearTimeout(g.timer);
+    if (!ctrlSameTarget(g)) { g.kind = "done"; return; }
+    if (ctrlMode() === "abs") {
+      const f = ctrlFraction(g.e);
+      if (f) { ctrlMoveTo(...f); ctrlButton("left", true); }
+      g.kind = "drag";
+    } else g.kind = "move";
+  }
+  if (g.kind === "drag") { const f = ctrlFraction(e); if (f) ctrlMoveTo(...f); }
+  else if (g.kind === "move") ctrlMoveBy(dx * TOUCH_SPEED, dy * TOUCH_SPEED);
+}
+function ctrlTouchUp(e) {
+  const g = ctrl.g;
+  ctrl.pointers.delete(e.pointerId);
+  if (!g) return;
+  if (g.kind === "scroll") g.kind = "done";  // the finger left behind doesn't jump the scroll or drag
+  if (g.kind === "maybe" && !ctrlSameTarget(g)) g.kind = "done";
+  if (g.kind === "maybe" && ctrl.pointers.size === 0) {
+    clearTimeout(g.timer);
+    if (ctrlMode() === "abs") { const f = ctrlFraction(g.e); if (!f) { ctrl.g = null; return; } ctrlMoveTo(...f); }
+    ctrlClick("left");
+  } else if (g.kind === "drag") ctrlButton("left", false);
+  if (ctrl.pointers.size === 0) ctrl.g = null;
+}
+// The system took the touch (a swipe home, a call): no tap, and let go of anything held.
+function ctrlTouchCancel(e) {
+  ctrl.pointers.delete(e.pointerId);
+  if (ctrl.g?.timer) clearTimeout(ctrl.g.timer);
+  if (ctrl.held.has("left")) ctrlButton("left", false);
+  if (ctrl.g) ctrl.g.kind = "done";
+  if (ctrl.pointers.size === 0) ctrl.g = null;
+}
+const canvasEl = $("canvas");
+canvasEl.addEventListener("pointerdown", e => {
+  if (!ctrl.on) return;
+  e.preventDefault();
+  $("viewer").focus({ preventScroll: true });
+  try { canvasEl.setPointerCapture(e.pointerId); } catch { /* a pointer that's already gone */ }
+  if (!ctrlTarget().ok) return ctrlShow();
+  if (e.pointerType === "touch") return ctrlTouchDown(e);
+  if (ctrlMode() === "abs" && !ctrlFraction(e)) return;  // on the bars around the picture
+  ctrlMouse(e);
+  ctrlButton(CTRL_BUTTONS[e.button] || "left", true);
+});
+canvasEl.addEventListener("pointermove", e => {
+  if (!ctrl.on || !ctrlTarget().ok) return;
+  if (e.pointerType === "touch") return ctrlTouchMove(e);
+  ctrlMouse(e);
+});
+for (const type of ["pointerup", "pointercancel"]) canvasEl.addEventListener(type, e => {
+  if (!ctrl.on) return;
+  if (e.pointerType === "touch") return type === "pointercancel" ? ctrlTouchCancel(e) : ctrlTouchUp(e);
+  if (type === "pointercancel") return [...ctrl.held].forEach(b => ctrlButton(b, false));  // no button is named
+  const name = CTRL_BUTTONS[e.button] || "left";
+  if (ctrl.held.has(name)) ctrlButton(name, false);
+});
+canvasEl.addEventListener("contextmenu", e => { if (ctrl.on) e.preventDefault(); });
+$("viewer").addEventListener("wheel", e => {
+  if (!ctrl.on || !ctrlTarget().ok) return;
+  e.preventDefault();
+  const unit = e.deltaMode === 1 ? 40 : e.deltaMode === 2 ? 800 : 1;
+  ctrlSend([{ scroll: [e.deltaX * unit, e.deltaY * unit] }]);
+}, { passive: false });
+// Keys while the view has focus go to the Frame (⌘ as Ctrl on a Mac); click elsewhere to stop.
+function ctrlKey(e, down) {
+  if (!ctrl.on || document.activeElement !== $("viewer") || (down && !ctrlTarget().ok)) return;
+  let code = EVDEV[e.code];
+  if (IS_MAC && (e.code === "MetaLeft" || e.code === "MetaRight")) code = 29;
+  if (!code) return;
+  e.preventDefault();
+  e.stopPropagation();  // it's for the Frame, not Frame Control's own shortcuts
+  if (down && e.repeat && [29, 42, 54, 56, 97, 100, 125, 126].includes(code)) return;
+  if (!down && !ctrl.keys.has(code)) return;
+  ctrlKeyEvent(code, down);
+}
+$("viewer").addEventListener("keydown", e => ctrlKey(e, true));
+$("viewer").addEventListener("keyup", e => ctrlKey(e, false));
+
+// Phone keyboard: the field types plain text; the buttons send single keys and clicks.
+function ctrlTap(code) { ctrlKeyEvent(code, true); ctrlKeyEvent(code, false); }
+let ctrlWarned = false;
+function ctrlText(text) {
+  const plain = text.replace(/[^\x20-\x7e\n\t]/g, "");
+  if (plain !== text && !ctrlWarned) {
+    ctrlWarned = true;
+    toast("Control types plain letters, numbers and symbols. For accents and emoji, use Keyboard and trackpad below.");
+  }
+  // Small pieces: the Frame types them key by key, and a release queued behind mustn't wait long.
+  for (const part of plain.match(/[\s\S]{1,100}/g) || []) ctrlSend([{ text: part }]);
+}
+$("ctrlType").addEventListener("beforeinput", e => {
+  if (e.isComposing) return;
+  e.preventDefault();
+  if (!ctrlTarget().ok) return ctrlShow();
+  if (e.inputType === "insertLineBreak" || e.inputType === "insertParagraph") return ctrlTap(28);
+  if (e.inputType === "deleteContentBackward") return ctrlTap(14);
+  if (e.inputType === "deleteContentForward") return ctrlTap(111);
+  const text = e.data ?? e.dataTransfer?.getData("text/plain") ?? "";
+  if (text) ctrlText(text);
+});
+$("ctrlType").addEventListener("compositionend", e => { if (e.data) ctrlText(e.data); $("ctrlType").value = ""; });
+$("ctrlKeys").addEventListener("click", e => {
+  const k = e.target.closest("[data-ctrl-key]"), c = e.target.closest("[data-ctrl-click]");
+  if (!ctrlTarget().ok) return ctrlShow();
+  if (k) ctrlTap(+k.dataset.ctrlKey);
+  if (c) ctrlClick(c.dataset.ctrlClick);
+});
 
 // ---- controls ----
 $("refreshAll").onclick = () => { refresh(); loadTitles(); };  // titles too: the Frame may have been asleep at start
@@ -1624,7 +2477,7 @@ function showJobs() {
   $("jobs").hidden = !jobsRunning;
   $("jobsText").textContent = `${jobsRunning} install${jobsRunning === 1 ? "" : "s"} running`;
 }
-async function runJob(label, key, start) {
+async function runJob(label, key, start, onProgress = () => {}) {
   installing.add(key); jobsRunning++; showJobs();
   log(label + "…");
   try {
@@ -1634,6 +2487,7 @@ async function runJob(label, key, start) {
       let j;
       try { j = await api(`/api/job?id=${encodeURIComponent(job)}`); misses = 0; }
       catch (e) { if (++misses >= 20 || /no such job/.test(e.message)) throw e; continue; }
+      onProgress(j);
       if (!j.done) continue;
       if (j.error) throw new Error(j.error);
       log(j.message, "ok"); toast(j.message);
@@ -2015,6 +2869,7 @@ async function loadTitles() {
     <div class="item">
       <div class="grow"><div class="t">${esc(t.id)}</div>
         <div class="s" title="${esc(t.target)}">${esc(t.runtime_label)}${t.target ? " · " + esc(t.target) : ""}</div></div>
+      ${t.art_missing ? `<button class="small" data-title="refresh-art" data-id="${esc(t.id)}" title="Its Steam library tile has no artwork yet">Add artwork</button>` : ""}
       <button class="play small" data-title="launch" data-id="${esc(t.id)}" title="Launch in the headset">▶</button>
       <button class="small danger" data-title="remove" data-id="${esc(t.id)}">Remove</button>
     </div>`).join("") : `<div class="sub">None yet.</div>`;
@@ -2025,6 +2880,9 @@ $("titleList").onclick = async e => {
   if (b.dataset.title === "remove") {
     if (!confirm(`Remove ${id} and its files from the Frame?`)) return;
     await act(`Remove ${id}`, () => api("/api/titles", { action: "remove", id }), b);
+    loadTitles();
+  } else if (b.dataset.title === "refresh-art") {
+    await runJob(`Add Steam artwork for ${id}`, "art-" + id, () => api("/api/titles", { action: "refresh-art", id }));
     loadTitles();
   } else await act(`Launch ${id}`, () => api("/api/titles", { action: "launch", id }), b);
 };
@@ -2176,6 +3034,157 @@ document.body.addEventListener("click", async e => {
 });
 loadOwned();
 
+// ---- Discover apps ----
+const sourceState = { vr: null, installable: false, source: "", apps: [], sources: [], request: 0, detail: null, detailRequest: 0, jobs: new Map() };
+const storeName = s => String(s || "").replace(/ \(demo\)$/i, "");
+const storeHue = name => [...String(name)].reduce((n, c) => (n * 31 + c.charCodeAt(0)) >>> 0, 7) % 360;
+const storeInitial = name => [...String(name || "?")][0].toUpperCase();
+const storeText = text => String(text || "").replace(/<[^>]*>/g, " ").replace(/&nbsp;/g, " ");
+const storeOpenSource = o => o.open_source === true || /^(MIT|Apache|[AL]?GPL|BSD|MPL|ISC|CC0|Unlicense)/i.test(o.license || "");
+function sourcePage(url) { try { const u = new URL(url); return ["https:", "http:"].includes(u.protocol) ? u.href : ""; } catch { return ""; } }
+function storeImage(path, alt, eager=false) { return /^\/source-image\/[\w-]+$/.test(path || "") ? `<img src="${esc(path)}" alt="${esc(alt)}" loading="${eager ? "eager" : "lazy"}" decoding="async">` : ""; }
+function storeArt(o, cls="", eager=false, path=null, alt=null) {
+  const image = path || o.artwork?.banner || o.artwork?.screenshots?.[0];
+  return `<span class="store-art ${cls}" style="--hue:${storeHue(o.name)}"><span class="art-initial" aria-hidden="true">${esc(storeInitial(o.name))}</span>${storeImage(image, alt || `${o.name} artwork`, eager)}</span>`;
+}
+function storeIcon(o) { return `<span class="store-icon" style="--hue:${storeHue(o.name)}" aria-hidden="true">${esc(storeInitial(o.name))}${storeImage(o.artwork?.icon, "")}</span>`; }
+document.addEventListener("error", e => { if (e.target.matches?.(".store-art img, .store-icon img")) e.target.remove(); }, true);
+function sourceMark(s) { const name=storeName(s); return `<span class="offer-mark" style="--hue:${storeHue(name)}" aria-hidden="true">${esc(name === "SideQuest" ? "SQ" : name === "F-Droid" ? "Fd" : name.slice(0,2))}</span>`; }
+function sourceDescription(s) { return s.description || ({fdroid:"Independent, open-source apps",sidequest:"Discover something new in VR",itch:"Games from independent creators",github:"Direct from the people who make it"})[s.kind] || (s.name.includes("GitHub") ? "Direct from the people who make it" : s.name.includes("Droid") ? "Independent, open-source apps" : s.name.includes("SideQuest") ? "Discover something new in VR" : s.name.includes("itch") ? "Games from independent creators" : "Apps shared by this community"); }
+async function loadSources() {
+  try {
+    const {sources} = await api("/api/sources"); sourceState.sources = sources;
+    $("sourceFilter").innerHTML = `<option value="">All sources</option>` + sources.filter(s=>s.enabled).map(s=>`<option value="${esc(s.id)}">${esc(storeName(s.name))}</option>`).join("");
+    $("sourceFilter").value = sourceState.source;
+    $("sourcesList").innerHTML = sources.map(s=>`<div class="source-setting">${sourceMark(s.name)}<div class="grow"><strong>${esc(storeName(s.name))}</strong><p>${esc(sourceDescription(s))}</p><small>${esc(({official:"Official store",community:"Community",user:"Added by you"})[s.trust] || "Community")}</small>${s.builtin === false ? `<button class="small" data-remove="${esc(s.id)}" aria-label="Remove ${esc(s.name)}">Remove</button>` : ""}</div><input class="source-toggle" role="switch" type="checkbox" aria-label="Enable ${esc(storeName(s.name))}" data-enable="${esc(s.id)}" ${s.enabled ? "checked" : ""}></div>`).join("") || `<p class="store-notice">Your sources will appear here when they are available.</p>`;
+  } catch (e) { $("sourceError").textContent = e.message; }
+}
+function storeCard(app) {
+  const i=sourceState.apps.indexOf(app), o=app.offers[0];
+  return `<button class="store-card" data-app="${i}" aria-label="View ${esc(app.name)}">${storeArt(o)}<span class="store-card-content"><span class="store-card-title">${storeIcon(o)}<strong>${esc(app.name)}</strong></span><span class="store-summary">${esc(storeText(app.summary) || "A new addition to your Frame")}</span><span class="store-card-foot"><span>${o.vr ? "VR experience" : o.vr === false ? "Flat-screen app" : "Android app"}</span><b>Free</b></span></span></button>`;
+}
+function storeRow(title, subtitle, apps) { return apps.length ? `<section class="store-row"><div class="store-row-head"><h2>${esc(title)}</h2><p>${esc(subtitle)}</p></div><div class="store-grid">${apps.slice(0,5).map(storeCard).join("")}</div></section>` : ""; }
+function storeEmpty() {
+  return `<div class="store-empty"><svg viewBox="0 0 120 100" fill="none" aria-hidden="true"><rect x="18" y="25" width="60" height="55" rx="12" fill="currentColor" opacity=".08"/><rect x="29" y="18" width="60" height="55" rx="12" stroke="currentColor" opacity=".35"/><circle cx="61" cy="43" r="15" stroke="currentColor" stroke-width="3"/><path d="m72 55 17 18M17 12v10m-5-5h10m79-4v10m-5-5h10" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg><h2>A little further to explore.</h2><p>No apps found this time. Try a different name, clear your filters, or explore another source.</p><button class="action" id="storeReset">Explore all apps</button></div>`;
+}
+function renderStore() {
+  const apps=sourceState.apps, browsing=!$("sourceQ").value.trim() && sourceState.vr === null && !sourceState.installable && !sourceState.source;
+  $("searchCount").textContent = browsing ? "" : `${apps.length} ${apps.length===1 ? "app" : "apps"}${$("sourceQ").value.trim() ? ` for “${$("sourceQ").value.trim()}”` : ""}`;
+  if (!apps.length) { $("searchGrid").innerHTML=storeEmpty(); return; }
+  if (!browsing) { $("searchGrid").innerHTML=`<div class="store-grid">${apps.map(storeCard).join("")}</div>`; return; }
+  const featured=apps.find(a=>a.offers[0].vr && a.offers[0].artwork?.banner && a.offers[0].verdict?.tone !== 'blocked') || apps.find(a=>a.offers[0].artwork?.banner) || apps[0], o=featured.offers[0];
+  const tested=apps.filter(a=>a.offers.some(o=>o.vr && o.verdict?.tone==='works'));
+  const vr=tested.length ? tested : apps.filter(a=>a.offers.some(o=>o.vr && o.verdict?.tone !== 'blocked'));
+  const popular=[...apps].sort((a,b)=>(b.offers[0].popularity||0)-(a.offers[0].popularity||0));
+  const recent=apps.filter(a=>a.offers.some(o=>o.updated)).sort((a,b)=>String(b.offers[0].updated||'').localeCompare(String(a.offers[0].updated||'')));
+  $("searchGrid").innerHTML=`<button class="store-hero" data-app="${apps.indexOf(featured)}" aria-label="Explore ${esc(featured.name)}">${storeArt(o,"",true)}<span class="hero-copy"><span class="store-eyebrow">Step into something new</span><strong>${esc(featured.name)}</strong><span>${esc(storeText(featured.summary))}</span><span class="hero-cta">Explore ${esc(featured.name)} <span aria-hidden="true">&nbsp; ↗</span></span></span></button>` + storeRow(apps.some(a=>a.offers[0].popularity) ? "Popular apps" : "Explore apps","More ways to make your Frame yours",popular) + storeRow(tested.length ? "VR that works on the Frame" : "Step into VR",tested.length ? "Experiences checked on a Frame" : "A new perspective, a whole new playground",vr) + storeRow("Recently updated","Fresh from their creators",recent);
+}
+function storeChips() { $("searchFilters").querySelectorAll("button").forEach(b=>b.setAttribute("aria-pressed",b.dataset.filter==='all' ? sourceState.vr===null && !sourceState.installable : b.dataset.filter==='installable' ? sourceState.installable : sourceState.vr===(b.dataset.filter==='vr'))); }
+async function searchSources(quiet) {
+  const request=++sourceState.request;
+  $("searchGrid").setAttribute("aria-busy","true");
+  if(!quiet)$("searchGrid").innerHTML=`<div class="store-grid" role="status" aria-label="Finding apps">${Array.from({length:8},()=>'<div class="store-skeleton" aria-hidden="true"></div>').join("")}</div>`;
+  const params=new URLSearchParams({q:$("sourceQ").value,source:sourceState.source,installable:String(sourceState.installable)});
+  if(sourceState.vr!==null)params.set("vr",String(sourceState.vr));
+  try {
+    const result=await api("/api/search?"+params);if(request!==sourceState.request)return;
+    sourceState.apps=result.apps;
+    const unavailable=result.sources.filter(s=>s.status==='error'||s.status==='timed out').map(s=>storeName(s.name));
+    const loading=result.sources.filter(s=>s.status==='loading').map(s=>storeName(s.name));
+    const notes=[];
+    if(loading.length)notes.push(`Still fetching ${loading.join(" and ")}; more results will appear in a moment.`);
+    if(unavailable.length)notes.push(`${unavailable.join(" and ")} ${unavailable.length===1 ? "isn't" : "aren't"} responding right now. You can still explore the other sources.`);
+    result.sources.filter(s=>s.status==='limited').forEach(s=>notes.push(`${s.error}.`));
+    const stale=result.sources.filter(s=>s.stale).map(s=>storeName(s.name));
+    if(stale.length)notes.push(`Showing saved listings from ${stale.join(" and ")} while ${stale.length===1 ? "it refreshes" : "they refresh"}.`);
+    $("sourceStatus").innerHTML=notes.map(esc).join(" ")+(result.elsewhere||[]).map(x=>` <a href="${esc(x.url)}" target="_blank" rel="noopener">Browse ${esc(storeName(x.name))} ↗</a>`).join("");
+    $("sourceStatus").hidden=!notes.length && !(result.elsewhere||[]).length;
+    clearTimeout(sourceState.retry);
+    if(loading.length)sourceState.retry=setTimeout(()=>{ if(request===sourceState.request)searchSources(true); },6000);
+    renderStore();await loadSources();
+  } catch(e) { if(request===sourceState.request) { $("searchGrid").innerHTML=storeEmpty();$("sourceStatus").hidden=false;$("sourceStatus").textContent="We couldn't reach the app shelves. Try again in a moment."; } }
+  finally { if(request===sourceState.request)$("searchGrid").setAttribute("aria-busy","false"); }
+}
+function currentOffer() { return sourceState.detail?.app.offers[sourceState.detail.choice]; }
+function detailBadges(o) { return `<span class="store-badge">${o.vr ? "VR experience" : o.vr===false ? "Flat-screen app" : "Android app"}</span>${o.verdict?.tone==='works' ? '<span class="store-badge works">✓ Works on Frame</span>' : ''}<span class="store-badge">Free</span>${storeOpenSource(o) ? '<span class="store-badge">Open source</span>' : ''}`; }
+function renderDetail() {
+  const restoreOfferFocus=document.activeElement?.name==='storeOffer';
+  const d=sourceState.detail;if(!d)return;const o=currentOffer(), images=o.artwork?.screenshots||[], page=sourcePage(o.page);
+  $("detailBody").innerHTML=storeArt(o,"detail-banner",true)+`<div class="detail-content"><div class="detail-heading">${storeIcon(o)}<div><h1 id="detailTitle">${esc(o.name)}</h1><p>${esc(o.developer || o.author || 'From '+storeName(o.source_name))}</p></div></div><div class="store-badges">${detailBadges(o)}</div><div class="detail-layout"><div><div class="detail-gallery" id="detailGallery" aria-label="App screenshots" tabindex="0">${images.map((p,i)=>storeArt(o,"",false,p,`${o.name} screenshot ${i+1}`)).join("")}</div>${images.length ? `<div class="gallery-controls"><span>${images.length} screenshots · scroll to explore</span><div><button data-gallery="-1" aria-label="Previous screenshot">←</button> <button data-gallery="1" aria-label="Next screenshot">→</button></div></div>` : ''}<h2>About this app</h2><div class="detail-description">${esc(storeText(o.description || o.summary || "Discover this app on its developer's page."))}</div>${page ? `<p><a href="${esc(page)}" target="_blank" rel="noopener noreferrer">Meet the creators ↗</a></p>` : ''}<details class="detail-technical"><summary>Technical details</summary><dl><dt>Package</dt><dd>${esc(o.package||"Unknown")}</dd><dt>Version</dt><dd>${esc(o.version||"Unknown")} (${esc(o.version_code??"unknown")})</dd><dt>Android API</dt><dd>${esc(o.min_sdk??"Unknown")}</dd><dt>Architecture</dt><dd>${esc(o.abis?.join(', ')||"Unknown / no native code")}</dd><dt>Updated</dt><dd>${esc(o.updated||"Unknown")}</dd><dt>Compatibility</dt><dd>${(o.fit?.reasons||[]).map(esc).join(' · ')||'No known installation blockers'}</dd></dl></details></div><aside class="detail-buy"><div class="detail-price">Free</div><p class="detail-small">No purchase needed.</p><p class="detail-verdict ${esc(o.verdict?.tone||'unknown')}">${esc(o.verdict?.label||'Not yet checked on the Frame')}</p><button id="detailInstall" class="action store-primary">Install</button><progress id="detailProgress" max="100" hidden aria-label="Installation progress"></progress><p id="detailInstallNote" class="detail-small" role="status" aria-live="polite"></p><h2>Get it from</h2><div id="detailOffers">${d.app.offers.map((v,j)=>`<label class="offer-choice"><input type="radio" name="storeOffer" value="${j}" ${j===d.choice?'checked':''}><span>${sourceMark(v.source_name)}</span><span><strong>${esc(storeName(v.source_name))}${j===0?' · Recommended':''}</strong><small>${v.verified===true?'✓ Verified download':'Verification not provided'}</small><small>${esc(v.version ? 'v'+v.version : 'Latest release')}${v.size!=null?' · '+(v.size/1048576).toFixed(0)+' MB':''}</small></span></label>`).join('')}</div></aside></div></div>`;
+  updateInstall();
+  if(restoreOfferFocus)document.querySelector('#detailOffers input:checked')?.focus();
+}
+function updateInstall() {
+  const o=currentOffer();if(!o || !$("detailInstall"))return;
+  const job=sourceState.jobs.get(`${o.source}:${o.id}`), blocked=o.verdict?.tone==='blocked', page=sourcePage(o.page), b=$("detailInstall");
+  b.disabled=!!(job && !job.done) || !!job?.addingData || (blocked && !job?.result) || (!o.downloadable && !page);
+  b.textContent=job?.result?.game_data ? (job.addingData ? 'Adding game data…' : 'Add game data') : job?.result ? 'Open in Steam' : job && !job.done ? (job.stage||'Downloading')+(job.percent!=null?` ${Math.round(job.percent)}%`:'…') : blocked ? 'Not compatible' : o.downloadable ? (job?.error?'Try again':'Install on Frame') : 'Get from the creator ↗';
+  $("detailProgress").hidden=!job || job.done;
+  if(job?.percent!=null)$("detailProgress").value=job.percent;else $("detailProgress").removeAttribute("value");
+  $("detailInstallNote").textContent=job?.result?.game_data ? (job.dataError || 'Installed. It also needs its game data: open it once on the Frame, then choose Add game data.') : job?.result ? '✓ Installed. Find it in your Steam library.' : job?.error || (job && !job.done ? 'Keep exploring. We’ll take care of the installation.' : o.verdict?.tone==='works' ? 'Adds to your Steam library.' : 'Compatibility can vary. Adds to your Steam library.');
+  $("detailOffers").querySelectorAll('input').forEach(input=>input.disabled=!!job&&!job.done);
+}
+async function openStoreApp(index) {
+  const app=sourceState.apps[index];if(!app)return;
+  sourceState.detail={app:{...app,offers:app.offers.map(o=>({...o}))},choice:0};
+  renderDetail();if(!$("appDetail").open)$("appDetail").showModal();$("appDetail").scrollTop=0;
+  await loadOfferDetails();
+}
+async function loadOfferDetails() {
+  const d=sourceState.detail,o=currentOffer(), request=++sourceState.detailRequest;
+  try {
+    const detail=await api('/api/sources/details?'+new URLSearchParams({source:o.source,id:o.id}));
+    if(request!==sourceState.detailRequest || d!==sourceState.detail)return;
+    const artwork={icon:detail.artwork?.icon||o.artwork?.icon,banner:detail.artwork?.banner||o.artwork?.banner,screenshots:detail.artwork?.screenshots?.length?detail.artwork.screenshots:o.artwork?.screenshots||[]};
+    d.app.offers[d.choice]={...o,...detail,artwork};renderDetail();
+  } catch(e) { if(d===sourceState.detail)$("detailInstallNote").textContent="Some app details couldn't be refreshed. You can still view this listing."; }
+}
+async function installStoreApp() {
+  const o=currentOffer(), key=`${o.source}:${o.id}`, existing=sourceState.jobs.get(key);
+  if(existing?.result?.game_data) {
+    let error="";existing.addingData=true;existing.dataError="";updateInstall();
+    const added=await runJob(`Add game data for ${o.name}`,`${key}:data`,()=>api('/api/sources',{action:'game-data',package:existing.result.package}),j=>{error=j.error||"";});
+    Object.assign(existing,{addingData:false,dataError:added?"":error||"We couldn't add the game data. Try again."});
+    if(added)existing.result={...existing.result,game_data:false};
+    updateInstall();return;
+  }
+  if(existing?.result) { await act(`Open ${o.name}`,()=>api('/api/android',{action:'launch',package:existing.result.package}),$("detailInstall"));return; }
+  if(!o.downloadable) { const url=sourcePage(o.page);if(url)window.open(url,'_blank','noopener,noreferrer');return; }
+  if(existing&&!existing.done)return;
+  const state={stage:'Downloading',percent:null,done:false};sourceState.jobs.set(key,state);updateInstall();
+  const result=await runJob(`Install ${o.name}`,key,()=>api('/api/sources/install',{source:o.source,id:o.id,version_code:o.version_code??null}),j=>{Object.assign(state,{stage:j.stage||'Downloading',percent:j.percent??null,error:j.error});updateInstall();});
+  Object.assign(state,{done:true,result,error:result?null:state.error||"We couldn't finish the installation. Try again."});updateInstall();
+  if(result)loadAndroid();
+}
+async function changeSource(body) {
+  $("sourceError").textContent="Saving your sources…";
+  try { const result=await api('/api/sources',body);$("sourceError").textContent=result.message;sourceState.source='';await loadSources();await searchSources(); }
+  catch(e) { $("sourceError").textContent=e.message;await loadSources(); }
+}
+let storeSearchTimer;
+$("sourceQ").oninput=()=>{clearTimeout(storeSearchTimer);storeSearchTimer=setTimeout(searchSources,300);};
+$("sourceSearch").onsubmit=e=>{e.preventDefault();clearTimeout(storeSearchTimer);searchSources();};
+$("sourceFilter").onchange=e=>{sourceState.source=e.target.value;searchSources();};
+$("searchFilters").onclick=e=>{const b=e.target.closest('[data-filter]');if(!b)return;const f=b.dataset.filter;if(f==='all'){sourceState.vr=null;sourceState.installable=false;}else if(f==='installable')sourceState.installable=!sourceState.installable;else sourceState.vr=sourceState.vr===(f==='vr')?null:f==='vr';storeChips();searchSources();};
+$("searchGrid").onclick=e=>{const b=e.target.closest('[data-app]');if(b)openStoreApp(+b.dataset.app);if(e.target.closest('#storeReset')){$('sourceQ').value='';sourceState.vr=null;sourceState.installable=false;sourceState.source='';storeChips();searchSources();}};
+$("detailBody").onclick=e=>{if(e.target.closest('#detailInstall'))installStoreApp();const b=e.target.closest('[data-gallery]');if(b)$('detailGallery').scrollBy({left:+b.dataset.gallery*$('detailGallery').clientWidth*.86,behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'});};
+$("detailBody").onchange=e=>{if(e.target.name==='storeOffer'){sourceState.detail.choice=+e.target.value;renderDetail();loadOfferDetails();}};
+$("sourcesOpen").onclick=()=>{loadSources();$('sourcesDialog').showModal();};
+$("sourcesList").onchange=e=>{if(e.target.matches('[data-enable]'))changeSource({action:'enable',source:e.target.dataset.enable,enabled:e.target.checked});};
+$("sourcesList").onclick=e=>{const b=e.target.closest('[data-remove]');if(b)changeSource({action:'remove',source:b.dataset.remove});};
+async function addSource(body) {
+  $("sourceError").textContent="Checking the repository. Large ones can take a minute…";
+  let error="";
+  const result=await runJob('Add repository',`repo:${body.url}`,()=>api('/api/sources',body).catch(e=>{error=e.message;throw e;}),j=>{error=j.error||"";});
+  $("sourceError").textContent=result ? result.message : error || "We couldn't add that repository.";
+  if(result){$("addSource").reset();sourceState.source='';await loadSources();await searchSources();}
+}
+$("addSource").onsubmit=e=>{e.preventDefault();const f=new FormData(e.target);addSource({action:'add',url:f.get('url'),fingerprint:f.get('fingerprint')});};
+document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>$(b.dataset.close).close());
+$('appDetail').addEventListener('close',()=>{sourceState.detailRequest++;});
+document.querySelectorAll('[data-store-tab]').forEach(b=>b.onclick=()=>{const browse=b.dataset.storeTab==='browse';$('appStore').hidden=!browse;$('androidLibrary').hidden=browse;$('repNew').hidden=browse;$('sourcesOpen').hidden=!browse;document.querySelectorAll('[data-store-tab]').forEach(t=>{t.classList.toggle('on',t===b);t.setAttribute('aria-pressed',t===b);});if(!browse)loadAndroid();});
+loadSources().then(()=>searchSources());
+
 // ---- Android apps (own Lepton instance each) + catalogue ----
 const VLABEL = { works: "Works on Frame", likely: "Should work", maybe: "Might work", unlikely: "Probably crashes", no: "Won't work" };
 const cat = { apps: null, q: "", cat: "", v: new Set(["works", "likely"]), shown: 0, results: [] };
@@ -2196,6 +3205,7 @@ async function loadAndroid() {
       <div class="row and-btns">
         ${a.running ? `<button class="small" data-and="stop" data-pkg="${esc(a.package)}">Stop</button>`
                     : `<button class="play small" data-and="launch" data-pkg="${esc(a.package)}">▶</button>`}
+        ${a.art_missing ? `<button class="small" data-and="refresh-art" data-pkg="${esc(a.package)}" data-name="${esc(a.label)}" title="Its Steam library tile has no artwork yet">Add artwork</button>` : ""}
         <button class="small" data-and="probe" data-pkg="${esc(a.package)}" title="Launch it and record whether it stays up">Test</button>
         <button class="small" data-and="rate" data-pkg="${esc(a.package)}" data-ver="${esc(a.version)}" data-name="${esc(a.label)}" data-src="${esc(a.source || "")}" title="Report how it worked">Report</button>
         <button class="small danger" data-and="remove" data-pkg="${esc(a.package)}" data-name="${esc(a.label)}">Remove</button>
@@ -2279,6 +3289,8 @@ document.body.addEventListener("click", async e => {
   } else if (action === "remove") {
     if (!confirm(`Remove ${b.dataset.name} and its data from the Frame?`)) return;
     await act(`Remove ${b.dataset.name}`, () => api("/api/android", { action, package: pkg }), b);
+  } else if (action === "refresh-art") {
+    await runJob(`Add Steam artwork for ${b.dataset.name}`, "art-" + pkg, () => api("/api/android", { action, package: pkg }));
   } else if (action === "rate") {
     openReport({ package: pkg, version: b.dataset.ver, label: b.dataset.name, source: b.dataset.src });
     return;
@@ -2540,6 +3552,7 @@ async function openShot(s) {
     await new Promise((ok, bad) => { img.onload = ok; img.onerror = () => bad(new Error("not an image")); img.src = url; });
     if (gen !== viewGen) return;
     lastImg = img; lastSource = "shot"; lastShot = { blob, file: s.file };
+    desk.shown = null;  // a screenshot, not a panel: Control has nothing to act on here
     draw();
     $("srcBadge").textContent = `Screenshot · ${shotApp(s.appid)}`;
     $("stamp").hidden = false; $("stamp").textContent = new Date(s.time * 1000).toLocaleString();
@@ -2571,6 +3584,27 @@ $("shotGrid").onclick = e => {
 $("shotsRefresh").onclick = loadShots;
 $("shotsSaveNew").onclick = e => saveShots(shots.list.filter(s => !s.saved), e.currentTarget);
 $("shotsFolder").onclick = e => act($("shotsFolder").textContent, () => api("/api/open", { what: "shots" }), e.currentTarget);
+
+// ---- Panel switcher: our UI over SteamVR's panel API ----
+let panelSeq = 0;
+async function loadPanels() {
+  const seq = ++panelSeq;
+  try {
+    const s = await api("/api/panels", {action: "list"});
+    if (seq !== panelSeq) return;
+    $("panelList").innerHTML = s.panels.length ? s.panels.map(p =>
+      `<div class="item"><div class="grow"><div class="t">${esc(p.title)}</div></div>
+       <button class="small" data-panel="${esc(p.key)}">Show</button></div>`).join("")
+      : '<div class="sub">No open panels.</div>';
+  } catch (e) { if (seq === panelSeq) failed($("panelList"), e); }
+}
+$("panelsRefresh").onclick = loadPanels;
+$("panelsOpen").onclick = e => act("Open panel switcher in headset",
+  () => api("/api/panels", {action: "open"}), e.currentTarget);
+$("panelList").onclick = e => {
+  const b = e.target.closest("[data-panel]"); if (!b) return;
+  act("Show panel", () => api("/api/panels", {action: "focus", key: b.dataset.panel}), b);
+};
 
 // ---- Mac in the headset: windows and displays as panels (ui/frame_macview.py) ----
 let mvSeq = 0, mvTimer = 0;
@@ -2650,7 +3684,7 @@ $("macview").onclick = async e => {
 // ---- pages: #home, #games, #android, #tools (older section links still work) ----
 const PAGES = ["home", "games", "android", "tools"];
 const SECTION_PAGE = { view: "home", device: "home", shots: "home", library: "games", sideloaded: "games", getgames: "games",
-                       display: "android", transfer: "tools", apps: "tools", power: "tools", macview: "tools", privacy: "tools" };
+                       display: "android", transfer: "tools", apps: "tools", power: "tools", macview: "tools", privacy: "tools", panels: "tools" };
 let page = "home";
 function showPage() {
   const id = location.hash.slice(1);
@@ -2662,7 +3696,7 @@ function showPage() {
   document.title = page === "home" ? "Frame Control" : `${page[0].toUpperCase() + page.slice(1)} · Frame Control`;
   const section = !PAGES.includes(id) && id && $(id);
   if (section) section.scrollIntoView(); else window.scrollTo(0, 0);
-  if (page === "tools") loadMacView();
+  if (page === "tools") { loadMacView(); loadPanels(); }
 }
 window.addEventListener("hashchange", showPage);
 // While a text field has focus, phones hide the bottom tab bar (see body.typing in the CSS).
@@ -3616,5 +4650,6 @@ api("/api/host").then(h => {
   watchConnection();
 }).catch(() => watchConnection());
 </script>
+<script src="/artwork-settings.js"></script>
 </body>
 </html>

@@ -84,6 +84,132 @@ not being worn, so it did not reach `FOCUSED`).
 The loader was never the problem: Wolvic's Quest `libopenxr_loader.so` is a
 Khronos-style loader and found SteamVR through `/vendor`.
 
+## In the Steam library
+
+Every successful APK install goes through the same mandatory artwork writer:
+CLI (including `scripts/install-apk.sh`), upload, catalogue, version finder,
+web download and source modules calling `frame_android.install`. Native
+Linux/Windows sideloads also use it, preserving their devkit runtime wiring.
+A new shortcut is rolled back if artwork fails; failure is never reported as
+an installed app with a blank tile.
+
+Artwork preference is **SteamGridDB → source images → generated fallback**.
+Set the optional free key in Frame Control's **Library artwork settings**, or
+`STEAMGRIDDB_API_KEY` (`FRAME_STEAMGRIDDB_API_KEY` also works). Environment
+settings override the saved key. Without a key there are no provider calls or
+warnings. Saved keys stay in host app data, mode 0600 on POSIX, and are never
+returned by the settings API or copied to the headset. Exact title matches
+(including a trailing “VR” variant) use the highest-scored returned static,
+non-NSFW image in each slot. Provider failures use the next source.
+
+Sources pass `install(apk_path, artwork={...})`: keys are `grid`, `wide`,
+`hero`, `logo`, `icon`, `banner`, `feature_graphic`, `screenshot`, or a list
+`screenshots`. Values are PNG/JPEG bytes or HTTP(S) URLs (12 MiB and
+4096×4096 pixels maximum; any PNG depth or interlace, since the Frame's
+Chromium decodes them). URLs must resolve to public addresses, follow at most
+three redirects and share one deadline per install. Any source that fails,
+for any reason, becomes a warning and generated art. Banners and feature graphics supply hero/wide art;
+screenshots are the next fallback. Source images are cached for refresh.
+All images are fitted to 600×900 portrait, 920×430 wide, 3840×1240 hero,
+1280×480 logo and 256×256 icon. Explicit logos retain transparency.
+Photo-based portrait, wide and hero slots are JPEG: Steam takes at most
+12 MiB per slot, and on the Frame (2026-09-28) a noise-heavy 3840×1240 hero
+came to more than 12 MiB as PNG, 3.7 MB as JPEG (2.7 s to render); a
+landscape photo hero 5.6 MB as PNG, 0.76 MB as JPEG (0.75 s). A render that
+still fails is retried once with generated art. Steam keeps a slot's `.png`
+and `.jpg` side by side, so each slot is cleared before it is set.
+
+Generated art uses the APK icon, a dominant-colour gradient, a blurred
+backdrop and large foreground icon with shadow. Steam's Chromium canvas and
+Motiva Sans render real text consistently regardless of the host OS; no
+Pillow, host font installation or bitmap font is needed. The hero has no
+title; the generated logo is a transparent title. APKs with no usable icon
+get a typographic monogram. The desktop package includes the renderer.
+
+Backfill installed Android apps without reinstalling or stopping them:
+
+```sh
+python3 ui/frame_android.py refresh-art org.godotengine.open_saber_plus
+python3 ui/frame_android.py refresh-art --all
+```
+
+Devkit titles installed by Frame Control have the same command,
+`python3 ui/frame_titles.py refresh-art ID|--all`. The settings panel's
+refresh covers both. The API is `POST /api/android` with
+`{"action":"refresh-art","all":true}` (apps and titles) or a `package`, and
+`POST /api/titles` with `{"action":"refresh-art","id":…}`; each returns a
+background job. Batch results retain per-item errors, and the CLIs exit
+nonzero if any failed. Apps and titles without complete artwork show **Add
+artwork** and `list` prints the command. Only entries marked `art_pending` at
+install (a title Steam registered after an install made while it wasn't
+running) are backfilled automatically, when Frame Control lists them with
+Steam running (at most every five minutes), and that backfill only fills
+slots Steam has no art for: names, icons, flags and any art the user set are
+kept. Older installs without the flag are refreshed only on request.
+
+Steam's app overviews carry no `devkit_gameid` (checked 2026-09-28, build
+20260925.6191901, on every non-Steam shortcut). A title's shortcut is found by
+its saved id, or by an executable or start folder inside
+`~/devkit-game/<id>/`, read from `appDetailsStore`; never by display name.
+That the devkit shortcut's exe/start folder sit inside the title folder is
+inferred from `docs/sideloading.md` (`proton waitforexitandrun
+"/home/steamos/devkit-game/<id>/<exe>"`), not yet seen in app details.
+Devkit titles keep the VR flag Steam gave them.
+
+**Verified on build 20260925.6191901, SteamVR 2.18.1 (2026-09-28):** both
+Open Saber Plus and SuperTux were backfilled. Steam's cached portrait, wide,
+hero and logo PNGs have the dimensions above; each shortcut points at its
+256×256 icon. This Frame client mishandles custom-art type 4 (documented as
+Icon), overwriting the wide capsule; the implementation uses custom types
+0–3 and **SetShortcutIcon** separately.
+
+Steam accepts display name, executable/start directory, icon, VR flag and
+sort-as name. Android apps join **Android**, immersive apps also **Android
+VR**; native sideloads join **Sideloaded**. Existing collection members and
+unrelated collections are preserved (both games retained **Played**).
+Dynamic/read-only collection conflicts produce warnings. The native notes
+API supports a managed **Installation details** note (package, version and
+source) while preserving other notes. Notes are keyed by sanitized shortcut
+name, so Steam itself cannot distinguish equal-name shortcut notes. No
+supported shortcut description/store-page, developer/publisher, release
+metadata or custom achievement API was found; these are not fabricated.
+
+The launcher supervises Lepton and handles TERM/INT/HUP and normal exit by
+stopping its own container and child process group. A lock refuses duplicate launches;
+a container still running while the lock is free was orphaned by a killed
+launcher and is stopped before the new launch. Lepton doesn't inherit the
+lock. Orphan recovery only stops the app's own, deterministically named
+container; a Lepton host process whose launcher was killed before it created
+the container may linger briefly. Removing an app or title still deletes its files when Steam isn't
+running; tidying Steam's collections and artwork is best effort. Steam Stop uses `TerminateApp` with the exact
+64-bit game ID string. Frame Control's Stop additionally has a direct-container
+fallback. The stable instance ID and compatdata paths remain unchanged.
+
+Lepton normally forwards the instance `SteamAppId` to Android, causing
+SteamVR to associate the scene with a different, artwork-less app. The
+launcher uses Lepton's supported `LEPTON_ENV_SteamAppId` passthrough to send
+the actual shortcut ID to Android while retaining the stable container ID.
+**Verified:** Open Saber was alive 22 seconds after Steam Play, SteamVR
+identified `steam.app.3346865537`, and its scene appeared in the headset
+capture without the previous blank Resume tile. Steam Stop then removed its
+tracked process and stopped the container. An earlier 32-second session was
+also tracked until Steam Stop. No global standby or dashboard overrides were
+installed; wear detection and other user-opened overlays still apply.
+
+**SuperTux limitation:** Steam launched and tracked it, but SDL crashed during
+activity creation because Lepton lacks `ClipboardManager`. Its container
+cleaned up on exit after about 17 seconds. Consequently sustained SuperTux
+Play/Stop and its VR scene could not be verified. This is an APK/runtime
+compatibility failure, separate from library presentation.
+
+Evidence is under `/tmp/vrlib-evidence/` on the development Mac: final artwork
+preview and three design passes, `steam-cache-final.log`,
+`steam-details-targets.json`, `opensaber-identity-session.log`,
+`opensaber-identity-headset.png`, and `supertux-lepton.log`. The preview is
+rendered artwork, not a Steam UI screenshot; CDP screenshot capture timed
+out. Authenticated SteamGridDB, Windows/Linux packaged builds and the sibling
+source-search endpoint remain unverified (the public install seam is tested).
+
 ## Out of scope
 
 - **Meta entitlement.** Apps that call the Oculus Platform SDK
