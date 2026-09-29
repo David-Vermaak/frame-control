@@ -2,13 +2,21 @@ name: release
 
 # Pushing a v* tag builds Frame Control for macOS, Windows and Linux and attaches
 # the installers to that tag's GitHub release (created as a draft if missing).
-# Pull requests that touch the app build the same installers as artifacts.
+# Pull requests that change how the installers are built (the Electron app, the
+# macOS helper it compiles, or this workflow) build the same installers as
+# artifacts. ui/, scripts/, frame/ and apk-catalog/ are copied in as they are and
+# are tested by the checks workflow; run this one by hand to package them early.
 on:
   push:
     tags: ["v*"]
   pull_request:
-    paths: ["app/**", "ui/**", "scripts/**", "frame/**", "apk-catalog/**", ".github/workflows/release.yml"]
+    paths: ["app/**", "mac/frame-mac-view/**", ".github/workflows/release.yml"]
   workflow_dispatch:
+
+# A newer push to the same pull request supersedes a build still in progress.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: write
@@ -49,7 +57,9 @@ jobs:
           tag="${GITHUB_REF_NAME}"
           gh release view "$tag" >/dev/null 2>&1 || gh release create "$tag" --draft --title "Frame Control ${tag#v}" --notes ""
           gh release upload "$tag" ${{ matrix.files }} --clobber
+      # Tagged builds are attached to the release above; only other builds need artifacts.
       - uses: actions/upload-artifact@v4
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
         with:
           name: frame-control-${{ matrix.os }}
           path: |

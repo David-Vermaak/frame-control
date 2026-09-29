@@ -23,7 +23,8 @@ started=$SECONDS
 
 print "==> Building fakeframe-frame (from $base) and fakeframe-host"
 # Quiet when it works; if a build fails, build again with the full log so CI shows why.
-build() { docker build -q "$@" >/dev/null || { docker build --progress=plain "$@"; exit 2 } }
+# That second build also rides out a flaky package mirror: only its failure is fatal.
+build() { docker build -q "$@" >/dev/null || docker build --progress=plain "$@" || exit 2 }
 build --build-arg BASE="$base" -t fakeframe-frame -f tests/fakeframe/Containerfile tests/fakeframe
 build -t fakeframe-host -f tests/fakeframe/host.Containerfile tests/fakeframe
 

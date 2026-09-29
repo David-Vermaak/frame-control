@@ -120,7 +120,27 @@ class LauncherTests(unittest.TestCase):
 FIXTURES = ROOT / 'tests/fixtures/library'
 
 
+def wait_for_idle_resolvers(timeout=10):
+    # Name lookups that outlast their deadline give their slot back from their own thread,
+    # which a busy runner may not schedule before the next test; wait until all are back.
+    from apk_sources import _images
+    held = []
+    try:
+        end = time.monotonic() + timeout
+        while _images._resolvers.acquire(timeout=max(0, end - time.monotonic())):
+            held.append(1)
+            if len(held) == 4:
+                return
+        raise AssertionError('artwork name lookups from an earlier test are still running')
+    finally:
+        for _ in held:
+            _images._resolvers.release()
+
+
 class ArtworkTests(unittest.TestCase):
+    def setUp(self):
+        wait_for_idle_resolvers()
+
     def test_source_inputs_and_url(self):
         from apk_sources import _images
         data = (FIXTURES / 'icon.png').read_bytes()
@@ -231,10 +251,7 @@ class ArtworkTests(unittest.TestCase):
             self.assertEqual(sum('Too many' in e for e in errors), 2)
         finally:
             gate.set()
-        deadline = time.monotonic() + 5
-        while time.monotonic() < deadline and not _images._resolvers.acquire(blocking=False):
-            time.sleep(0.01)
-        _images._resolvers.release()  # the stuck lookups finished and gave their slots back
+        wait_for_idle_resolvers()  # the stuck lookups finished and gave their slots back
 
     def test_resolver_slot_released_when_thread_cannot_start(self):
         from apk_sources import _images
@@ -242,10 +259,14 @@ class ArtworkTests(unittest.TestCase):
             for _ in range(6):
                 with self.assertRaises(RuntimeError):
                     _images.get('https://example.org/a.png', deadline=time.monotonic() + 1)
-        for _ in range(4):  # every slot came back
-            self.assertTrue(_images._resolvers.acquire(blocking=False))
-        for _ in range(4):
-            _images._resolvers.release()
+        held = 0
+        try:
+            while held < 4 and _images._resolvers.acquire(blocking=False):
+                held += 1
+            self.assertEqual(held, 4)  # every slot came back
+        finally:
+            for _ in range(held):  # even on failure, so later tests don't inherit the leak
+                _images._resolvers.release()
 
     def test_deadline_covers_name_resolution(self):
         import threading
