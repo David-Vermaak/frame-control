@@ -19,6 +19,13 @@ import frame_splat as splat
 import server
 
 
+def stop_now():
+    """What systemd's SIGTERM does to the player, without signalling the test process."""
+    handler = signal.getsignal(signal.SIGTERM)
+    if callable(handler):
+        handler(signal.SIGTERM, None)
+
+
 class Media(unittest.TestCase):
     def test_layout_evidence_and_override(self):
         for name, layout in [('film_SBS.mp4', 'sbs'), ('film.OU.mkv', 'ou'),
@@ -59,15 +66,21 @@ class Media(unittest.TestCase):
         self.assertNotIn('-re', cmd)
         self.assertIn('-frames:v', cmd)
 
-    def test_video_survives_standby_and_stop_after_end_stays_ended(self):
-        # Verified 2026-09-29: an unworn Frame enters standby within seconds and
-        # SetOverlayRaw then returns RequestFailed (23) until it wakes.
+    def play_with(self, name, busy=0, on_pixels=None, sleeps=None, info=None,
+                  fail=None, layout='auto'):
+        """Run the player against a fake OpenVR; returns (status, pixels calls).
+
+        Handle 0 is the theatre surround and 1 the screen. `fail(handle, n)` makes
+        the n-th upload busy; every status written is kept in self.writes."""
         calls = []
+        self.writes = []
+        write_status = player.write_status
+
+        def record(path, **values):
+            self.writes.append(values)
+            write_status(path, **values)
 
         class FakeOverlay:
-            def __init__(self):
-                self.closed = False
-
             def create(self, *a, **k):
                 return len(calls)
 
@@ -76,40 +89,132 @@ class Media(unittest.TestCase):
 
             def pixels(self, handle, data, w, h):
                 calls.append((handle, w, h))
-                if len(calls) <= 3:
+                if on_pixels:
+                    on_pixels(len(calls))
+                if len(calls) <= busy or (fail and fail(handle, len(calls))):
                     raise player.OverlayBusy('standby')
 
             def close(self):
-                # A Stop arriving during cleanup must be ignored, not become an error.
+                # A Stop landing during cleanup must be ignored, not become an error.
                 # Call the installed handler directly: a real SIGTERM kills Windows.
-                handler = signal.getsignal(signal.SIGTERM)
-                if callable(handler):
-                    handler(signal.SIGTERM, None)
+                stop_now()
 
         frame = bytes(4*2*4)
         proc = unittest.mock.MagicMock()
         proc.stdout = io.BytesIO(frame*4)
         proc.wait.return_value = 0
         proc.poll.return_value = 0
+        old = signal.getsignal(signal.SIGTERM), signal.getsignal(signal.SIGINT)
         with tempfile.TemporaryDirectory() as d, \
                 patch.object(player, 'Overlay', FakeOverlay), \
-                patch.object(player, 'probe', return_value=({'codec_name': 'h264', 'width': 4, 'height': 2}, False)), \
+                patch.object(player, 'probe', return_value=(info or {'codec_name': 'h264', 'width': 4, 'height': 2}, False)), \
                 patch.object(player.subprocess, 'Popen', return_value=proc), \
-                patch.object(player.time, 'sleep'):
-            path = Path(d)/'clip_SBS.mp4'
+                patch.object(player, 'write_status', side_effect=record), \
+                patch.object(player.frame_splat, 'render', return_value=(bytes(4*4*2), 4, 2)), \
+                patch.object(player.time, 'sleep', side_effect=sleeps):
+            path = Path(d)/name
             path.write_bytes(b'x')
             status = Path(d)/'status.json'
-            old = signal.getsignal(signal.SIGTERM), signal.getsignal(signal.SIGINT)
             try:
-                player.play(argparse.Namespace(file=str(path), layout='auto', theatre=True, status=str(status)))
+                player.play(argparse.Namespace(file=str(path), layout=layout, theatre=True, status=str(status)))
             finally:
                 signal.signal(signal.SIGTERM, old[0])
                 signal.signal(signal.SIGINT, old[1])
-            result = json.loads(status.read_text())
+            return json.loads(status.read_text()), calls
+
+    def test_video_survives_standby_and_stop_after_end_stays_ended(self):
+        # Verified 2026-09-29: an unworn Frame enters standby within seconds and
+        # SetOverlayRaw then returns RequestFailed (23) until it wakes.
+        result, calls = self.play_with('clip_SBS.mp4', busy=3)
         self.assertEqual((result['state'], result['frames']), ('ended', 4))
-        # Surround + first two video frames were dropped; the surround was re-sent after wake.
-        self.assertEqual(result['dropped'], 3)
+        # Two video frames were dropped; the surround (handle 0) waited and was re-sent.
+        self.assertEqual(result['dropped'], 2)
         self.assertIn((0, 1, 1), calls[3:])
+
+    def test_stop_mid_video_reports_stopped(self):
+        result, _ = self.play_with('clip_SBS.mp4', on_pixels=lambda n: n == 3 and stop_now())
+        self.assertEqual(result['state'], 'stopped')
+
+    def test_video_errors_when_steamvr_never_takes_frames(self):
+        with patch.object(player, 'BUSY_LIMIT', -1), \
+                self.assertRaisesRegex(RuntimeError, 'stopped accepting frames'):
+            self.play_with('clip_SBS.mp4', busy=99)
+
+    def test_still_waits_out_standby_without_a_limit(self):
+        # Stills have no timeline: keep retrying (here past BUSY_LIMIT) until shown.
+        ticks = iter(range(10))
+        def sleep(_):
+            if next(ticks) == 8:
+                stop_now()
+        with patch.object(player, 'BUSY_LIMIT', -1):
+            result, calls = self.play_with('photo_SBS.png', busy=5, sleeps=sleep,
+                                           info={'codec_name': 'png', 'width': 4, 'height': 2})
+        self.assertEqual(result['state'], 'stopped')
+        screen = [c for c in calls if c[0] == 1]
+        self.assertGreater(len(screen), 1)  # retried through standby
+        self.assertEqual(calls[-1], (0, 1, 1))  # surround drained once the screen took a frame
+
+    def still_with_late_surround(self, name, **kw):
+        # The screen takes its first frame while the surround is still refused
+        # (its first upload, the drain right after the screen, and one retry).
+        ticks = iter(range(10))
+        def sleep(_):
+            if next(ticks) == 5:
+                stop_now()
+        surround_tries = []
+        def fail(handle, n):
+            if handle == 0:
+                surround_tries.append(n)
+                return len(surround_tries) <= 3
+            return False
+        result, calls = self.play_with(name, sleeps=sleep, fail=fail, **kw)
+        self.assertEqual(result['state'], 'stopped')
+        screen = [c for c in calls if c[0] == 1]
+        surround = [c for c in calls if c[0] == 0]
+        self.assertEqual(len(screen), 1)  # shown once, not re-sent every second
+        self.assertEqual(len(surround), 4)  # kept retrying after the screen, until it took
+        self.assertEqual(calls[-1][0], 0)
+        return calls
+
+    def test_photo_surround_recovers_after_screen_is_shown(self):
+        self.still_with_late_surround('photo_SBS.png',
+                                      info={'codec_name': 'png', 'width': 4, 'height': 2})
+
+    def test_splat_surround_recovers_after_screen_is_shown(self):
+        self.still_with_late_surround('scene.splat')
+
+    def test_video_standby_limit_is_five_minutes_without_an_accepted_frame(self):
+        self.assertEqual(player.BUSY_LIMIT, 300)
+        def run(times, busy):
+            # Upload n happens at times[n] seconds on a fake clock; 1 is the surround.
+            clock = [1000.0]
+            def on_pixels(n):
+                clock[0] = 1000.0 + times.get(n, times[max(times)])
+            with patch.object(player.time, 'monotonic', side_effect=lambda: clock[0]):
+                return self.play_with('clip_SBS.mp4', on_pixels=on_pixels,
+                                      fail=lambda h, n: h == 1 and n in busy)
+        # Busy for 299 s, then a frame lands: no error.
+        result, _ = run({1: 0, 2: 0, 3: 299, 4: 299, 5: 299}, busy={2, 3})
+        self.assertEqual((result['state'], result['dropped']), ('ended', 2))
+        # An accepted frame resets the timer: 600 s busy in total, never 300 s in a row.
+        result, _ = run({1: 0, 2: 0, 3: 200, 4: 250, 5: 450}, busy={2, 3, 5})
+        self.assertEqual((result['state'], result['dropped']), ('ended', 3))
+        # 301 s in a row without an accepted frame is an error.
+        with self.assertRaisesRegex(RuntimeError, 'stopped accepting frames for 300 s'):
+            run({1: 0, 2: 0, 3: 301}, busy={2, 3, 4, 5})
+
+    def test_status_reports_where_the_layout_came_from(self):
+        video = {'codec_name': 'h264', 'width': 4, 'height': 2}
+        for name, layout, tags, expect in [
+                ('clip_SBS.mp4', 'auto', None, ('sbs', 'filename')),
+                ('clip.mkv', 'auto', {'stereo_mode': 'left_right'}, ('full-sbs', 'metadata')),
+                ('clip_OU.mp4', 'sbs', None, ('sbs', 'explicit')),
+                ('clip.mkv', 'mono', {'stereo_mode': 'left_right'}, ('mono', 'explicit'))]:
+            with self.subTest(name=name, layout=layout):
+                self.play_with(name, layout=layout, info=dict(video, tags=tags) if tags else video)
+                playing = self.writes[0]
+                self.assertEqual(playing['state'], 'playing')
+                self.assertEqual((playing['layout'], playing['source']), expect)
 
     def test_fake_frame_library_and_traversal(self):
         with tempfile.TemporaryDirectory() as d, patch.object(remote, 'ROOT', Path(d)):

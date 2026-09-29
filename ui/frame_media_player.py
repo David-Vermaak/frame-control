@@ -86,11 +86,14 @@ class Overlay:
         self.call('ShowOverlay', handle)
 
     def close(self):
-        try:
-            for h in reversed(self.handles):
+        # Best effort: SteamVR removes a disconnected client's overlays anyway,
+        # and a teardown error must not overwrite a finished playback's status.
+        for h in reversed(self.handles):
+            try:
                 self.call('DestroyOverlay', h)
-        finally:
-            self.vr.VR_ShutdownInternal()
+            except RuntimeError:
+                pass
+        self.vr.VR_ShutdownInternal()
 
 
 def probe(path):
@@ -125,6 +128,11 @@ def decoder_command(path, info, width, height, audio, photo=False):
     return cmd
 
 
+def ignore_signals():
+    signal.signal(signal.SIGTERM, signal.SIG_IGN)
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
+
+
 def write_status(path, **values):
     tmp = path.with_suffix('.tmp')
     tmp.write_text(json.dumps(values))
@@ -148,30 +156,42 @@ def play(args):
     vr, proc, frames, started = None, None, 0, time.monotonic()
     dropped, busy_since, pending = 0, None, []
 
-    def show(handle, data, w, h):
-        """Submit a frame; during standby drop it (video) or report False (stills retry)."""
+    def show(handle, data, w, h, video=False):
+        """Submit a frame. During standby return False; a video frame is dropped."""
         nonlocal dropped, busy_since
         try:
             vr.pixels(handle, data, w, h)
         except OverlayBusy:
+            if not video:
+                return False  # stills and the surround just wait; nothing is lost
             dropped += 1
             busy_since = busy_since or time.monotonic()
             if time.monotonic() - busy_since > BUSY_LIMIT:
                 raise RuntimeError('SteamVR stopped accepting frames for %d s' % BUSY_LIMIT)
             return False
-        busy_since = None
-        while pending:  # e.g. the theatre surround, if it was sent during standby
-            item = pending.pop(0)
-            if not show(*item):
-                pending.insert(0, item)
-                break
+        if video:
+            busy_since = None
+        drain()
         return True
+
+    def drain():
+        """Re-send anything that arrived during standby (e.g. the theatre surround)."""
+        while pending:
+            item = pending.pop(0)
+            try:
+                vr.pixels(*item)
+            except OverlayBusy:
+                pending.insert(0, item)
+                return
 
     def hold(handle, data, w, h):
         """Keep a still (photo or splat) up until Stop, retrying through standby."""
         shown = False
         while True:
-            shown = shown or show(handle, data, w, h)
+            if shown:
+                drain()
+            else:
+                shown = show(handle, data, w, h)
             time.sleep(1)
 
     # systemd sends SIGTERM to the whole unit, including ffmpeg. Python unwinds
@@ -204,7 +224,7 @@ def play(args):
             if photo:
                 still = data, outw, outh
             else:
-                show(screen, data, outw, outh)
+                show(screen, data, outw, outh, video=True)
             frames += 1
             if frames == 1 or frames % 30 == 0:
                 write_status(status, state='playing', file=path.name, frames=frames,
@@ -218,14 +238,16 @@ def play(args):
             raise RuntimeError('Decoder produced no frames')
         if photo:
             hold(screen, *still)
+        # From here on a Stop can't change the outcome; don't let it turn
+        # 'ended' into an error while we write status and clean up.
+        ignore_signals()
         write_status(status, state='ended', frames=frames, dropped=dropped,
                      seconds=time.monotonic()-started)
     except InterruptedError:
+        ignore_signals()
         write_status(status, state='stopped', frames=frames, dropped=dropped)
     finally:
-        # A Stop that lands during cleanup must not turn 'ended' into an error.
-        signal.signal(signal.SIGTERM, signal.SIG_IGN)
-        signal.signal(signal.SIGINT, signal.SIG_IGN)
+        ignore_signals()
         if proc:
             if proc.poll() is None:
                 proc.terminate()
