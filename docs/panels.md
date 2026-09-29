@@ -123,3 +123,12 @@ a limit on the number of floating panels.
   keyboard) or virtual desktops arrange windows within the 1280×800 rectangle.
 - **Windows-only overlay tools** (Desktop+, OVR Toolkit, OVRdrop) do this for a
   PC's desktop in SteamVR. They don't run on the Frame's standalone Linux.
+
+## Frame Control's media theatre
+
+[The owned media player](vr-video.md) can show its video or stereo image on a
+larger, head-relative screen with its own dark surround. **Verified remotely
+2026-09-28**, SteamOS 0.4.1 / BUILD_ID 20260925.6191901: screen, eye isolation,
+surround and cleanup. It does not alter panel docking or global settings.
+Its `Overlay` RGBA rendering hook is available to stream producers; applying
+SteamVR theatre docking to existing Mac/PC panels is still unverified here.

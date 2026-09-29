@@ -87,6 +87,7 @@
   .wait::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--dim); flex: none; }
 
   /* ---- drop anywhere ---- */
+  #media select { min-width: 0; max-width: 100%; flex: 1; }
   .dropzone { position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; pointer-events: none;
               background: rgba(14,20,27,.82); backdrop-filter: blur(3px); }
   .dropzone > div { padding: 42px 60px; border: 2px dashed var(--blue); border-radius: 8px; text-align: center;
@@ -238,6 +239,17 @@
   .actions { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
   .actions button { justify-content: flex-start; height: 40px; }
   .actions svg { width: 16px; height: 16px; flex: none; opacity: .85; }
+  .notice { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; padding: 12px 16px; border-radius: 4px;
+            background: rgba(26,159,255,.12); border-left: 3px solid var(--blue); font-size: 13.5px; line-height: 1.5; }
+  .notice .grow { flex: 1; min-width: 260px; }
+  .notice .progress { width: 160px; margin-top: 0; display: block; }
+  .popt { display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; align-items: start; margin: 0 0 14px; cursor: pointer; }
+  .popt input { margin: 3px 0 0; width: 16px; height: 16px; accent-color: var(--blue); }
+  .popt b { font-weight: 600; color: var(--text); }
+  .popt .sub { grid-column: 2; line-height: 1.45; }
+  .sentlog { max-height: 260px; overflow: auto; background: rgba(0,0,0,.3); border-radius: 3px; padding: 10px;
+             font: 11.5px ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; word-break: break-all; margin: 8px 0 0; }
+  details summary { cursor: pointer; color: var(--link); font-size: 13px; margin-top: 12px; }
   .links { margin-top: 16px; padding-top: 14px; border-top: 1px solid rgba(255,255,255,.06); font-size: 13px; color: var(--muted); }
   .links a { color: var(--link); text-decoration: none; } .links a:hover { color: #fff; }
   .links div { margin: 5px 0; }
@@ -266,10 +278,18 @@
   .and-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 22px; align-items: start; }
   .and-col { display: grid; gap: 22px; align-content: start; }
   .rep-item .s { white-space: normal; }
-  #repDlg, #titleDlg, #wiDlg, #pwDlg, #apkAltDlg, #aboutDlg { background: #1e2329; color: var(--text); border: 1px solid rgba(255,255,255,.1); border-radius: 4px;
+  #bugDlg, #repDlg, #titleDlg, #wiDlg, #pwDlg, #apkAltDlg, #aboutDlg { background: #1e2329; color: var(--text); border: 1px solid rgba(255,255,255,.1); border-radius: 4px;
             padding: 22px; width: min(560px, 92vw); box-shadow: 0 20px 60px rgba(0,0,0,.6); }
-  #repDlg::backdrop, #titleDlg::backdrop, #wiDlg::backdrop, #pwDlg::backdrop, #apkAltDlg::backdrop, #aboutDlg::backdrop { background: rgba(0,0,0,.55); }
-  #repDlg h2, #titleDlg h2, #wiDlg h2, #pwDlg h2, #apkAltDlg h2, #aboutDlg h2 { margin: 0 0 14px; font-size: 15px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--bright); }
+  #bugDlg::backdrop, #repDlg::backdrop, #titleDlg::backdrop, #wiDlg::backdrop, #pwDlg::backdrop, #apkAltDlg::backdrop, #aboutDlg::backdrop { background: rgba(0,0,0,.55); }
+  #bugDlg { width: min(640px, calc(100vw - 40px)); }
+  #bugForm label.field { display: block; font-size: 12.5px; color: var(--muted); margin-top: 10px; }
+  #bugForm label.field input, #bugForm label.field textarea, #bugForm select { margin-top: 5px; }
+  #bugForm select { width: 100%; background: rgba(0,0,0,.28); color: var(--text); border: 1px solid transparent;
+                    border-radius: 3px; padding: 8px 10px; font: inherit; }
+  #bugForm .popt { margin: 14px 0 0; }
+  #bugForm .sentlog { max-height: 200px; }
+  #bugWarn { color: var(--muted); font-size: 12.5px; line-height: 1.45; margin: 12px 0 0; }
+  #bugDlg h2, #repDlg h2, #titleDlg h2, #wiDlg h2, #pwDlg h2, #apkAltDlg h2, #aboutDlg h2 { margin: 0 0 14px; font-size: 15px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--bright); }
   .about-text { max-height: 55vh; overflow: auto; }
   .about-text pre { white-space: pre-wrap; font-size: 12px; color: var(--muted); }
   .about-text summary { cursor: pointer; margin: 8px 0; }
@@ -324,6 +344,13 @@
   .game-card .bar > i { display: block; height: 100%; background: var(--action); }
   .f-0 { color: var(--muted); }
   /* ---- Android display ---- */
+  #mvQuality { background: rgba(0,0,0,.28); color: var(--text); border: 1px solid transparent; border-radius: 3px; padding: 4px 6px; font: inherit; font-size: 12px; }
+  .mv-windows { max-height: 420px; overflow-y: auto; }
+  .mv-perm { background: rgba(255,190,60,.08); border: 1px solid rgba(255,190,60,.25); border-radius: 4px; padding: 10px 12px; margin-bottom: 12px; font-size: 13px; }
+  .mv-perm .row { margin-top: 8px; }
+  .mv-live { color: var(--green, #7fd67f); font-size: 12px; }
+  .mv-opt { display: block; font-size: 13px; margin: 0 0 12px; }
+  .mv-opt .sub { display: block; margin-left: 22px; font-size: 12px; }
   .disp select { width: 100%; background: rgba(0,0,0,.28); color: var(--text); border: 1px solid transparent; border-radius: 3px;
                  padding: 8px 10px; font: inherit; font-size: 13px; }
   .disp select:focus { outline: none; border-color: var(--blue); }
@@ -418,12 +445,31 @@
   <div class="spacer"></div>
   <span class="chip" id="conn" role="status"><span class="dot"></span><span>Connecting…</span></span>
   <span class="chip" id="battChip" title="Battery">—</span>
+  <button id="reportBtn" data-report title="Report a problem, with diagnostics" aria-label="Report a problem">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M12 3l10 18H2z"/><path d="M12 10v5M12 18v.5"/></svg>
+  </button>
   <button id="refreshAll" title="Refresh (R)" aria-label="Refresh">
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
   </button>
 </header>
 
 <main>
+  <div class="notice" id="updateBar" hidden>
+    <div class="grow" id="updateText"></div>
+    <div class="progress" id="updateProg" hidden><i></i></div>
+    <button class="small" id="updateNotes">What's new</button>
+    <button class="action small" id="updateGo">Update and restart</button>
+    <button class="small" id="updateLater">Later</button>
+  </div>
+  <div class="notice" id="privacyNotice" hidden>
+    <div class="grow">Frame Control sends anonymous usage statistics: that it was installed and opened, its version,
+      your operating system, which tabs you use, and whether installs on the Frame worked. Never file names, paths,
+      addresses or anything you've typed, and it isn't linked to you. You can also share whether Android apps
+      worked and the details of errors, which helps fix problems faster.</div>
+    <button class="small" id="noticeSettings">Privacy settings</button>
+    <button class="small" id="noticeMore" title="Also share compatibility results and error details (you can turn either off later)">Share more to help fix problems</button>
+    <button class="action small" id="noticeOk">OK</button>
+  </div>
   <div class="banner" id="offline" role="alert" hidden>
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M2 8.5a15 15 0 0 1 20 0M5.5 12a10 10 0 0 1 13 0M9 15.5a5 5 0 0 1 6 0"/><circle cx="12" cy="19" r="1.2" fill="currentColor"/><path d="M3 3l18 18"/></svg>
     <div class="grow"><div class="t" id="offMsg">Can't reach the Frame</div>
@@ -680,6 +726,7 @@
   </div>
 
   <div class="page" data-page="tools">
+  <section class="panel"><h2>Assistant and AI agents</h2><p>Use your own model endpoint, or review a proposed MCP action. Nothing is sent to a model until you opt in.</p><a href="/assistant">Open assistant</a></section>
   <div class="grid-3">
     <section class="panel" id="transfer">
       <div class="shelf-head"><h2>Send to Frame</h2></div>
@@ -690,6 +737,12 @@
         <span class="desk-only">You can also drop files anywhere in this window.</span>
         <input type="file" id="fileInput" multiple hidden>
       </div>
+      <label class="sub" for="apkDisplay">Android display</label>
+      <select id="apkDisplay" aria-label="Android app display mode">
+        <option value="auto">Automatic (detect VR)</option>
+        <option value="flat">Flat screen</option>
+        <option value="vr">VR app</option>
+      </select>
       <div class="progress" id="prog"><i></i></div>
       <div class="shelf-head" style="margin-top:18px"><h2>Clipboard</h2></div>
       <textarea id="clipText" placeholder="Text to put on the Frame's clipboard…"></textarea>
@@ -698,6 +751,31 @@
         <button class="small" id="clipMac">Send this computer's clipboard</button>
       </div>
       <div class="hint">Clipboard needs the desktop panel open in the headset.</div>
+    </section>
+
+    <section class="panel" id="media">
+      <div class="shelf-head"><h2>Media in the headset</h2><span class="count">Preview</span></div>
+      <p class="sub">Play your movies and stereo photos with Frame Control's own player.</p>
+      <div class="row"><button class="small" id="mediaChoose">Send media…</button>
+        <button class="small" id="mediaRefresh">Refresh</button></div>
+      <input type="file" id="mediaInput" accept=".mp4,.mkv,.mov,.m4v,.webm,.png,.jpg,.jpeg,.splat" hidden>
+      <div class="row" style="margin-top:12px"><label for="mediaFile">On the Frame</label>
+        <select id="mediaFile"><option value="">Refresh to load your media</option></select></div>
+      <div class="row" style="margin-top:8px"><label for="mediaLayout">Layout</label>
+        <select id="mediaLayout">
+          <option value="auto">Detect from name or metadata</option><option value="mono">2D</option>
+          <option value="sbs">Half SBS · left / right</option><option value="ou">Half OU · top / bottom</option>
+          <option value="full-sbs">Full SBS · left / right</option><option value="full-ou">Full OU · top / bottom</option>
+        </select></div>
+      <div class="row" style="margin-top:8px"><label><input type="checkbox" id="mediaTheatre" checked>
+        Theatre · bigger screen, dark surround</label></div>
+      <div class="row" style="margin-top:12px"><button class="action small" id="mediaPlay">Play</button>
+        <button class="small" id="mediaStop">Stop</button></div>
+      <p class="sub" id="mediaState" role="status" aria-live="polite">Choose a file to begin.</p>
+      <div class="hint">H.264/H.265 video; SBS/OU PNG or JPEG photos. Screens follow your head.
+        Small .splat files show a stationary stereo preview (up to 20,000 Gaussians).
+        Native HEIC/MPO photos, large splat scenes, seeking and subtitles aren't supported yet.
+        Stop works from here; playback also ends after four hours.</div>
     </section>
 
     <section class="panel" id="apps">
@@ -731,6 +809,45 @@
         <div><a href="https://streamframe.app/" target="_blank">Stream Frame</a>: third-party recorder (macOS 14+)</div>
         <div><a href="https://framedropvr.com" target="_blank">FrameDrop</a>: sideloader (Windows only for now)</div>
       </div>
+    </section>
+
+    <section class="panel" id="macview" hidden>
+      <div class="shelf-head"><h2>Mac in the headset</h2><span class="count" id="mvCount"></span><span class="spacer"></span>
+        <select id="mvQuality" title="Picture quality and bandwidth">
+          <option value="sharp">Sharp</option><option value="balanced" selected>Balanced</option>
+          <option value="light">Light</option><option value="compatible">Compatible (JPEG)</option>
+        </select>
+        <button class="small" id="mvRefresh">Refresh</button></div>
+      <label class="mv-opt"><input type="checkbox" id="mvSeparate" checked> Give each window its own display
+        <span class="sub">its menus and sheets come along, nothing covers it, and it goes back when you stop</span></label>
+      <div class="mv-perm" id="mvPerm" hidden></div>
+      <div class="list" id="mvDisplays"></div>
+      <div class="shelf-head" style="margin-top:16px"><h2>Windows</h2><span class="count" id="mvWinCount"></span></div>
+      <div class="list mv-windows" id="mvWindows"><div class="sub">Loading…</div></div>
+      <div class="row" style="margin-top:12px">
+        <button class="small" data-mv="show" data-src="test" data-title="Test pattern">Test pattern</button>
+        <button class="small danger" data-mv="stopall">Stop all</button>
+      </div>
+      <div class="hint">Each window or screen becomes its own panel in the headset. Place it with the SteamVR dashboard
+        (Float in World, Move, Size). Point and click with the laser, scroll with the thumbstick, and type on the Mac's keyboard.</div>
+    </section>
+
+    <section class="panel" id="privacy">
+      <div class="shelf-head"><h2>Privacy &amp; updates</h2><span class="spacer"></span><span class="sub" id="appVersion"></span></div>
+      <label class="popt"><input type="checkbox" id="tUsage"><b>Anonymous usage statistics</b>
+        <span class="sub">Installs, opens, version, operating system, tabs used, and whether installs on the Frame
+          worked (with an error category, never the message). F-Droid package names only.</span></label>
+      <label class="popt"><input type="checkbox" id="tCompat"><b>Share compatibility results</b>
+        <span class="sub">Your APK reports and tests (package, version, result, your notes) go to the shared
+          compatibility database, so the verdicts get better for everyone.</span></label>
+      <label class="popt"><input type="checkbox" id="tDiag"><b>Send error details</b>
+        <span class="sub">Error messages and where in Frame Control they happened, with your home
+          folder, user name, addresses and keys removed.</span></label>
+      <div class="hint" id="tStatus"></div>
+      <details id="tSentBox"><summary>Show what's been sent</summary><div class="sentlog" id="tSent"></div></details>
+      <div class="row" style="margin-top:14px"><button class="small action" data-report>Report a problem</button>
+        <button class="small" id="updateCheck" hidden>Check for updates</button>
+        <a class="sub" href="https://github.com/saphid/frame-control/blob/main/docs/privacy.md" target="_blank">What's collected, exactly</a></div>
     </section>
   </div>
   </div>
@@ -791,6 +908,29 @@
     <div class="row rep-actions"><span class="sub" id="repMsg"></span><span class="spacer"></span>
       <button type="button" class="small" id="repCancel">Cancel</button>
       <button type="submit" class="action small" id="repSave">Save report</button></div>
+  </form>
+</dialog>
+<dialog id="bugDlg" aria-labelledby="bugTitle">
+  <form method="dialog" id="bugForm">
+    <h2 id="bugTitle">Report a problem</h2>
+    <label class="field">What kind of report?<select id="bugKind">
+      <option value="bug">Something's broken</option><option value="idea">An idea</option>
+      <option value="question">A question</option><option value="other">Something else</option></select></label>
+    <label class="field">Title<input type="text" id="bugTitleIn" maxlength="120" required minlength="5"
+      placeholder="e.g. Installing an APK stops at 'copying to the Frame'"></label>
+    <label class="field">What happened?<textarea id="bugText" maxlength="5000" required minlength="10"
+      placeholder="What you did, what happened, and what you expected."></textarea></label>
+    <label class="field">How can we reach you? (optional, for a reply)<input type="text" id="bugContact" maxlength="120" placeholder="Email, GitHub or Discord name"></label>
+    <label class="popt"><input type="checkbox" id="bugDiag" checked><b>Include diagnostics</b>
+      <span class="sub">Frame Control's version, your OS and the Frame's SteamOS build.</span></label>
+    <label class="popt"><input type="checkbox" id="bugLogs"><b>Also include recent activity and the server log</b>
+      <span class="sub">Often shows what went wrong, but can contain file and app names. Check it below before sending.</span></label>
+    <details id="bugDiagBox"><summary>Show exactly what's included</summary><div class="sentlog" id="bugDiagText">Loading…</div></details>
+    <p id="bugWarn">Sent privately to the Frame Control developer. Nothing is published.</p>
+    <div class="row rep-actions"><span class="sub" id="bugMsg"></span><span class="spacer"></span>
+      <button type="button" class="small" id="bugCancel">Cancel</button>
+      <button type="button" class="small" id="bugCopy">Copy report</button>
+      <button type="submit" class="action small" id="bugSend">Send report</button></div>
   </form>
 </dialog>
 <dialog id="titleDlg" aria-labelledby="titleTitle">
@@ -1958,6 +2098,7 @@ function upload(file, mode) {
     xhr.setRequestHeader("X-Frame-UI", UI_KEY);
     xhr.setRequestHeader("X-Filename", encodeURIComponent(file.name));
     xhr.setRequestHeader("X-Mode", mode);
+    if (mode === "apk") xhr.setRequestHeader("X-APK-Display", $("apkDisplay").value);
     const bar = $("prog").firstElementChild;
     $("prog").style.display = "block"; bar.style.width = "0";
     xhr.upload.onprogress = e => { if (e.lengthComputable) bar.style.width = (100 * e.loaded / e.total) + "%"; };
@@ -1971,6 +2112,42 @@ function upload(file, mode) {
     xhr.send(file);
   });
 }
+async function refreshMedia(selectId) {
+  const data = await api("/api/media", { action: "list" });
+  const selected = selectId || $("mediaFile").value;
+  $("mediaFile").replaceChildren();
+  if (!data.files.length) $("mediaFile").add(new Option("Send media to begin", ""));
+  for (const file of data.files) $("mediaFile").add(new Option(file.name, file.id));
+  if (data.files.some(f => f.id === selected)) $("mediaFile").value = selected;
+  const p = data.player;
+  $("mediaState").textContent = p.error || `${p.state}${p.file ? ": " + p.file : ""}`;
+  return data;
+}
+$("mediaChoose").onclick = () => $("mediaInput").click();
+$("mediaInput").onchange = () => act("Send media", async () => {
+  const file = $("mediaInput").files[0];
+  if (!file) return;
+  const result = await upload(file, "media");
+  await refreshMedia(result.id);
+  $("mediaInput").value = "";
+  return result;
+}, $("mediaChoose"));
+$("mediaRefresh").onclick = () => act("Refresh media", () => refreshMedia(), $("mediaRefresh"));
+$("mediaPlay").onclick = () => act("Play media", async () => {
+  const id = $("mediaFile").value;
+  if (!id) throw new Error("Send or select a media file first");
+  const result = await api("/api/media", { action: "play", id,
+    layout: $("mediaLayout").value, theatre: $("mediaTheatre").checked });
+  $("mediaState").textContent = "Starting…";
+  setTimeout(() => refreshMedia().catch(e => { $("mediaState").textContent = e.message; }), 1500);
+  return result;
+}, $("mediaPlay"));
+$("mediaStop").onclick = () => act("Stop media", async () => {
+  const result = await api("/api/media", { action: "stop" });
+  await refreshMedia();
+  return result;
+}, $("mediaStop"));
+
 let apkLookup = 0;
 async function checkApkAlternatives(apk) {
   const lookup = ++apkLookup;
@@ -2009,6 +2186,7 @@ function showApkAlternatives(reason, result) {
     if (res) $("apkAltDlg").close(); else { b.disabled = false; b.textContent = "Install"; }
     await loadAndroid();
     if (cat.apps) { const y = window.scrollY; filterCatalog(); window.scrollTo(0, y); }
+    if (res && res.app) await offerTest(res.app);
   };
   if (!$("apkAltDlg").open) $("apkAltDlg").showModal();
 }
@@ -2041,7 +2219,8 @@ async function sendFiles(files, dirs = new Set()) {
     if (!f.size) { toast(`${f.name}: empty files aren't supported`, true); continue; }
     if (TITLE_EXT.test(f.name)) { await sideload(f, path); continue; }
     const apk = f.name.toLowerCase().endsWith(".apk");
-    await act(apk ? `Install ${f.name}` : `Copy ${f.name} to ~/Downloads`, () => upload(f, apk ? "apk" : "push"));
+    const res = await act(apk ? `Install ${f.name}` : `Copy ${f.name} to ~/Downloads`, () => upload(f, apk ? "apk" : "push"));
+    if (apk && res && res.app) await offerTest(res.app);
   }
   $("fileInput").value = "";
   refresh();
@@ -2430,7 +2609,8 @@ document.body.addEventListener("click", async e => {
     toast(`Installing ${b.dataset.name}. The first time takes a minute…`);
     const done = runJob(`Install ${b.dataset.name}`, pkg, () => api("/api/android", { action, package: pkg }));
     b.outerHTML = `<span class="tag">Installing…</span>`;
-    await done;
+    const res = await done;
+    if (res && res.app) await offerTest(res.app);
   } else if (action === "remove") {
     if (!confirm(`Remove ${b.dataset.name} and its data from the Frame?`)) return;
     await act(`Remove ${b.dataset.name}`, () => api("/api/android", { action, package: pkg }), b);
@@ -2558,6 +2738,14 @@ loadDisplays();
 const RLABEL = { works: "Works", issues: "Problems", broken: "Doesn't work", runs: "Runs (test)",
                  crashes: "Crashed (test)", install_failed: "Won't install", instance_failed: "Didn't start (test)" };
 const RCLASS = { works: "works", runs: "works", issues: "maybe" };
+let repShared = false;
+function setRepHint() {
+  $("repHint").textContent = repShared
+    ? "Reports go to Frame Control's shared compatibility database and change the verdicts in the catalogue. Any APK can be reported, including ones not on F-Droid."
+    : telemetry.compat && !telemetry.blocked
+    ? "Reports change the verdicts you see and are shared with Frame Control's compatibility database (Privacy settings). Any APK can be reported, including ones not on F-Droid."
+    : "Reports are saved on this computer and change the verdicts you see. Turn on Share compatibility results in Privacy settings to add them to the shared database. Any APK can be reported, including ones not on F-Droid.";
+}
 const REPORTS_SHOWN = 5;
 let repsAll = false;
 $("repMore").onclick = () => { repsAll = true; loadReports(); };
@@ -2565,9 +2753,7 @@ async function loadReports() {
   let reps, shared;
   try { ({ reports: reps, shared } = await api("/api/android/reports")); }
   catch (e) { $("repList").innerHTML = `<div class="sub">${esc(e.message)}</div>`; return; }
-  $("repHint").textContent = shared
-    ? "Reports go to Frame Control's shared compatibility database and change the verdicts in the catalogue. Any APK can be reported, including ones not on F-Droid."
-    : "Reports are saved on this computer and change the verdicts you see. They aren't uploaded: the shared database is maintainer-only for now. Any APK can be reported, including ones not on F-Droid.";
+  repShared = shared; setRepHint();
   $("repCount").textContent = reps.length ? `${reps.length} newest` : "";
   $("repMore").hidden = reps.length <= REPORTS_SHOWN || repsAll;
   $("repMore").textContent = `Show all ${reps.length}`;
@@ -2722,10 +2908,85 @@ $("shotsRefresh").onclick = loadShots;
 $("shotsSaveNew").onclick = e => saveShots(shots.list.filter(s => !s.saved), e.currentTarget);
 $("shotsFolder").onclick = e => act($("shotsFolder").textContent, () => api("/api/open", { what: "shots" }), e.currentTarget);
 
+// ---- Mac in the headset: windows and displays as panels (ui/frame_macview.py) ----
+let mvSeq = 0, mvTimer = 0;
+// streaming: the src it's shown as (a window may be "separate:<id>"), or "".
+// How a live stream is doing: frames shown, Mac-to-headset delay, bitrate, and
+// whether the network made it step down (fewer frames, then fewer pixels).
+function mvHealth(st) {
+  if (!st) return "";
+  const x = st.stats || {}, c = st.controller || {}, bits = [];
+  if (x.fps) bits.push(`${Math.round(x.fps)} fps`);
+  if (x.total && x.total.p50 != null) bits.push(`${Math.round(x.total.p50)} ms`);
+  if (x.mbps) bits.push(`${x.mbps} Mbit/s`);
+  if (c.tier > 0) bits.push(`weak link: ${c.fps} fps${c.scale < 1 ? `, ${Math.round(c.scale * 100)}% size` : ""}`);
+  return bits.length ? " · " + esc(bits.join(" · ")) : "";
+}
+function mvRow(src, title, sub, w, h, streaming, st) {
+  return `<div class="item"><div class="grow"><div class="t">${esc(title)}</div>
+      <div class="s">${esc(sub)}${streaming ? ' · <span class="mv-live">in the headset</span>' + mvHealth(st) : ""}</div></div>
+    ${streaming ? `<button class="small" data-mv="stop" data-src="${esc(streaming)}">Stop</button>`
+                : `<button class="small action" data-mv="show" data-src="${esc(src)}" data-title="${esc(title)}" data-w="${w}" data-h="${h}">Show</button>`}
+  </div>`;
+}
+async function loadMacView(restart) {
+  const seq = ++mvSeq;
+  let s, err;
+  try { s = await api("/api/macview" + (restart ? "?restart=1" : "")); } catch (e) { err = e; }
+  if (seq !== mvSeq) return;
+  const box = $("macview");
+  if (err) { box.hidden = false; return failed($("mvWindows"), err); }
+  if (!s.available) { box.hidden = true; return; }
+  box.hidden = false;
+  const live = new Set((s.streams || []).map(x => x.src));
+  const byStream = src => (s.streams || []).find(x => x.src === src);
+  $("mvCount").textContent = live.size ? `${live.size} showing${s.route === "usb" ? " · over USB-C" : ""}` : "";
+  const perm = [];
+  if (!s.screen) perm.push(`Frame Control needs <b>Screen Recording</b> permission to show your windows.`);
+  if (!s.accessibility) perm.push(`Allow <b>Accessibility</b> too, so clicks and keys from the headset reach the Mac.`);
+  $("mvPerm").hidden = !perm.length;
+  $("mvPerm").innerHTML = perm.join(" ") + `<div class="row"><button class="small action" data-mv="perm">Allow…</button>
+    <span class="sub">Then press Refresh. macOS may ask you to reopen Frame Control.</span></div>`;
+  const liveAs = src => live.has(src) ? src : src.startsWith("window:") && live.has("separate:" + src.slice(7)) ? "separate:" + src.slice(7) : "";
+  $("mvDisplays").innerHTML = (s.displays || []).map(d =>
+    mvRow(d.src, `Whole screen: ${d.name}`, `${d.w}×${d.h}${d.main ? " · main display" : ""}`, d.w, d.h, liveAs(d.src), byStream(liveAs(d.src)))).join("");
+  const wins = s.windows || [];
+  $("mvWinCount").textContent = wins.length ? `${wins.length}` : "";
+  $("mvWindows").innerHTML = !s.screen ? `<div class="sub">Windows appear here once Screen Recording is allowed.</div>`
+    : wins.length ? wins.map(w => mvRow(w.src, w.title || w.app, `${w.title ? w.app + " · " : ""}${w.w}×${w.h}`, w.w, w.h, liveAs(w.src), byStream(liveAs(w.src)))).join("")
+    : `<div class="sub">No windows open on this Mac's current desktop.</div>`;
+  // Keep the numbers fresh while something is in the headset and the card is on screen.
+  clearTimeout(mvTimer);
+  const tick = () => { mvTimer = document.hidden || !box.offsetParent ? setTimeout(tick, 3000) : (loadMacView(), 0); };
+  if (live.size) mvTimer = setTimeout(tick, 3000);
+}
+$("mvRefresh").onclick = () => loadMacView(true);
+$("mvSeparate").checked = localStorage.getItem("mvSeparate") !== "0";
+$("mvSeparate").onchange = e => localStorage.setItem("mvSeparate", e.target.checked ? "1" : "0");
+$("macview").onclick = async e => {
+  const b = e.target.closest("[data-mv]"); if (!b) return;
+  const src = b.dataset.src;
+  if (b.dataset.mv === "show") {
+    const as = $("mvSeparate").checked && src.startsWith("window:") ? "separate:" + src.slice(7) : src;
+    await act(`Show ${b.dataset.title} in the headset`, async () => {
+      const r = await api("/api/macview", { action: "show", src: as, quality: $("mvQuality").value,
+                                            w: +b.dataset.w || undefined, h: +b.dataset.h || undefined });
+      return { message: `${b.dataset.title} is a panel in the headset now. Float it with the SteamVR dashboard.`, ...r };
+    }, b);
+  } else if (b.dataset.mv === "stop") {
+    await act("Stop showing it", () => api("/api/macview", { action: "stop", src }), b);
+  } else if (b.dataset.mv === "stopall") {
+    await act("Stop everything in the headset", () => api("/api/macview", { action: "stop" }), b);
+  } else if (b.dataset.mv === "perm") {
+    await act("Ask macOS for permission", () => api("/api/macview", { action: "permissions" }), b);
+  }
+  setTimeout(loadMacView, 800);
+};
+
 // ---- pages: #home, #games, #android, #tools (older section links still work) ----
 const PAGES = ["home", "games", "android", "tools"];
 const SECTION_PAGE = { view: "home", device: "home", shots: "home", library: "games", sideloaded: "games", getgames: "games",
-                       display: "android", transfer: "tools", apps: "tools", power: "tools" };
+                       display: "android", transfer: "tools", apps: "tools", power: "tools", macview: "tools", privacy: "tools" };
 let page = "home";
 function showPage() {
   const id = location.hash.slice(1);
@@ -2737,6 +2998,7 @@ function showPage() {
   document.title = page === "home" ? "Frame Control" : `${page[0].toUpperCase() + page.slice(1)} · Frame Control`;
   const section = !PAGES.includes(id) && id && $(id);
   if (section) section.scrollIntoView(); else window.scrollTo(0, 0);
+  if (page === "tools") loadMacView();
 }
 window.addEventListener("hashchange", showPage);
 // While a text field has focus, phones hide the bottom tab bar (see body.typing in the CSS).
@@ -2962,6 +3224,155 @@ document.addEventListener("keydown", e => {
   const n = PAGES[+e.key - 1];
   if (n) location.hash = n;
 });
+
+// ---- after an APK install: test it, so the compatibility database learns whether it runs ----
+async function offerTest(m) {
+  if (!m.package || !confirm(`${m.label || m.package} is installed. Test it now?\n\nIt opens in the headset for about 20 seconds `
+                             + "and records whether it stays up.")) return;
+  toast(`Testing ${m.label || m.package}: launching it and watching for 20 s…`);
+  await act(`Test ${m.label || m.package}`, () => api("/api/android", { action: "probe", package: m.package }));
+  loadReports();
+}
+
+// ---- privacy: anonymous analytics levels (ui/frame_telemetry.py, docs/privacy.md) ----
+const telemetry = { usage: false, compat: false, blocked: "not loaded" };
+function renderTelemetry(s) {
+  Object.assign(telemetry, s);
+  setRepHint();
+  $("tUsage").checked = s.usage; $("tCompat").checked = s.compat; $("tDiag").checked = s.diagnostics;
+  $("tStatus").textContent = s.blocked ? `Nothing is being sent: ${s.blocked}.`
+    : `${s.queued ? s.queued + " waiting to send. " : ""}Your anonymous id is ${s.id.slice(0, 8)}…; it isn't linked to you or this computer.`;
+  $("tSent").textContent = s.sent.length ? s.sent.map(e => JSON.stringify({ event: e.event, time: e.timestamp, ...e.properties })).join("\n\n")
+                                         : "Nothing sent yet.";
+  const showNotice = !s.blocked && !s.noticeShown && s.usage;
+  $("privacyNotice").hidden = !showNotice;
+  if (showNotice) api("/api/telemetry", { noticeShown: true }).catch(() => {});
+}
+async function loadTelemetry() {
+  try { renderTelemetry(await api("/api/telemetry")); } catch {}
+}
+async function setTelemetry(change) {
+  try { renderTelemetry(await api("/api/telemetry", change)); }
+  catch (e) { toast(`Couldn't save: ${e.message}`, true); loadTelemetry(); }
+}
+$("tUsage").onchange = e => setTelemetry({ usage: e.target.checked });
+$("tCompat").onchange = e => setTelemetry({ compat: e.target.checked });
+$("tDiag").onchange = e => setTelemetry({ diagnostics: e.target.checked });
+$("tSentBox").ontoggle = () => { if ($("tSentBox").open) loadTelemetry(); };
+$("noticeOk").onclick = () => { $("privacyNotice").hidden = true; };
+$("noticeMore").onclick = async () => {
+  $("privacyNotice").hidden = true;
+  await setTelemetry({ compat: true, diagnostics: true });
+  toast("Thanks! Compatibility results and error details will be shared too. Change it any time in Privacy.");
+};
+$("noticeSettings").onclick = () => { $("privacyNotice").hidden = true; location.hash = "#privacy"; };
+loadTelemetry();
+function pageEvent(event, properties) {
+  if (telemetry.usage && !telemetry.blocked) api("/api/telemetry/event", { event, properties }).catch(() => {});
+}
+// Which tabs get used: once per tab per session.
+const tabsSeen = new Set();
+document.querySelectorAll("nav a").forEach(a => a.addEventListener("click", () => {
+  const tab = a.getAttribute("href").slice(1);
+  if (!tabsSeen.has(tab)) { tabsSeen.add(tab); pageEvent("tab_viewed", { tab }); }
+}));
+
+// ---- report a problem (ui/frame_report.py): sent privately to PostHog, with diagnostics ----
+const bug = { preview: "" };
+const activityLines = () => [...$("log").children].slice(0, 25).map(el => el.textContent.trim());
+function bugReportText() {
+  const contact = $("bugContact").value.trim();
+  const body = `Kind: ${$("bugKind").value}${contact ? `\nContact: ${contact}` : ""}\n\n${$("bugText").value.trim()}${bug.preview ? "\n\n---\nDiagnostics:\n```\n" + bug.preview + "\n```" : ""}`;
+  return { title: $("bugTitleIn").value.trim(), body };
+}
+// The preview is a snapshot: exactly this text is sent, even if more activity happens meanwhile.
+async function loadBugPreview() {
+  if (!$("bugDiag").checked) { bug.preview = ""; $("bugDiagText").textContent = "Nothing: diagnostics are off."; return; }
+  $("bugDiagText").textContent = "Loading…";
+  try { bug.preview = (await api("/api/report/preview", { activity: activityLines(), includeLogs: $("bugLogs").checked })).text; }
+  catch (e) { bug.preview = ""; $("bugDiagText").textContent = `Couldn't collect diagnostics: ${e.message}`; return; }
+  $("bugDiagText").textContent = bug.preview;
+}
+function openBugReport() {
+  $("bugForm").reset();
+  $("bugMsg").textContent = ""; $("bugSend").disabled = false;
+  $("bugCancel").textContent = "Cancel";
+  $("bugDiagBox").open = false; $("bugLogs").disabled = false;
+  $("bugDlg").showModal();
+  loadBugPreview();
+}
+document.body.addEventListener("click", e => { if (e.target.closest("[data-report]")) openBugReport(); });
+$("bugDiag").onchange = () => { $("bugLogs").disabled = !$("bugDiag").checked; loadBugPreview(); };
+$("bugLogs").onchange = loadBugPreview;
+$("bugCancel").onclick = () => $("bugDlg").close();
+$("bugCopy").onclick = async () => {
+  const { title, body } = bugReportText();
+  try { await navigator.clipboard.writeText(`${title}\n\n${body}`); $("bugMsg").textContent = "Copied."; }
+  catch { $("bugMsg").textContent = "Couldn't copy; select the text under Show exactly what's included."; }
+};
+$("bugForm").onsubmit = async e => {
+  e.preventDefault();
+  if (!$("bugForm").reportValidity()) return;
+  $("bugSend").disabled = true; $("bugMsg").textContent = "Sending…";
+  try {
+    const res = await api("/api/report", {
+      kind: $("bugKind").value, title: $("bugTitleIn").value, message: $("bugText").value,
+      contact: $("bugContact").value, diagnostics: $("bugDiag").checked ? bug.preview : "" });
+    $("bugMsg").textContent = `Sent, thank you. Your reference is ${res.id}.`;
+    $("bugCancel").textContent = "Close";
+    log(res.message, "ok");
+  } catch (err) {
+    $("bugMsg").textContent = `Couldn't send it: ${err.message}. Try again later, or use Copy report.`;
+    $("bugSend").disabled = false;
+  }
+};
+if (window.frameApp && window.frameApp.onReportProblem) window.frameApp.onReportProblem(openBugReport);
+
+// ---- updates (the desktop app only: app/updater.js) ----
+const upd = { dismissed: false, offered: null };
+function renderUpdate(s) {
+  if (!s) return;
+  $("appVersion").textContent = `Version ${s.current}`;
+  const r = s.latest;
+  const show = r && ["available", "downloading", "ready", "error"].includes(s.status) && !upd.dismissed
+               && !(s.status === "error" && !r);
+  $("updateBar").hidden = !show;
+  if (!show) return;
+  if (s.status === "available" && upd.offered !== r.version) { upd.offered = r.version; pageEvent("update_offered", { to_version: r.version }); }
+  const busy = s.status === "downloading" || s.status === "ready";
+  $("updateText").innerHTML = s.status === "error"
+    ? `Updating to ${esc(r.version)} didn't work: ${esc(s.error || "unknown error")}`
+    : busy ? `Downloading Frame Control ${esc(r.version)}… It restarts when it's ready.`
+    : `<b>Frame Control ${esc(r.version)} is available.</b> You have ${esc(s.current)}.`
+      + (s.canInstall ? "" : ` ${esc(s.why ? "It can't update itself here (" + s.why + ")," : "")} download it from the release page.`);
+  $("updateProg").hidden = !busy;
+  $("updateProg").firstElementChild.style.width = Math.round((s.progress || 0) * 100) + "%";
+  $("updateGo").textContent = s.canInstall ? (s.status === "error" ? "Try again" : "Update and restart") : "Open release page";
+  $("updateGo").disabled = busy; $("updateLater").hidden = busy;
+}
+if (window.frameApp && window.frameApp.update) {
+  window.frameApp.update.onState(renderUpdate);
+  window.frameApp.update.get().then(renderUpdate);
+  $("updateCheck").hidden = false;
+  $("updateCheck").onclick = async () => {
+    const btn = $("updateCheck");
+    btn.disabled = true;
+    let s;
+    try { s = await window.frameApp.update.check(); } finally { btn.disabled = false; }
+    upd.dismissed = false; renderUpdate(s);
+    if (s && s.status === "none") toast(`You have the newest version (${s.current})`);
+    if (s && s.status === "check-failed") toast(`Couldn't check for updates: ${s.error}`, true);
+  };
+  $("updateGo").onclick = () => {
+    pageEvent("update_started", { to_version: upd.offered || "" });
+    window.frameApp.update.install();
+  };
+  $("updateLater").onclick = () => { upd.dismissed = true; $("updateBar").hidden = true; };
+  $("updateNotes").onclick = async () => {
+    const s = await window.frameApp.update.get();
+    if (s && s.latest) window.open(s.latest.page, "_blank");
+  };
+}
 
 // ---- install links from websites (frame-control://install, docs/web-install.md) ----
 // The app passes each link here. The server checks it and reads the manifest;

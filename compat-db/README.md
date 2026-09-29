@@ -1,9 +1,32 @@
 # compat-db: Frame Control's compatibility database
 
 A private [Lakebed](https://docs.lakebed.dev/) capsule holding compatibility
-reports for Android apps on the Steam Frame. For now only the maintainer's
-copy of Frame Control has the key to read or write it. Everyone else's reports
-stay on their own Mac (see `shared()` in `ui/frame_compat_db.py`).
+reports for Android apps on the Steam Frame. Only the maintainer's copy of
+Frame Control has the key to read or write it (see `shared()` in
+`ui/frame_compat_db.py`). Everyone else's reports stay on their computer
+unless they turn on **Share compatibility results**. Then the reports also go
+to PostHog as `compat_report` events, and the maintainer syncs them in (below).
+
+## Community reports
+
+```sh
+python3 ui/frame_compat_db.py sync --dry-run   # what would be added
+python3 ui/frame_compat_db.py sync             # add them
+```
+
+`sync` reads `compat_report` events through PostHog's query API and adds
+them with `via` set to `community`, `community-probe` or `community-install`.
+It skips invalid reports and anything over 30 per reporter per day. Each run
+re-reads the last 30 days, because an offline copy sends its reports late,
+with the time they were made. `posthog-sync.json`, next to the outbox,
+remembers which reports it has handled and each reporter's daily count, so
+nothing is added twice and the cap holds across runs.
+
+It needs:
+
+- the PostHog project id: `"project"` in `ui/telemetry.json`
+- a personal API key with `query:read`: `POSTHOG_PERSONAL_API_KEY`, or in the
+  Keychain (service `frame-control-posthog`, account `personal-api-key`)
 
 - Live: `https://frame-compat.lakebed.app` (deploy `dep_dDmcsosVSiFirpW6`,
   claimed, so it doesn't expire). The browser page only says it's private.

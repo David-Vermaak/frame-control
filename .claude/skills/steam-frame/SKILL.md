@@ -48,3 +48,9 @@ running `--help`: `paste-to-frame.sh`, `serve-bootstrap.sh` and
 - `sudo` on the Frame asks for the user's Developer Mode password. Hand those
   steps to the user (open Terminal) and keep automation to non-sudo commands.
 - The Mac uses BSD userland and zsh (no `timeout`, use `head -n`).
+- **First-party first.** For any new capability, investigate the first-party
+  way before anything else: Valve (SteamOS, Steam, Steam Link), Apple (the Mac
+  and iPhone), and KDE (the Frame's desktop is Plasma). It's usually the best
+  answer. If it isn't, write down why not. If it is, find what Frame Control
+  can do to make it easier to set up (install over SSH, pre-seed settings,
+  pair automatically, tell the user the one setting to turn on).

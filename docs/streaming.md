@@ -5,6 +5,8 @@ This covers three directions, plus input:
 - **A. Frame → Mac**: see and control the headset from the Mac.
 - **B. Mac → Frame**: use the Mac's desktop inside the headset.
 - **C. iPhone → Frame**: mirror the phone inside the headset.
+- **PC VR from Linux**: [feasibility and options](linux-vr-streaming.md),
+  including Valve's streaming and USB support. No Linux host tested yet.
 - **Input**: type and point in the Frame from the Mac or iPhone.
 - **Live view and Control**: watch a panel flat and tap on it to use it.
 
@@ -25,24 +27,29 @@ Mac with keyboard, mouse, and clipboard.
 
 ## B. Show the Mac's desktop inside the Frame
 
-The Frame's streaming features are built around a **Windows PC running
-SteamVR** plus the USB Wi-Fi 6E dongle. Even Linux hosts had VR-streaming
-problems at launch
+The Frame's VR streaming uses **SteamVR** on the host. Linux hosts had
+VR-streaming problems at launch
 ([Steam discussion](https://steamcommunity.com/app/4165890/discussions/0/528765047224280796/),
 [gbl08ma](https://gbl08ma.com/posts/steam-frame-a-linux-machine-doesnt-support-linux/)).
+Valve's later 2.17.8 notes explicitly describe Steam Link fixes on Linux and
+initial USB streaming support (**documented**, not tested from a Linux host
+here). See [the current comparison](linux-vr-streaming.md#a-valves-own-path--recommended-first).
 **macOS isn't a supported SteamVR host**, so for the Mac we're only looking at
 flat 2D desktop streaming into a window on the Frame's Linux desktop.
 
 | Option | Setup | Confidence | Verdict |
 |---|---|---|---|
-| **macOS Screen Sharing (VNC) → Remmina on the Frame** | **Mac:** System Settings → General → Sharing → Screen Sharing on → (i) → enable "VNC viewers may control screen with password". **Frame:** `./scripts/install-apps.sh remmina` from the Mac, then open Remmina in the headset and connect to `vnc://<mac>.local` | **Verified 2026-09-27** (Frame BUILD_ID 20260925.6191901, macOS 27.0), in its own panel via `panel-on-frame.sh mac-screen`. Remmina is on Flathub for **aarch64** with VNC and RDP ([Flathub](https://flathub.org/apps/org.remmina.Remmina)). The Frame desktop runs Flatpaks ([UploadVR](https://www.uploadvr.com/flatpaks-open-source-steam-frame/)). macOS VNC is built in. | **Recommended.** Nothing to install on the Mac, and it's easy to set up. Noticeable lag, even at lower Remmina quality settings on a good 5 GHz link, where neither Wi-Fi nor the Frame's CPU was the bottleneck. Usable for reading and coding, but not for games. You'll type the Mac's hostname once in Remmina on the headset, then save the profile. To avoid even that, the script can pre-seed a Remmina profile over SSH (see below). |
+| **Frame Control → Tools → Mac in the headset** | Nothing to install. Allow Screen Recording and Accessibility for Frame Control, then press **Show** next to any window or screen | **Verified 2026-09-28** on the Frame (panel in 1.5 s, measured with `scripts/macview-bench.py`: about 10–20 ms from the Mac drawing a frame to the viewer drawing it); laser input not yet tried while wearing it | **Recommended.** Hardware H.264 over an SSH tunnel, adapting to the link. Each window becomes its own panel you can place anywhere. Laser clicks and scrolls, and the Mac's keyboard types. See [mac-in-headset.md](mac-in-headset.md) |
+| **macOS Screen Sharing (VNC) → Remmina on the Frame** | **Mac:** System Settings → General → Sharing → Screen Sharing on → (i) → enable "VNC viewers may control screen with password". **Frame:** `./scripts/install-apps.sh remmina` from the Mac, then open Remmina in the headset and connect to `vnc://<mac>.local` | **Verified 2026-09-27** (Frame BUILD_ID 20260925.6191901, macOS 27.0), in its own panel via `panel-on-frame.sh mac-screen`. Remmina is on Flathub for **aarch64** with VNC and RDP ([Flathub](https://flathub.org/apps/org.remmina.Remmina)). The Frame desktop runs Flatpaks ([UploadVR](https://www.uploadvr.com/flatpaks-open-source-steam-frame/)). macOS VNC is built in. | **Fallback** (whole screens only). Nothing to install on the Mac, and it's easy to set up. Noticeable lag, even at lower Remmina quality settings on a good 5 GHz link, where neither Wi-Fi nor the Frame's CPU was the bottleneck. Usable for reading and coding, but not for games. You'll type the Mac's hostname once in Remmina on the headset, then save the profile. To avoid even that, the script can pre-seed a Remmina profile over SSH (see below). |
 | Sunshine (Mac) → Moonlight (Frame Flatpak) | `brew install` Sunshine on the Mac, then `./scripts/install-apps.sh moonlight` | Moonlight Flatpak supports **aarch64** ([Flathub](https://flathub.org/apps/com.moonlight_stream.Moonlight)). **Sunshine on macOS is poorly supported**: install problems on Apple Silicon/Sequoia, and no virtual gamepads ([LizardByte discussion #777](https://github.com/orgs/LizardByte/discussions/777)). | Try it if VNC is too laggy. Expect some friction. |
 | Steam Remote Play with the Mac as host | Steam on the Mac, Steam Link/Remote Play on the Frame | macOS-hosted Remote Play is reported broken or flaky in 2024–2026 ([Steam discussion](https://steamcommunity.com/groups/homestream/discussions/1/574921459914429988/)) | Not recommended. It's only for games, if it works at all. |
 | Immersed / Virtual Desktop | Vendor apps | Immersed has a Mac agent but no known Frame client. Virtual Desktop's developer said he'd "try" to port it ([NewsBreak](https://www.newsbreak.com/news/4892834783961-virtual-desktop-dev-says-he-ll-try-to-bring-the-app-to-steam-frame)). | Not available as of 2026-09-25. Check again later. |
 | WiVRn / ALVR | VR streaming from a Linux or Windows PC | Irrelevant for a Mac host (no SteamVR/OpenXR runtime on macOS) | N/A |
 
-For **VR video files** (180°/360° stereo), don't stream the Mac's screen. Play
-them on the Frame in DeoVR instead: see [vr-video.md](vr-video.md).
+For **local movies and stereo photos**, Frame Control's own OpenVR player
+runs on the Frame; see [vr-video.md](vr-video.md). It currently renders a flat
+stereo screen. VR180/360 projection is not implemented; the same page records
+DeoVR only as an optional, independently installed alternative.
 
 ### Pre-seeding the Remmina profile (no typing in the headset)
 
@@ -80,6 +87,21 @@ its header. (Verified 2026-09-27.)
 
 Going the other way, pointing a controller at the panel moves the Mac's mouse,
 because Remmina forwards input (`viewonly=0`).
+
+## First-party options, and why they do or don't fit
+
+Checked 2026-09-28. The first-party way is usually the best one, so these are
+listed first; the sections above and below explain the alternatives.
+
+| Goal | First-party option | Fits? | Why, and what would make it easier |
+|---|---|---|---|
+| Type and point from the **iPhone** | **KDE Connect** (KDE; official [iOS app](https://apps.apple.com/app/kde-connect/id1580245991)) remote touchpad and keyboard, plus clipboard and files | **Best candidate, untested on the Frame** | The Frame doesn't have it (verified: no `kdeconnectd`), it isn't on Flathub, and the root is read-only, so it would have to run from `~` or a container. On Wayland it types through KWin, so it can only reach the desktop panel, not SteamVR or games (**inferred**). Steam Deck users report its remote input breaking after SteamOS updates ([SteamOS #1939](https://github.com/ValveSoftware/SteamOS/issues/1939)). If it works, Frame Control could install it and pair it for you. |
+| Type and point from the **Mac** | KDE Connect for macOS (KDE builds) | Same as above | Its Mac app sends clipboard and files but has no keyboard/mouse sharing (**inferred**). |
+| Either | **Bluetooth keyboard and mouse** paired in SteamOS (Valve) | Yes, with real hardware | Neither device can pretend to be one: iOS refuses the HID service ([Apple forums](https://developer.apple.com/forums/thread/733916)), and macOS has no built-in way. |
+| Either | **xrdp** in Developer Mode (Valve) | No | Input goes into a *separate* desktop shown on the Mac, not into what you see in the headset. |
+| **Mac screen** in the Frame | **Screen Sharing** (Apple's VNC server) + Remmina (already installed on this Frame, profile pre-seeded by `install-apps.sh`) | **Yes, closest to first-party** | Only the Mac side is first-party; Remmina is the client. Turn on System Settings → General → Sharing → Screen Sharing → (i) → "VNC viewers may control screen with password". Still to test in the headset (open question 11). |
+| Mac screen | **Steam Remote Play** with the Mac as host (Valve) | Probably not | macOS isn't a SteamVR host, and Mac-hosted Remote Play is reported broken ([Steam forum](https://steamcommunity.com/groups/homestream/discussions/1/574921459914429988/)). One quick test is worth doing: Steam on the Mac, then Remote Play from the Frame's Steam. |
+| Mac or **iPhone screen** | **AirPlay** (Apple) | Not officially | It's Apple's own mirroring for both, but Apple only licenses receivers to TV and speaker makers; nothing official runs on Linux. UxPlay (below) is the unofficial receiver. |
 
 ## C. Show the iPhone's screen inside the Frame
 
