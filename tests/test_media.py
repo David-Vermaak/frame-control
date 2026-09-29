@@ -135,6 +135,13 @@ class Media(unittest.TestCase):
         self.assertEqual(result['dropped'], 2)
         self.assertIn((0, 1, 1), calls[3:])
 
+    def test_theatre_surround_failure_does_not_stop_playback(self):
+        def fail_surround(n):
+            if n == 1:  # the surround's upload is the first pixels call
+                raise RuntimeError('OpenVR SetOverlayRaw failed: 11')
+        result, _ = self.play_with('clip_SBS.mp4', on_pixels=fail_surround)
+        self.assertEqual((result['state'], result['frames']), ('ended', 4))
+
     def test_stop_mid_video_reports_stopped(self):
         result, _ = self.play_with('clip_SBS.mp4', on_pixels=lambda n: n == 3 and stop_now())
         self.assertEqual(result['state'], 'stopped')
