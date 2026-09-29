@@ -10,7 +10,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 @unittest.skipUnless(shutil.which('node'), 'Node exercises the shared page JS')
 class ComfortUI(unittest.TestCase):
     def test_notification_failure_survives_poll_until_success(self):
-        page = (ROOT / 'ui/index.html').read_text()
+        page = (ROOT / 'ui/index.html').read_text(encoding='utf-8')
         code = page[page.index('let comfortBusy ='):page.index('async function pollComfort()')]
         setup = r'''
 const assert = require('node:assert/strict');
