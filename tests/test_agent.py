@@ -213,8 +213,9 @@ class ManagedBackend(unittest.TestCase):
         with mock.patch.object(server.frame_host, 'MUX', True), \
              mock.patch.object(server.frame_host.os, 'getuid', return_value=501, create=True), \
              mock.patch.object(server.frame_host.os, 'getpid', return_value=123):
-            self.assertEqual(server.frame_host.control_path(), '/tmp/frame-ui-501-%C')
-            self.assertEqual(server.frame_host.control_path(private=True), '/tmp/frame-ui-501-123-%C')
+            # Per headset (its tag), and per process for a private server.
+            self.assertEqual(server.frame_host.control_path('a1b2', private=False), '/tmp/frame-ui-501-a1b2-%C')
+            self.assertEqual(server.frame_host.control_path('a1b2', private=True), '/tmp/frame-ui-501-123-a1b2-%C')
 
 
 class ComputerState(unittest.TestCase):
