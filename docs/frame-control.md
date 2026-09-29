@@ -56,9 +56,11 @@ counts them while they run.
   Steam library), then launch, stop, test or remove it. **Report an APK** records
   whether any APK worked (F-Droid or not: pick a file, type a package, or use an
   installed app). Your reports are saved on your computer and change the verdicts
-  you see. They aren't uploaded anywhere: the shared database is maintainer-only
-  for now (see [compat-db/README.md](../compat-db/README.md)). Uses the app's bundled
-  `adb`, or yours if you have one.
+  you see. With **Share compatibility results** on (Privacy & updates), they also
+  go to the shared database ([privacy.md](privacy.md),
+  [compat-db/README.md](../compat-db/README.md)). A failed install records
+  itself when the APK was the problem, and after an install the app offers a
+  20-second test. Uses the app's bundled `adb`, or yours if you have one.
 - **Android display**: pick a running Lepton instance (by the app in it) and set
   its resolution (Native 1920×1080, or Sharp 2560×1440 with density scaled to
   match), UI scale (Smaller / Default / Larger, or an exact dpi) and text size
@@ -148,5 +150,16 @@ npm run dist:win       # Windows: installer and .zip
 npm run dist:linux     # Linux: AppImage and .deb, x64 and arm64
 ```
 
-Pushing a `v*` tag builds all three in GitHub Actions and attaches them to the
-release (`.github/workflows/release.yml`).
+Pushing a `v*` tag builds all three in GitHub Actions and attaches them to a
+draft release (`.github/workflows/release.yml`). Running copies are offered it
+once you publish it: see [releasing.md](releasing.md).
+
+## AI agents and assistant
+
+**Documented:** [the MCP adapter and assistant panel](agents.md) are Frame
+Control implementations. MCP wraps this HTTP API without API keys. Changes
+require a separate user approval; power also retains its password prompt. The
+assistant uses a user-chosen endpoint and sends nothing until the user opts in
+for a message. Screenshot context is separately opt-in. Model replies cannot
+operate the headset. Tools → Open assistant opens the page; the linked guide
+covers putting it in a Chromium panel on the Frame.

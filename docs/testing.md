@@ -162,3 +162,11 @@ Real decode timings and captured stereo output are recorded in
 and `~/.local/share` are `steamos:steamos`, mode 0755. The fake supervisor
 sets those parent owners too; previously its root-created Steam manifests
 left the parents root-owned and incorrectly prevented user runtime installs.
+
+## Agent interfaces
+
+`tests/test_agent.py` exercises MCP stdio, exact-action human approvals and the
+assistant against an in-process HTTP endpoint with canned responses (no keys or
+external calls). `tests/e2e/test_agents.py` runs the MCP/HTTP/SSH path against the
+fake Frame for approved installs, clipboard and file transfer. Headset Chromium
+rendering and real screenshots still need a device; see [agent evidence](agents.md#evidence-and-limits).

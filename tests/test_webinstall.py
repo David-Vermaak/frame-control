@@ -4,6 +4,7 @@ the localhost-testing rule allows.
 
 Run: python3 -m unittest discover -s tests
 """
+import sandbox  # noqa: F401  (first: keeps tests off real data and services)
 import hashlib
 import json
 import os
