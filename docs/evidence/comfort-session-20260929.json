@@ -1,0 +1,70 @@
+{
+  "tested_head": "be1ab129c9b8663be8d4cd9d5aea0a4c587a16ba",
+  "date": "2026-09-29",
+  "steam_os_build": "20260925.6191901",
+  "battery_percent_start": 100,
+  "battery_percent_end": 100,
+  "activity_level": 3,
+  "warning_to_home_seconds": 60.76079535484314,
+  "after": {
+    "path": "/routes/library/home",
+    "visible": true,
+    "apps": []
+  },
+  "session": {
+    "id": "2f03a8c2eb88482ca28b10246ace496b",
+    "boot": "6c5ddc81-747f-44e5-b8e0-00e0f13fd08e",
+    "active": false,
+    "options": {
+      "minutes": 1,
+      "breakMinutes": 1,
+      "stillMinutes": 1,
+      "batteryAlert": true,
+      "heatAlert": true
+    },
+    "started": 81160.254818568,
+    "deadline": 81220.254818568,
+    "lastSample": 81230.770869338,
+    "used": 0,
+    "nextBreak": 60,
+    "stillSent": false,
+    "warned": 81170.389722976,
+    "events": [
+      {
+        "id": "2f03a8c2eb88482ca28b10246ace496b:1",
+        "kind": "started",
+        "message": "Session started. Steam Home opens at the limit; games are not closed.",
+        "time": 1790676762.9003663
+      },
+      {
+        "id": "2f03a8c2eb88482ca28b10246ace496b:2",
+        "kind": "warning",
+        "message": "One minute left. Save your progress; Steam Home will open.",
+        "time": 1790676773.0352101
+      },
+      {
+        "id": "2f03a8c2eb88482ca28b10246ace496b:3",
+        "kind": "finished",
+        "message": "Session ended: Steam Home opened. Your game is still running.",
+        "time": 1790676833.7960055
+      }
+    ],
+    "seq": 3,
+    "latched": [],
+    "error": null,
+    "time": 1790676838.9175165,
+    "remaining": 0,
+    "heartbeat": 81230.770869338,
+    "unavailable": [],
+    "activity": 3
+  },
+  "cleanup": {
+    "prior_page_restored": true,
+    "prior_dashboard_visibility_restored": true,
+    "worker_exited": true,
+    "temporary_simulator_key_removed": true,
+    "phone_server_exited": true,
+    "lock_released": true,
+    "owned_simulator_shutdown": true
+  }
+}
