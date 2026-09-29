@@ -35,7 +35,9 @@ jobs:
       - name: Server tests
         run: python -m unittest discover -s tests -v
       - name: App syntax
-        run: node --check app/main.js && node --check app/build/make-icon.js && node --check app/build/fetch-deps.js && node --check app/preload.js && node --check app/install-link.js
+        run: node --check app/main.js && node --check app/build/make-icon.js && node --check app/build/fetch-deps.js && node --check app/preload.js && node --check app/install-link.js && node --check app/updater.js
+      - name: Updater tests
+        run: node --test app/test/updater.test.js
       - name: Website
         run: node --test site/test/*.test.mjs && node --check site/public/js/site.js && node --check site/public/js/feedback.js
 

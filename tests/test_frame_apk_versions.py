@@ -243,6 +243,7 @@ class UploadVersionsTest(unittest.TestCase):
             handler.rfile = io.BytesIO(b'x')
             with patch.object(frame_android, 'apk_info', return_value=dict(info)), \
                     patch.object(versions, 'alternatives', side_effect=AssertionError('lookup during upload')) as lookup, \
+                    patch.object(frame_android, 'install_hooks', []), \
                     patch.object(server, 'ensure_master') as ssh:
                 if mode == 'apkinfo':
                     reply = handler.upload()
@@ -256,6 +257,29 @@ class UploadVersionsTest(unittest.TestCase):
                 lookup.assert_not_called()
                 ssh.assert_not_called()
 
+
+    def test_blocked_uploads_are_reported_like_failed_installs(self):
+        import server
+        info = {'package': 'org.example.app', 'label': 'Example', 'version': '5',
+                'version_code': 5, 'min_sdk': 33, 'abis': [], 'icon_png': None}
+        for apk_info, expected_info in ((dict(info), 'org.example.app'),
+                                        (frame_android.FrameError('not an APK'), None)):
+            handler = object.__new__(server.Handler)
+            handler.headers = {'X-Filename': 'app.apk', 'X-Mode': 'apk', 'Content-Length': '1'}
+            handler.rfile = io.BytesIO(b'x')
+            calls = []
+            patch_info = (patch.object(frame_android, 'apk_info', side_effect=apk_info)
+                          if isinstance(apk_info, Exception) else
+                          patch.object(frame_android, 'apk_info', return_value=apk_info))
+            with patch_info, patch.object(frame_android, 'install_hooks', [lambda *a: calls.append(a)]), \
+                    patch.object(server, 'ensure_master'):
+                with self.assertRaises(server.Failure):
+                    handler.upload()
+            self.assertEqual(len(calls), 1)
+            got_info, meta, error, _ = calls[0]
+            self.assertEqual((got_info or {}).get('package'), expected_info)
+            self.assertIsNone(meta)
+            self.assertIsInstance(error, frame_android.FrameError)
 
 if __name__ == '__main__':
     unittest.main()

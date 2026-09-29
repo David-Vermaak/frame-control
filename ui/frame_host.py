@@ -56,7 +56,7 @@ def cache_dir(*parts):
     return base.joinpath(*parts)
 
 
-def control_path(tag="x"):
+def control_path(tag="x", *, private=None):
     """ssh ControlPath for the shared connection, or None where it isn't supported.
 
     `tag` names the headset: ssh's %C hashes only the address, user and port, so two
@@ -64,7 +64,11 @@ def control_path(tag="x"):
     connection, and one's commands would run on the other.
     /tmp, not $TMPDIR: macOS's per-user temp path overflows the unix socket path limit.
     """
-    return f"/tmp/frame-ui-{os.getuid()}-{tag}-%C" if MUX else None
+    # A private server (the MCP adapter's) keeps its own masters: FRAME_PRIVATE_SSH=1.
+    if private is None:
+        private = os.environ.get("FRAME_PRIVATE_SSH") == "1"
+    suffix = f"-{os.getpid()}" if private else ""
+    return f"/tmp/frame-ui-{os.getuid()}{suffix}-{tag}-%C" if MUX else None
 
 
 def which(name, *extra):
