@@ -304,7 +304,8 @@ class Renderer(unittest.TestCase):
 
     def test_desktop_packages_include_renderer_and_settings(self):
         config = json.loads((ROOT / 'app/package.json').read_text())
-        resources = {r['from']: r['filter'] for r in config['build']['extraResources']}
+        # Single-file resources (licenses/notices) do not need a filter.
+        resources = {r['from']: r.get('filter', ['**/*']) for r in config['build']['extraResources']}
         self.assertIn('*.js', resources['../ui'])
         self.assertIn('*.js', resources['../frame/android'])
 

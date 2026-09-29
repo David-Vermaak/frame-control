@@ -1,7 +1,9 @@
 // Downloads what the app bundles so users install nothing else: a standalone
 // Python (python-build-standalone), adb (Android platform-tools) and a CA
 // bundle. Each goes in build/deps/<os>-<arch>/{python,tools}, which package.json
-// copies into the app's resources. Everything is pinned by version and SHA-256.
+// copies into the app's resources. Also KDE Connect for the Frame (the same arm64
+// packages for every build), into ../frame/kdeconnect/packages as listed in
+// ../frame/kdeconnect/packages.json. Everything is pinned by version and SHA-256.
 //   node build/fetch-deps.js mac arm64 | win x64 | linux x64 arm64
 const crypto = require("crypto");
 const fs = require("fs");
@@ -127,8 +129,26 @@ async function fetch(os, arch) {
   console.log(`${key}: ${version} -> ${out}`);
 }
 
+// As frame/kdeconnect/fetch.py does for the iPhone app's bundle.
+async function fetchKdeConnect() {
+  const dir = path.join(__dirname, "..", "..", "frame", "kdeconnect");
+  const manifest = JSON.parse(fs.readFileSync(path.join(dir, "packages.json"), "utf8"));
+  const out = path.join(dir, "packages");
+  fs.mkdirSync(out, { recursive: true });
+  const sha = (file) => crypto.createHash("sha256").update(fs.readFileSync(file)).digest("hex");
+  for (const p of manifest.packages) {
+    const file = path.join(out, p.file);
+    if (fs.existsSync(file) && sha(file) === p.sha256) continue;
+    await download(manifest.release + p.file, p.sha256, file);
+  }
+  const wanted = new Set(manifest.packages.map((p) => p.file));
+  for (const f of fs.readdirSync(out)) if (!wanted.has(f)) fs.rmSync(path.join(out, f), { recursive: true, force: true });
+  console.log(`KDE Connect for the Frame: ${manifest.packages.length} packages -> ${out}`);
+}
+
 (async () => {
   const [os, ...archs] = process.argv.slice(2);
   if (!os || !archs.length) throw new Error("usage: node build/fetch-deps.js <mac|win|linux> <arch>...");
   for (const arch of archs) await fetch(os, arch);
+  await fetchKdeConnect();
 })().catch((e) => { console.error(e.message); process.exit(1); });

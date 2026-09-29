@@ -141,27 +141,48 @@ def _write_meta(d, meta):
     ssh(f'cat > {d}/meta.json.tmp && mv {d}/meta.json.tmp {d}/meta.json', input=json.dumps(meta, indent=1))
 
 
+# Called after every install, worked or not, as fn(info, meta, error, seconds):
+# info is None if the APK couldn't be read, meta None and error set if it failed.
+install_hooks = []
+
+
 def install(apk_path, flatscreen=None, name=None, source=None, icon_png=None, xr_compat=None, artwork=None):
-    info = apk_info(apk_path)
-    if icon_png:
-        info['icon_png'] = icon_png
-    check_installable(info)
-    pkg = info['package']
-    if not PKG_RE.match(pkg):
-        raise FrameError(f'unexpected package name {pkg!r}')
-    if flatscreen is None:
-        flatscreen = not info['vr']
-    # VR apps get the OpenXR compatibility layer unless told otherwise; it only
-    # changes calls SteamVR would otherwise reject.
-    add = xr_compat_files(apk_path) if (info['vr'] if xr_compat is None else xr_compat) else {}
-    with _install_lock:
-        if add or info['repairable']:
-            with tempfile.TemporaryDirectory(prefix='frame-vr-') as tmp:
-                patched = os.path.join(tmp, 'app.apk')
-                info['patched'] = patch(apk_path, patched, add)['patched']
-                info['launchable'] = True
-                return _install(patched, info, pkg, flatscreen, name, source or os.path.basename(apk_path), artwork)
-        return _install(apk_path, info, pkg, flatscreen, name, source, artwork)
+    start, info = time.time(), None
+    try:
+        info = apk_info(apk_path)
+        if icon_png:
+            info['icon_png'] = icon_png
+        check_installable(info)
+        pkg = info['package']
+        if not PKG_RE.match(pkg):
+            raise FrameError(f'unexpected package name {pkg!r}')
+        if flatscreen is None:
+            flatscreen = not info['vr']
+        # VR apps get the OpenXR compatibility layer unless told otherwise; it only
+        # changes calls SteamVR would otherwise reject.
+        add = xr_compat_files(apk_path) if (info['vr'] if xr_compat is None else xr_compat) else {}
+        with _install_lock:
+            if add or info['repairable']:
+                with tempfile.TemporaryDirectory(prefix='frame-vr-') as tmp:
+                    patched = os.path.join(tmp, 'app.apk')
+                    info['patched'] = patch(apk_path, patched, add)['patched']
+                    info['launchable'] = True
+                    meta = _install(patched, info, pkg, flatscreen, name, source or os.path.basename(apk_path), artwork)
+            else:
+                meta = _install(apk_path, info, pkg, flatscreen, name, source, artwork)
+    except FrameError as e:
+        _after_install(info, None, e, start)
+        raise
+    _after_install(info, meta, None, start)
+    return meta
+
+
+def _after_install(info, meta, error, start):
+    for hook in install_hooks:
+        try:
+            hook(info, meta, error, time.time() - start)
+        except Exception:
+            pass  # reporting must never change an install's outcome
 
 
 def _install(apk_path, info, pkg, flatscreen, name, source, artwork=None):

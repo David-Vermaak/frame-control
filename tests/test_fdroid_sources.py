@@ -516,7 +516,10 @@ class Repositories(unittest.TestCase):
         self.expire(source)
         self.fetch_mock.side_effect = urllib.error.HTTPError(URL, 503, 'unavailable', None, None)
         self.assertEqual(len(fdroid.search(source, 'example')), 1)
-        fdroid._refreshing[source['id']].join(5)
+        # A fast failed refresh may already have removed itself from the registry.
+        refresh = fdroid._refreshing.get(source['id'])
+        if refresh is not None:
+            refresh.join(5)
         calls = self.fetch_mock.call_count
         self.assertEqual(fdroid.details(source, 'org.example.app')['version_code'], 2)
         self.assertTrue(fdroid.stale(source))

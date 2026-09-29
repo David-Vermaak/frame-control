@@ -1,4 +1,5 @@
 """frame_apk against a small APK built here: binary manifest plus resource table."""
+import sandbox  # noqa: F401  (first: keeps tests off real data and services)
 import io
 import os
 import struct

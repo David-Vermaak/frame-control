@@ -1,7 +1,7 @@
 {
   "name": "frame-control",
   "productName": "Frame Control",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "Desktop app for managing a Valve Steam Frame over SSH",
   "private": true,
   "main": "main.js",
@@ -9,8 +9,8 @@
   "scripts": {
     "start": "env -u ELECTRON_RUN_AS_NODE electron .",
     "icon": "env -u ELECTRON_RUN_AS_NODE electron build/make-icon.js",
-    "dist": "node build/fetch-deps.js mac arm64 && electron-builder --mac --arm64 --publish never",
-    "dist:dir": "node build/fetch-deps.js mac arm64 && electron-builder --mac --arm64 --dir",
+    "dist": "sh ../mac/frame-mac-view/build.sh && node build/fetch-deps.js mac arm64 && electron-builder --mac --arm64 --publish never",
+    "dist:dir": "sh ../mac/frame-mac-view/build.sh && node build/fetch-deps.js mac arm64 && electron-builder --mac --arm64 --dir",
     "dist:linux": "node build/fetch-deps.js linux x64 arm64 && electron-builder --linux --x64 --arm64 --publish never",
     "dist:win": "node build/fetch-deps.js win x64 && electron-builder --win --x64 --publish never"
   },
@@ -37,6 +37,7 @@
       "main.js",
       "preload.js",
       "install-link.js",
+      "updater.js",
       "package.json",
       "build/icon.png"
     ],
@@ -47,7 +48,8 @@
         "filter": [
           "*.py",
           "*.html",
-          "*.js"
+          "*.js",
+          "telemetry.json"
         ]
       },
       {
@@ -91,6 +93,16 @@
         ]
       },
       {
+        "from": "../frame/kdeconnect",
+        "to": "frame/kdeconnect",
+        "filter": [
+          "packages.json",
+          "NOTICE.md",
+          "LICENSES/**/*",
+          "packages/*.pkg.tar.zst"
+        ]
+      },
+      {
         "from": "../apk-catalog",
         "to": "apk-catalog",
         "filter": [
@@ -112,6 +124,14 @@
         "filter": [
           "**/*"
         ]
+      },
+      {
+        "from": "../THIRD_PARTY_NOTICES.md",
+        "to": "THIRD_PARTY_NOTICES.md"
+      },
+      {
+        "from": "../LICENSE",
+        "to": "LICENSE"
       }
     ],
     "mac": {
@@ -123,9 +143,19 @@
         "dmg",
         "zip"
       ],
+      "extraResources": [
+        {
+          "from": "../mac/bin",
+          "to": "mac/bin",
+          "filter": [
+            "frame-mac-view"
+          ]
+        }
+      ],
       "extendInfo": {
         "NSAppleEventsUsageDescription": "Frame Control opens Terminal for SSH sessions and for power actions that need the Developer Mode password.",
-        "NSLocalNetworkUsageDescription": "Frame Control connects to your Steam Frame over SSH on the local network."
+        "NSLocalNetworkUsageDescription": "Frame Control connects to your Steam Frame over SSH on the local network.",
+        "NSScreenCaptureUsageDescription": "Frame Control shows your Mac's windows and screens inside the Steam Frame when you ask it to."
       },
       "artifactName": "Frame-Control-mac-${arch}.${ext}"
     },
