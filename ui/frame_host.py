@@ -298,7 +298,7 @@ def open_rdp(alias, host=None):
     # The client would open either way and then fail on its own, with nothing said here.
     if not rdp_reachable(host):
         raise HostError(f"The Frame isn't accepting remote desktop at {host} (nothing answered on port "
-                        f"{RDP_PORT}). Turn on Developer Mode in Steam Settings → System on the headset, "
+                        f"{RDP_PORT}). Turn on Developer Mode in Steam Settings > System on the headset, "
                         "then restart it and try again.")
     if MAC:
         if subprocess.run(["open", "-a", "Windows App"], capture_output=True).returncode == 0:
@@ -307,7 +307,8 @@ def open_rdp(alias, host=None):
         return "Windows App isn't installed; opened its App Store page"
     if WINDOWS:
         _spawn(["mstsc.exe", str(rdp_file(host))])
-        return f"Opened Remote Desktop to {host}: {RDP_LOGIN}"
+        # Windows asks about the unsigned connection file first.
+        return f"Opened Remote Desktop to {host}: choose Connect, {RDP_LOGIN}"
     if which("remmina"):
         _spawn(["remmina", "-c", f"rdp://{RDP_USER}@{host}"])
         return f"Opened Remmina to {host}: {RDP_LOGIN}"
