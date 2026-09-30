@@ -18,7 +18,6 @@ A change that can't be sent (offline) waits in the state file and is retried in 
 background, so a withdrawal is never lost. The page's one-time prompt is remembered here
 too: once it has been shown or dismissed it never comes back.
 """
-import calendar
 import json
 import os
 import re
@@ -100,7 +99,7 @@ def _send_pending(block=True):
             with _lock:
                 event = load()['pending']
             if event is None:
-                return True
+                break
             try:
                 frame_telemetry.post([event], timeout=30)
             except frame_telemetry.SendError:
@@ -108,6 +107,10 @@ def _send_pending(block=True):
             _sent(event)
     finally:
         _send_lock.release()
+    # A change saved just as this finished found the lock still held and left it to us.
+    with _lock:
+        left = load()['pending'] is not None
+    return _send_pending(block=False) if left else True
 
 
 def _sent(event):
@@ -139,18 +142,14 @@ def _forget_locally(email):
             frame_telemetry._write_lines(frame_telemetry.SENT, rows)
 
 
-def redact_removed(event):
-    """Before logging a report sent while its address was being removed: take the address out.
-    Call with frame_telemetry._lock held, so a removal can't slip between this and the log."""
+def redact_removed(event, started):
+    """Before logging a report (started at time.time() `started`) whose address was removed
+    while it was being sent: take the address out. Call with frame_telemetry._lock held, so a
+    removal can't slip between this and the log."""
     p = event.get('properties') or {}
     removed_at = _removed.get(str(p.get('contact') or '').strip().lower())
-    if removed_at is not None:
-        try:
-            started = calendar.timegm(time.strptime(event['timestamp'], '%Y-%m-%dT%H:%M:%SZ'))
-        except (KeyError, ValueError):
-            started = 0
-        if started <= removed_at:
-            p['contact'] = '<removed>'
+    if removed_at is not None and started <= removed_at:
+        p['contact'] = '<removed>'
 
 
 def save(body):

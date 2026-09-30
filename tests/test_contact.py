@@ -169,9 +169,8 @@ class Contact(Base):
         with mock.patch.object(tm, "post", side_effect=remove_meanwhile):
             fr.send({**REPORT, "contact": "me@example.com", "contactFollowup": True})
         self.assertNotIn("me@example.com", tm.SENT.read_text())
-        fc._removed.clear()
-        fr.send({**REPORT, "contact": "other@example.com", "contactFollowup": True})
-        self.assertIn("other@example.com", tm.SENT.read_text())  # other reports are logged as sent
+        fr.send({**REPORT, "contact": "me@example.com", "contactFollowup": True})
+        self.assertIn("me@example.com", tm.SENT.read_text())  # sent again after removal: logged as sent
 
     def test_saving_during_a_slow_send_returns_at_once(self):
         busy = fc._send_lock
@@ -184,6 +183,28 @@ class Contact(Base):
         self.assertEqual(self.got, [])
         self.assertTrue(fc._send_pending())
         self.assertEqual(len(self.got), 1)
+
+    def test_a_change_saved_as_a_send_finishes_is_not_left_behind(self):
+        real = fc._send_lock
+
+        class Lock:  # a Save lands after the sender found nothing waiting, before it lets go
+            saved = False
+
+            def acquire(self, blocking=True):
+                return real.acquire(blocking)
+
+            def release(self):
+                if not Lock.saved:
+                    Lock.saved = True
+                    s = threading.Thread(target=fc.save, args=({"email": "me@example.com", "updates": True},))
+                    s.start()
+                    s.join(5)
+                real.release()
+
+        with mock.patch.object(fc, "_send_lock", Lock()):
+            self.assertTrue(fc._send_pending())
+        self.assertEqual([e["properties"]["email"] for e in self.events()], ["me@example.com"])
+        self.assertFalse(fc.state()["waiting"])
 
     # ---- the one-time prompt
 

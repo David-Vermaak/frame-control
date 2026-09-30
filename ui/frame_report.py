@@ -123,13 +123,14 @@ def send(body):
     # Its own random id: a report can carry contact details, so it isn't linked to this copy's analytics.
     event = {'event': 'problem_report', 'distinct_id': str(uuid.uuid4()), 'uuid': str(uuid.uuid4()),
              'timestamp': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()), 'properties': props}
+    started = time.time()
     try:
         frame_telemetry.post([event], timeout=30)
     except frame_telemetry.SendError as e:
         raise ReportError(str(e))
     try:
         with frame_telemetry._lock:  # the lock a removal holds while wiping its address
-            frame_contact.redact_removed(event)
+            frame_contact.redact_removed(event, started)
             frame_telemetry.record_sent([event])
     except OSError:
         pass  # it was sent; failing to log it here mustn't make the person send it again
