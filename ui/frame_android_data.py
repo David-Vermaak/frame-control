@@ -11,13 +11,14 @@ import tempfile
 import uuid
 
 import frame_android as android
+import frame_host
 
 REMOTE = Path(android.ROOT) / 'frame/android/app-data.py'
 
 
 def _stream(command, src=None, dst=None):
     try:
-        result = subprocess.run(['ssh', *android.SSH_OPTS, android.FRAME, command],
+        result = frame_host.run_ssh(['ssh', *android.SSH_OPTS, android.FRAME, command],
                                 stdin=src if src else subprocess.DEVNULL,
                                 stdout=dst if dst else subprocess.PIPE,
                                 stderr=subprocess.PIPE, timeout=1800)

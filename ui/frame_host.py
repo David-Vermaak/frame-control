@@ -5,12 +5,14 @@ Everything here runs on your computer, not the Frame. Python stdlib only.
 CLI (used by the Electron app, so terminal handling lives in one place):
   python3 ui/frame_host.py terminal -- CMD [ARG...]   # open CMD in a terminal window
 """
+import io
 import os
 import shlex
 import shutil
 import ssl
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 MAC = sys.platform == "darwin"
@@ -30,6 +32,41 @@ DETACHED = ({"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP} if WINDOWS
 
 class HostError(RuntimeError):
     pass
+
+
+def run_ssh(argv, **kwargs):
+    """Run an OpenSSH tool without Windows' redirected-stderr pipe hang.
+
+    A real temporary file avoids OpenSSH's blocked asynchronous stderr writes,
+    while keeping subprocess.run's captured output, text, check and timeout API.
+    """
+    if not WINDOWS:
+        return subprocess.run(argv, **kwargs)
+    if kwargs.pop("capture_output", False):
+        if kwargs.get("stdout") is not None or kwargs.get("stderr") is not None:
+            raise ValueError("stdout and stderr arguments may not be used with capture_output")
+        kwargs.update(stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    if kwargs.get("stderr") != subprocess.PIPE:
+        return subprocess.run(argv, **kwargs)
+    check = kwargs.pop("check", False)
+    text = any(kwargs.get(key) for key in ("text", "universal_newlines", "encoding", "errors"))
+    with tempfile.TemporaryFile() as stderr:
+        kwargs["stderr"] = stderr
+        try:
+            result = subprocess.run(argv, **kwargs)
+        except subprocess.TimeoutExpired as error:
+            stderr.seek(0)
+            error.stderr = stderr.read()
+            raise
+        stderr.seek(0)
+        if text:
+            with io.TextIOWrapper(stderr, encoding=kwargs.get("encoding"), errors=kwargs.get("errors")) as reader:
+                result.stderr = reader.read()
+        else:
+            result.stderr = stderr.read()
+    if check:
+        result.check_returncode()
+    return result
 
 
 def data_dir(*parts):
@@ -231,7 +268,7 @@ def clipboard_text():
 def ssh_hostname(alias):
     """The real host name an ssh alias points at (`ssh -G`), for non-SSH clients like RDP."""
     try:
-        out = subprocess.run(["ssh", "-G", alias], capture_output=True, stdin=subprocess.DEVNULL, text=True, timeout=10).stdout
+        out = run_ssh(["ssh", "-G", alias], capture_output=True, stdin=subprocess.DEVNULL, text=True, timeout=10).stdout
     except (OSError, subprocess.TimeoutExpired):
         return alias
     for line in out.splitlines():

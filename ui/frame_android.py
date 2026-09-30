@@ -47,7 +47,7 @@ def ssh(cmd, input=None, timeout=120):
     try:
         # No inherited stdin (see server.ssh): Windows' ssh.exe would wait on it.
         feed = {'input': input} if input is not None else {'stdin': subprocess.DEVNULL}
-        p = subprocess.run(['ssh', *SSH_OPTS, FRAME, cmd], capture_output=True, **feed,
+        p = frame_host.run_ssh(['ssh', *SSH_OPTS, FRAME, cmd], capture_output=True, **feed,
                            timeout=timeout, text=isinstance(input, str) or input is None)
     except subprocess.TimeoutExpired:
         raise FrameError(f'timed out talking to {FRAME}')
@@ -120,7 +120,7 @@ def _copy(src, dest, executable=False, timeout=600):
     else:
         cmd = ['scp', *SSH_OPTS, src, f'{FRAME}:{dest}']
     try:
-        subprocess.run(cmd, check=True, capture_output=True, stdin=subprocess.DEVNULL, text=True, timeout=timeout)
+        frame_host.run_ssh(cmd, check=True, capture_output=True, stdin=subprocess.DEVNULL, text=True, timeout=timeout)
     except subprocess.TimeoutExpired:
         raise FrameError(f'copying {name} to the Frame timed out')
     except subprocess.CalledProcessError as e:

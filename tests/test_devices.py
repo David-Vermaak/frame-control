@@ -17,6 +17,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "ui"))
 
 import frame_devices as fd  # noqa: E402
+import frame_host  # noqa: E402
 
 CONFIG = """Host lxso1
   HostName 192.168.1.109
@@ -274,7 +275,8 @@ class Pins(Base):
     def test_hashed_and_non_default_port_entries(self):
         kh = self.ssh / "known_hosts"
         kh.write_text(f"[frame.local]:2222 {KEY}\n")
-        subprocess.run(["ssh-keygen", "-H", "-f", str(kh)], capture_output=True, check=True)
+        frame_host.run_ssh(["ssh-keygen", "-H", "-f", str(kh)], capture_output=True,
+                           stdin=subprocess.DEVNULL, check=True, timeout=10)
         self.assertFalse(fd.seed_pin("d3", ["frame.local"]))  # port 22: not that entry
         self.assertTrue(fd.seed_pin("d3", ["frame.local"], port=2222))
         self.assertIn(f"frame-control-d3 {KEY}", fd.known_hosts("d3").read_text())
@@ -283,7 +285,8 @@ class Pins(Base):
         target = fd.known_hosts("d4")
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(f"frame-control-d4 {KEY}\n")
-        subprocess.run(["ssh-keygen", "-H", "-f", str(target)], capture_output=True, check=True)
+        frame_host.run_ssh(["ssh-keygen", "-H", "-f", str(target)], capture_output=True,
+                           stdin=subprocess.DEVNULL, check=True, timeout=10)
         self.assertNotIn("frame-control-d4", target.read_text())
         self.assertTrue(fd.pinned("d4"))
         self.assertTrue(fd.forget_pin("d4"))

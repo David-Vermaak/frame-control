@@ -63,7 +63,7 @@ class ObbTests(unittest.TestCase):
                 with self.assertRaisesRegex(android.FrameError, 'start this app'):
                     data.install_obb(PKG, [path])
                 stream.assert_not_called()
-            with patch.object(subprocess, 'run', return_value=subprocess.CompletedProcess([], 1, b'', b'bad hash')):
+            with patch.object(data.frame_host, 'run_ssh', return_value=subprocess.CompletedProcess([], 1, b'', b'bad hash')):
                 with self.assertRaisesRegex(android.FrameError, 'bad hash'):
                     data._stream('command')
 

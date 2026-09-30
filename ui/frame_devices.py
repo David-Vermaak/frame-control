@@ -333,7 +333,7 @@ def remove_block(alias, path=None):
 def effective_port(alias, config):
     """The port ssh uses for ALIAS with this config file (`ssh -F FILE -G ALIAS`), else 22."""
     try:
-        out = subprocess.run(["ssh", "-F", str(config), "-G", alias], capture_output=True, text=True,
+        out = frame_host.run_ssh(["ssh", "-F", str(config), "-G", alias], capture_output=True, text=True,
                              stdin=subprocess.DEVNULL, timeout=10).stdout
     except (OSError, subprocess.TimeoutExpired):
         return 22
@@ -346,7 +346,7 @@ def effective_port(alias, config):
 
 def _keygen(*args):
     try:
-        return subprocess.run(["ssh-keygen", *args], capture_output=True, stdin=subprocess.DEVNULL, text=True,
+        return frame_host.run_ssh(["ssh-keygen", *args], capture_output=True, stdin=subprocess.DEVNULL, text=True,
                               timeout=10)
     except (OSError, subprocess.TimeoutExpired):
         return None

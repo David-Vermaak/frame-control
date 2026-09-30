@@ -332,7 +332,7 @@ def ssh(remote, *, stdin=None, timeout=30, text=True):
         # Never let ssh inherit our stdin: under the app it's the pipe held open for
         # --exit-on-eof, and Windows' ssh.exe waits on it forever.
         feed = {"input": stdin} if stdin is not None else {"stdin": subprocess.DEVNULL}
-        r = subprocess.run([*SSH, FRAME, remote], capture_output=True, **feed,
+        r = frame_host.run_ssh([*SSH, FRAME, remote], capture_output=True, **feed,
                            text=text, errors="replace" if text else None, timeout=timeout)
     except subprocess.TimeoutExpired:
         raise Failure(f"Timed out talking to {FRAME}")
@@ -503,7 +503,7 @@ def save_shots(body):
         incoming = Path(tempfile.mkdtemp(prefix=".incoming-", dir=SHOTS_DIR))
         try:
             try:
-                r = subprocess.run(["scp", "-p", *SSH[1:], *(f"{FRAME}:{p}" for p in todo), str(incoming)],
+                r = frame_host.run_ssh(["scp", "-p", *SSH[1:], *(f"{FRAME}:{p}" for p in todo), str(incoming)],
                                    capture_output=True, stdin=subprocess.DEVNULL, text=True, timeout=300)
             except subprocess.TimeoutExpired:
                 raise Failure("Copying screenshots timed out")
@@ -2246,7 +2246,7 @@ def push_file(path, dest="Downloads/"):
         else:
             # Modern scp uses SFTP, so the remote path isn't parsed by a shell.
             cmd = ["scp", *SSH[1:], "-r", str(path), f"{FRAME}:{dest}"]
-        r = subprocess.run(cmd, capture_output=True, stdin=subprocess.DEVNULL, text=True, errors="replace", timeout=3600)
+        r = frame_host.run_ssh(cmd, capture_output=True, stdin=subprocess.DEVNULL, text=True, errors="replace", timeout=3600)
     except subprocess.TimeoutExpired:
         raise Failure(f"Copying {name} timed out")
     if r.returncode != 0:
