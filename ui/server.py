@@ -1192,6 +1192,12 @@ def open_thing(body):
             SHOTS_DIR.mkdir(parents=True, exist_ok=True)
             frame_host.open_path(SHOTS_DIR)
             return {"message": f"Opened {SHOTS_DIR} in {frame_host.FILE_MANAGER}"}
+        if what == "shot":
+            saved = SHOTS_DIR / shot_path(body.get("id")).rsplit("/", 1)[-1]
+            if not saved.exists():
+                raise Failure("That screenshot isn't saved on this computer yet", 404)
+            frame_host.reveal_path(saved)
+            return {"message": f"Showed {saved.name} in {frame_host.FILE_MANAGER}"}
     except frame_host.HostError as e:
         raise Failure(str(e), 500)
     raise Failure("unknown target", 400)
