@@ -1192,7 +1192,7 @@ def open_thing(body):
             SHOTS_DIR.mkdir(parents=True, exist_ok=True)
             frame_host.open_path(SHOTS_DIR)
             return {"message": f"Opened {SHOTS_DIR} in {frame_host.FILE_MANAGER}"}
-    except frame_host.NotListening as e:
+    except frame_host.Unreachable as e:
         raise Failure(str(e), 400)  # theirs to turn on; nothing failed here
     except frame_host.HostError as e:
         raise Failure(str(e), 500)

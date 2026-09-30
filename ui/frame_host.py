@@ -5,8 +5,8 @@ Everything here runs on your computer, not the Frame. Python stdlib only.
 CLI (used by the Electron app, so terminal handling lives in one place):
   python3 ui/frame_host.py terminal -- CMD [ARG...]   # open CMD in a terminal window
 """
+import hashlib
 import os
-import re
 import shlex
 import shutil
 import socket
@@ -34,8 +34,8 @@ class HostError(RuntimeError):
     pass
 
 
-class NotListening(HostError):
-    """The Frame answers, but a service on it doesn't: something the person can turn on."""
+class Unreachable(HostError):
+    """The Frame, or a service on it, didn't answer: the person's to sort out, not a fault here."""
 
 
 def data_dir(*parts):
@@ -277,13 +277,22 @@ RDP_LOGIN = (f"accept the warning about the Frame's certificate, then sign in as
              "with your Developer Mode password")
 
 
-def rdp_reachable(host, timeout=3):
-    """Whether anything answers on the Frame's RDP port."""
+def check_rdp(host, timeout=3):
+    """Raise Unreachable, saying why, unless the Frame's RDP port takes a connection."""
     try:
         with socket.create_connection((host, RDP_PORT), timeout=timeout):
-            return True
-    except OSError:
-        return False
+            return
+    except ConnectionRefusedError:
+        raise Unreachable(f"The Frame at {host} is on but isn't accepting remote desktop (port {RDP_PORT} "
+                          "refused). Turn on Developer Mode in Steam Settings > System on the headset, "
+                          "then restart it and try again.") from None
+    except socket.gaierror:
+        raise Unreachable(f"Can't find {host} on the network for remote desktop. Check the headset's "
+                          "address on the Devices tab.") from None
+    except OSError as e:
+        raise Unreachable(f"The Frame didn't answer remote desktop at {host} ({e}). It may be asleep, "
+                          "switched off or on another network; if it's on, check Developer Mode is on "
+                          "in Steam Settings > System.") from None
 
 
 def rdp_file(host):
@@ -292,7 +301,7 @@ def rdp_file(host):
     if any(c in host for c in "\r\n"):
         raise HostError("That headset address can't be used for remote desktop")
     # One file per address, so two launches close together can't swap headsets.
-    path = cache_dir(f"frame-{re.sub(r'[^A-Za-z0-9.-]', '_', host)}.rdp")
+    path = cache_dir(f"frame-{hashlib.sha256(host.encode()).hexdigest()[:16]}.rdp")
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w", encoding="utf-8", newline="\r\n") as f:  # Path.write_text(newline=) is 3.10+
         f.write(f"full address:s:{host}\nusername:s:{RDP_USER}\n")
@@ -303,10 +312,7 @@ def open_rdp(alias, host=None):
     """Remote desktop to the Frame's xrdp (user steamos), at `host` or where the alias points."""
     host = host or ssh_hostname(alias)
     # The client would open either way and then fail on its own, with nothing said here.
-    if not rdp_reachable(host):
-        raise NotListening(f"The Frame isn't accepting remote desktop at {host} (nothing answered on port "
-                           f"{RDP_PORT}). Turn on Developer Mode in Steam Settings > System on the headset, "
-                           "then restart it and try again.")
+    check_rdp(host)
     if MAC:
         if subprocess.run(["open", "-a", "Windows App"], capture_output=True).returncode == 0:
             return f"Opened Windows App: connect to {host} and {RDP_LOGIN}"

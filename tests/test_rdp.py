@@ -71,10 +71,22 @@ class OpenRdp(unittest.TestCase):
     def test_nothing_listening_says_why_and_opens_nothing(self):
         self.xrdp.close()
         for name in ("windows", "mac", "linux"):
-            with self.subTest(name), platform(name), self.assertRaises(frame_host.NotListening) as cm:
+            with self.subTest(name), platform(name), self.assertRaises(frame_host.Unreachable) as cm:
                 frame_host.open_rdp("frame", "127.0.0.1")
             self.assertIn("Developer Mode", str(cm.exception))
-            self.assertIn(f"port {frame_host.RDP_PORT}", str(cm.exception))
+            self.assertIn(f"port {frame_host.RDP_PORT} refused", str(cm.exception))
+        self.assertEqual(self.spawned, [])
+
+    def test_says_which_way_it_failed(self):
+        # Only a refused port says xrdp is off; a wrong address or a silent network say so instead.
+        for error, says in ((socket.gaierror(8, "nodename nor servname provided"), "Devices tab"),
+                            (socket.timeout("timed out"), "didn't answer"),
+                            (OSError(65, "No route to host"), "didn't answer")):
+            with self.subTest(says), mock.patch.object(frame_host.socket, "create_connection", side_effect=error), \
+                    platform("windows"), self.assertRaises(frame_host.Unreachable) as cm:
+                frame_host.open_rdp("frame", "frame.local")
+            self.assertIn(says, str(cm.exception))
+            self.assertNotIn("refused", str(cm.exception))
         self.assertEqual(self.spawned, [])
 
     def test_server_says_it_as_the_persons_to_fix(self):
@@ -89,7 +101,8 @@ class OpenRdp(unittest.TestCase):
     def test_one_file_per_address(self):
         with platform("windows"):
             a, b = frame_host.rdp_file("192.168.1.5"), frame_host.rdp_file("fe80::1%eth0")
-        self.assertNotEqual(a, b)
+            c, d = frame_host.rdp_file("fe80::1%2"), frame_host.rdp_file("fe80::1:2")
+        self.assertEqual(len({a, b, c, d}), 4)
         self.assertIn(b"full address:s:192.168.1.5\r\n", a.read_bytes())
         self.assertIn(b"full address:s:fe80::1%eth0\r\n", b.read_bytes())
 
