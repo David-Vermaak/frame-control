@@ -70,7 +70,16 @@ pointer() {  # x y click|wheel [notches]
   local b64=$(print -rn -- $INPUT_PS1 | base64 | tr -d '\n')
   vm_ps '$ErrorActionPreference = "Stop"
 $d = Join-Path $env:LOCALAPPDATA "windows-vm"; $req = "$d\input.txt"; $mine = $false
-trap { [Console]::Error.WriteLine("windows-vm: $_"); if ($mine) { Remove-Item $req -ErrorAction SilentlyContinue }; exit 1 }
+# Giving up: end the helper first, or it could wake up and act in a later request.
+function Abandon {
+  Stop-ScheduledTask -TaskName WindowsVmInput -ErrorAction SilentlyContinue
+  foreach ($i in 1..25) {
+    if ((Get-ScheduledTask -TaskName WindowsVmInput -ErrorAction SilentlyContinue).State -ne "Running") { break }
+    Start-Sleep -Milliseconds 200
+  }
+  Remove-Item $req -ErrorAction SilentlyContinue
+}
+trap { [Console]::Error.WriteLine("windows-vm: $_"); if ($mine) { Abandon }; exit 1 }
 # One request at a time: the helper, the task and input.txt are shared. Windows
 # frees the mutex when this process ends, however it ends.
 $lock = New-Object Threading.Mutex($false, "windows-vm-input")
@@ -84,7 +93,7 @@ $who = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive
 Register-ScheduledTask -TaskName WindowsVmInput -Action $act -Principal $who -Force | Out-Null
 Start-ScheduledTask -TaskName WindowsVmInput
 foreach ($i in 1..50) { if (-not (Test-Path $req)) { exit 0 }; Start-Sleep -Milliseconds 200 }
-Remove-Item $req -ErrorAction SilentlyContinue
+Abandon
 [Console]::Error.WriteLine("windows-vm: no input after 10 s: is $env:USERNAME signed in on the VM screen, and is x,y on it?"); exit 1'
 }
 
