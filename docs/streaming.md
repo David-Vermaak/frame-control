@@ -25,6 +25,20 @@ The confidence labels are the same as in [ssh.md](ssh.md).
 documents it. Use Windows App (RDP) when you want a proper Linux desktop on the
 Mac with keyboard, mouse, and clipboard.
 
+**Verified 2026-09-30** (Frame BUILD_ID 20260925.6191901, Windows 11 25H2,
+Remote Desktop Connection): signing in to xrdp as `steamos` with the Developer
+Mode password opens a Plasma (X11) desktop within about 6 seconds.
+
+- xrdp has no NLA, so the client shows a certificate warning (xrdp's own
+  `www.xrdp.org` certificate) and then xrdp's own login box. Frame Control
+  fills in `steamos` there on Windows, Remmina and FreeRDP.
+- The desktop is a separate login session (Xorg on display `:10`), not the
+  headset's view. It uses about 1.3 GB of the Frame's memory.
+- Closing the client leaves the session running, and the next login
+  reconnects to it. To end it over SSH, find it with `loginctl list-sessions`
+  and run `loginctl terminate-session <id>`. That doesn't touch the headset's
+  gamescope or SteamVR session.
+
 ## B. Show the Mac's desktop inside the Frame
 
 The Frame's VR streaming uses **SteamVR** on the host. Linux hosts had
