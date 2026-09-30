@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld("frameApp", {
   readClipboard: () => ipcRenderer.invoke("clipboard:read"),
   writeImage: (bytes) => ipcRenderer.invoke("clipboard:writeImage", bytes),
   setUpConnection: () => ipcRenderer.invoke("connection:setup"),
+  restartServer: () => ipcRenderer.invoke("server:restart"),  // the "couldn't start" page's Try Again
   // The Frame menu's headset switcher: the page tells it the headsets, and hears picks.
   devicesChanged: (list) => ipcRenderer.send("devices:changed", list),
   onUseDevice: (cb) => {
