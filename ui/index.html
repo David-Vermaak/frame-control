@@ -68,7 +68,7 @@
      the macOS window buttons the app adds on the left. */
   header > button:not(.pill), header > .chip { flex: none; }
   header > button:not(.pill):not(.chip) { width: 36px; padding: 0; justify-content: center; }
-  @media (max-width: 1250px) { .brand b { display: none; } }
+  @media (max-width: 1340px) { .brand b { display: none; } header { gap: 22px; } }
   @media (max-width: 1150px) { .grid-top, .grid-3 { grid-template-columns: 1fr; } header { gap: 14px; padding: env(safe-area-inset-top) calc(18px + env(safe-area-inset-right)) 0 calc(18px + env(safe-area-inset-left)); } nav a { padding: 0 10px; } }
   @media (max-width: 960px) { header { gap: 10px; } nav { gap: 0; } nav a { padding: 0 8px; font-size: 13px; letter-spacing: .4px; }
     .brand, #refreshAll { display: none; }
@@ -98,13 +98,15 @@
   .wait::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--dim); flex: none; }
 
   /* ---- connection pill, its details dialog, and the Devices tab (frame_link.py) ---- */
-  .pill { height: 40px; padding: 0 12px; gap: 9px; max-width: 320px; min-width: 0; flex: 0 1 auto; background: var(--btn); }
+  .pill { height: 40px; padding: 0 12px; gap: 9px; max-width: 320px; min-width: 124px; flex: 0 1 auto; background: var(--btn); }
   .pill .dot { flex: none; }
   .pill .dot.wait { background: var(--warn); box-shadow: 0 0 6px rgba(217,162,58,.7); animation: pulse 1s ease-in-out infinite; }
   @keyframes pulse { 50% { opacity: .35; } }
   .pill .pt { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; line-height: 1.2; text-align: left; }
   .pill .pt b { font-weight: 500; font-size: 13px; color: var(--bright); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .pill .pt > span { font-size: 11.5px; color: var(--muted); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* "Connected" is never cut short: when the route doesn't fit beside it, the route wraps out of sight. */
+  .pill .pt > span { font-size: 11.5px; color: var(--muted); max-width: 100%; display: flex; flex-wrap: wrap; height: 1.2em; overflow: hidden; white-space: nowrap; }
+  .pill .via { white-space: pre; }
   .conn-now { display: flex; gap: 10px; align-items: baseline; }
   .conn-now .dot { position: relative; top: -1px; }
   .conn-now b { color: var(--bright); font-weight: 500; font-size: 15px; }
@@ -484,6 +486,8 @@
     .brand svg { width: 26px; height: 26px; }
     .brand { display: flex; } #refreshAll { display: inline-flex; }  /* the tabs are at the bottom here */
     .pill .pt > b { display: block; } .pill .via { display: inline; } .pill .pt > span { font-size: 11.5px; color: var(--muted); }
+    .pill { min-width: 104px; }
+    @media (max-width: 374px) { .brand { display: none; } }  /* the smallest phones: the pill needs the room */
     header .chip { height: 30px; padding: 0 10px; }
     nav { position: fixed; left: 0; right: 0; bottom: 0; z-index: 25; gap: 0;
           height: calc(58px + env(safe-area-inset-bottom)); padding: 0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
