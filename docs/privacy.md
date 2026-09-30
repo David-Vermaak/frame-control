@@ -141,8 +141,8 @@ are two separate choices, both off until you tick them:
 | **The maintainer may contact me with follow-up questions** | Questions about problem reports you send, mostly |
 
 You're asked once, in a bar at the top of the page, after the Frame has
-connected for the first time (never while the first-run privacy notice is
-showing). **No thanks** hides it for good, and it isn't
+connected for the first time, and never while or straight after the
+first-run privacy notice is showing. **No thanks** hides it for good, and it isn't
 shown again even if you ignore it. **Contact email** in **Privacy & updates**
 is where you add, change or remove the address and either choice at any time.
 
@@ -181,8 +181,9 @@ the environment that starts Frame Control. A copy run from a source checkout
 never sends analytics unless `FRAME_CONTROL_TELEMETRY=1` is set.
 
 These switches cover the analytics above. A problem report or a contact email
-is only ever sent when you press its Send or Save button, so those still go
-when you choose to send them; if you don't, nothing is sent.
+is sent only because you pressed its Send or Save button, so those still go
+when you choose to send them (a contact change saved while offline is sent
+by itself once PostHog can be reached); if you don't, nothing is sent.
 
 ## Update checks
 

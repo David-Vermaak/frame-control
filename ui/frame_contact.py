@@ -18,6 +18,7 @@ A change that can't be sent (offline) waits in the state file and is retried in 
 background, so a withdrawal is never lost. The page's one-time prompt is remembered here
 too: once it has been shown or dismissed it never comes back.
 """
+import calendar
 import json
 import os
 import re
@@ -37,6 +38,8 @@ RETRY_EVERY = 600
 
 _lock = threading.RLock()
 _send_lock = threading.Lock()  # one send at a time, so events reach PostHog in rev order
+_removed = {}  # address (lower case) -> when it was removed, for reports still being sent then
+_wake = threading.Event()
 _retrier = None
 
 
@@ -87,19 +90,24 @@ def _event(s):
                            'action': 'set' if email else 'withdraw', 'rev': s['rev'], 'level': 'contact'}}
 
 
-def _send_pending():
-    """Send the waiting change. True if nothing is left waiting."""
-    with _send_lock:
-        with _lock:
-            event = load()['pending']
-        if event is None:
-            return True
-        try:
-            frame_telemetry.post([event], timeout=30)
-        except frame_telemetry.SendError:
-            return False
-        _sent(event)
-    return True
+def _send_pending(block=True):
+    """Send what's waiting, including changes made while sending. True if nothing is left
+    waiting. Without block, a send already under way is left to pick up the newest change."""
+    if not _send_lock.acquire(blocking=block):
+        return False
+    try:
+        while True:
+            with _lock:
+                event = load()['pending']
+            if event is None:
+                return True
+            try:
+                frame_telemetry.post([event], timeout=30)
+            except frame_telemetry.SendError:
+                return False
+            _sent(event)
+    finally:
+        _send_lock.release()
 
 
 def _sent(event):
@@ -119,6 +127,7 @@ def _sent(event):
 def _forget_locally(email):
     """Take a removed address out of the log of what was sent (contact events and reports)."""
     with frame_telemetry._lock:
+        _removed[email.lower()] = time.time()
         rows = frame_telemetry._read_lines(frame_telemetry.SENT)
         hit = False
         for e in rows:
@@ -128,6 +137,20 @@ def _forget_locally(email):
                     p[k], hit = '<removed>', True
         if hit:
             frame_telemetry._write_lines(frame_telemetry.SENT, rows)
+
+
+def redact_removed(event):
+    """Before logging a report sent while its address was being removed: take the address out.
+    Call with frame_telemetry._lock held, so a removal can't slip between this and the log."""
+    p = event.get('properties') or {}
+    removed_at = _removed.get(str(p.get('contact') or '').strip().lower())
+    if removed_at is not None:
+        try:
+            started = calendar.timegm(time.strptime(event['timestamp'], '%Y-%m-%dT%H:%M:%SZ'))
+        except (KeyError, ValueError):
+            started = 0
+        if started <= removed_at:
+            p['contact'] = '<removed>'
 
 
 def save(body):
@@ -159,8 +182,8 @@ def save(body):
                 _forget_locally(old)
             except OSError:
                 pass
-    if changed:
-        _send_pending()
+    if changed and not _send_pending(block=False):
+        _wake.set()  # offline, or a send under way that will take this change with it
     return state()
 
 
@@ -189,7 +212,8 @@ def start():
                 _send_pending()
             except Exception:
                 pass
-            time.sleep(RETRY_EVERY)
+            _wake.wait(RETRY_EVERY)
+            _wake.clear()
 
     _retrier = threading.Thread(target=loop, name='contact', daemon=True)
     _retrier.start()

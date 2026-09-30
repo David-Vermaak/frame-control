@@ -4015,13 +4015,13 @@ async function loadContact() {
   try { renderContact(await api("/api/contact")); } catch { return; }
   checkContactPrompt();
 }
-// One time only, never on top of the privacy notice, and only once the Frame has connected:
-// checked at load and again whenever the Frame connects.
+// One time only, only once the Frame has connected, and never on top of the privacy notice or
+// straight after it (two asks in a row is nagging): checked at load and whenever the Frame connects.
 async function checkContactPrompt() {
   if (!$("contactNotice").hidden || !$("privacyNotice").hidden) return;
   let s;
   try { s = await api("/api/contact"); } catch { return; }
-  if (!s.showPrompt) return;
+  if (!s.showPrompt || !$("contactNotice").hidden || !$("privacyNotice").hidden) return;
   $("contactNotice").hidden = false;
   api("/api/contact/prompt", { prompt: "shown" }).catch(() => {});
 }

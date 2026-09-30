@@ -128,7 +128,9 @@ def send(body):
     except frame_telemetry.SendError as e:
         raise ReportError(str(e))
     try:
-        frame_telemetry.record_sent([event])
+        with frame_telemetry._lock:  # the lock a removal holds while wiping its address
+            frame_contact.redact_removed(event)
+            frame_telemetry.record_sent([event])
     except OSError:
         pass  # it was sent; failing to log it here mustn't make the person send it again
     return {'id': ref, 'message': f'Sent privately to the Frame Control developer (report {ref}).'}

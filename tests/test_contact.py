@@ -30,6 +30,7 @@ class Contact(Base):
 
     def setUp(self):
         super().setUp()
+        self.addCleanup(fc._removed.clear)
         for name, value in (("STATE", tm.STATE / "contact"), ("FILE", tm.STATE / "contact" / "contact.json")):
             p = mock.patch.object(fc, name, value)
             p.start()
@@ -156,6 +157,33 @@ class Contact(Base):
         self.assertEqual([e["properties"]["action"] for e in self.events()], ["set", "withdraw"])
         self.assertFalse(fc.state()["waiting"])
         self.assertNotIn("me@example.com", tm.SENT.read_text())
+
+    def test_a_report_still_sending_when_its_address_is_removed_is_logged_without_it(self):
+        fc.save({"email": "me@example.com", "followup": True})
+        real = tm.post
+
+        def remove_meanwhile(batch, timeout=20):
+            real(batch, timeout)
+            fc.save({"email": ""})  # removed while the report is on its way, before it's logged
+
+        with mock.patch.object(tm, "post", side_effect=remove_meanwhile):
+            fr.send({**REPORT, "contact": "me@example.com", "contactFollowup": True})
+        self.assertNotIn("me@example.com", tm.SENT.read_text())
+        fc._removed.clear()
+        fr.send({**REPORT, "contact": "other@example.com", "contactFollowup": True})
+        self.assertIn("other@example.com", tm.SENT.read_text())  # other reports are logged as sent
+
+    def test_saving_during_a_slow_send_returns_at_once(self):
+        busy = fc._send_lock
+        busy.acquire()
+        try:
+            s = fc.save({"email": "me@example.com", "updates": True})
+        finally:
+            busy.release()
+        self.assertTrue(s["waiting"])  # left for the send under way (or the retry) to take
+        self.assertEqual(self.got, [])
+        self.assertTrue(fc._send_pending())
+        self.assertEqual(len(self.got), 1)
 
     # ---- the one-time prompt
 
