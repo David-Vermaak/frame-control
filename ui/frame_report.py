@@ -6,6 +6,10 @@ project as a `problem_report` event: only the maintainer can read it, and
 nothing is published. It is sent whatever the analytics settings are, because
 the person sends it deliberately. Diagnostics are scrubbed first
 (frame_telemetry.scrub); the person's own words are sent as written.
+
+An email address goes with a report only when the person ticks "may contact me with
+follow-up questions" (contact_followup). Standing choices made in Settings are
+frame_contact.py's `contact_consent` events; `contacts` lists them.
 """
 import os
 import platform
@@ -13,6 +17,7 @@ import sys
 import time
 import uuid
 
+import frame_contact
 import frame_host
 import frame_telemetry
 
@@ -107,9 +112,13 @@ def send(body):
     """Send the report to PostHog. Returns {"id", "message"}; raises ReportError."""
     kind = body.get('kind') if body.get('kind') in KINDS else 'bug'
     title, text, diag = compose(body)
+    followup = bool(body.get('contactFollowup'))
+    contact = str(body.get('contact') or '').strip() if followup else ''
+    if followup and not frame_contact.valid_email(contact):
+        raise ValueError('add your email address for follow-up questions, or untick that box')
     ref = uuid.uuid4().hex[:8].upper()
     props = {**frame_telemetry.common(), 'kind': kind, 'title': title, 'message': text,
-             'contact': str(body.get('contact') or '').strip()[:120], 'diagnostics': diag,
+             'contact': contact, 'contact_followup': followup, 'diagnostics': diag,
              'report_id': ref, 'steamos': str(frame.get('build') or '')[:120], 'level': 'report'}
     # Its own random id: a report can carry contact details, so it isn't linked to this copy's analytics.
     event = {'event': 'problem_report', 'distinct_id': str(uuid.uuid4()), 'uuid': str(uuid.uuid4()),
@@ -135,22 +144,68 @@ def inbox(days=30):
     import frame_compat_db
     res = frame_compat_db._posthog_query(
         "SELECT timestamp, properties.report_id, properties.kind, properties.title, properties.message, "
-        "properties.contact, properties.app_version, properties.os, properties.steamos, properties.diagnostics "
+        "properties.contact, properties.app_version, properties.os, properties.steamos, properties.diagnostics, "
+        "properties.contact_followup "
         f"FROM events WHERE event = 'problem_report' AND timestamp > now() - INTERVAL {int(days)} DAY "
         "ORDER BY timestamp DESC LIMIT 200")
     return res.get('results') or []
 
 
+def _yes(v):
+    return v is True or str(v).lower() in ('true', '1')
+
+
+def contacts():
+    """{'updates': [(email, since)], 'followup': [...]}: the addresses whose newest
+    contact_consent event agrees to each, oldest first. A withdrawal, or a change to another
+    address, replaces what came before, so withdrawn addresses are never listed."""
+    import frame_compat_db
+    res = frame_compat_db._posthog_query(
+        "SELECT distinct_id, argMax(properties.email, timestamp), argMax(properties.updates, timestamp), "
+        "argMax(properties.followup, timestamp), max(timestamp) FROM events WHERE event = 'contact_consent' "
+        "GROUP BY distinct_id ORDER BY max(timestamp) LIMIT 100000")
+    out = {'updates': [], 'followup': []}
+    for row in res.get('results') or []:
+        if not isinstance(row, list) or len(row) != 5:
+            continue
+        _, email, updates, followup, ts = row
+        email = str(email or '').strip()
+        if not frame_contact.valid_email(email):
+            continue
+        for kind, agreed in (('updates', updates), ('followup', followup)):
+            if _yes(agreed):
+                out[kind].append((email, str(ts or '')[:10]))
+    return out
+
+
+USAGE = 'usage: frame_report.py inbox [days] | contacts [updates|followup]'
+
+
 def main():
     cmd, *args = sys.argv[1:] or ['inbox']
+    if cmd == 'contacts':
+        kinds = args[:1] or ['updates', 'followup']
+        if not set(kinds) <= {'updates', 'followup'}:
+            sys.exit(USAGE)
+        found = contacts()
+        for kind in kinds:
+            print(f"== {'Release and update notices' if kind == 'updates' else 'Follow-up questions'}"
+                  f" ({len(found[kind])})")
+            for email, since in found[kind]:
+                print(f"   {email}  (since {since})")
+            print()
+        return
     if cmd != 'inbox':
-        sys.exit('usage: frame_report.py inbox [days]')
+        sys.exit(USAGE)
     for row in inbox(*(args[:1] or [30])):
-        if not isinstance(row, list) or len(row) != 10:
+        if not isinstance(row, list) or len(row) != 11:
             continue
-        ts, ref, kind, title, text, contact, version, osname, steamos, diag = (str(v or '') for v in row)
+        ts, ref, kind, title, text, contact, version, osname, steamos, diag = (str(v or '') for v in row[:10])
+        # Reports from before contact_followup existed only carried an address given for a reply.
+        reply = contact and (row[10] is None or _yes(row[10]))
         print(f"== {ts[:16].replace('T', ' ')}  {ref}  [{kind}] {title}")
-        print(f"   {version} on {osname}, SteamOS {steamos or 'unknown'}{', reply to ' + contact if contact else ''}")
+        print(f"   {version} on {osname}, SteamOS {steamos or 'unknown'}"
+              f"{', may follow up at ' + contact if reply else ''}")
         print('   ' + text.replace('\n', '\n   '))
         if diag:
             print('   --- diagnostics\n   ' + diag.replace('\n', '\n   '))

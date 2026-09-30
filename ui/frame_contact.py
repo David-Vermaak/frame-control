@@ -1,0 +1,166 @@
+"""An email address the person chooses to leave, and what it may be used for. Python stdlib only.
+
+Two separate opt-in choices, both off until ticked:
+
+- updates: occasional notices about Frame Control releases and updates
+- followup: the maintainer may ask follow-up questions, mainly about problem reports
+
+The address and the choices are kept on this computer (frame_host.data_dir('contact')) and
+sent privately to Frame Control's PostHog project as a `contact_consent` event, the same way
+as problem reports (frame_report.py), so only the maintainer can read them. Every change
+sends a new event under this copy's own random contact id (not the analytics id), and the
+newest event for an id is the one that counts: removing the address sends a withdrawal with
+no address in it. The maintainer lists who agreed to what with
+`python3 ui/frame_report.py contacts`. Nothing here sends email.
+
+A change that can't be sent (offline) waits in the state file and is retried in the
+background, so a withdrawal is never lost. The page's one-time prompt is remembered here
+too: once it has been shown or dismissed it never comes back.
+"""
+import json
+import os
+import re
+import threading
+import time
+import uuid
+
+import frame_host
+import frame_telemetry
+
+STATE = frame_host.data_dir('contact')
+FILE = STATE / 'contact.json'
+EMAIL_MAX = 254
+EMAIL_RE = re.compile(r'[^@\s]+@[^@\s]+\.[^@\s.]+')
+PROMPTS = ('new', 'shown', 'dismissed', 'answered')
+RETRY_EVERY = 600
+
+_lock = threading.RLock()
+_retrier = None
+
+
+def _defaults():
+    return {'id': str(uuid.uuid4()), 'email': '', 'updates': False, 'followup': False,
+            'prompt': 'new', 'pending': None}
+
+
+def load():
+    with _lock:
+        s = _defaults()
+        try:
+            with open(FILE) as f:
+                saved = json.load(f)
+            if isinstance(saved, dict):
+                s.update({k: v for k, v in saved.items() if k in s})
+        except (OSError, ValueError):
+            pass
+        return s
+
+
+def _save(s):
+    STATE.mkdir(parents=True, exist_ok=True)
+    tmp = FILE.with_suffix('.tmp')
+    tmp.write_text(json.dumps(s, indent=1))
+    os.replace(tmp, FILE)
+
+
+def valid_email(email):
+    return len(email) <= EMAIL_MAX and bool(EMAIL_RE.fullmatch(email))
+
+
+def state():
+    """What the page shows. showPrompt: the one-time prompt hasn't been shown or answered yet,
+    and the Frame has connected at least once (setup worked), so it never greets a new install."""
+    s = load()
+    set_up = bool(frame_telemetry.settings().get('frames_seen'))
+    return {'email': s['email'], 'updates': s['updates'], 'followup': s['followup'],
+            'waiting': s['pending'] is not None, 'showPrompt': s['prompt'] == 'new' and set_up}
+
+
+def _event(s):
+    email = s['email'] if s['updates'] or s['followup'] else ''
+    return {'event': 'contact_consent', 'distinct_id': s['id'], 'uuid': str(uuid.uuid4()),
+            'timestamp': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+            'properties': {**frame_telemetry.common(), 'email': email, 'updates': bool(email and s['updates']),
+                           'followup': bool(email and s['followup']),
+                           'action': 'set' if email else 'withdraw', 'level': 'contact'}}
+
+
+def _send_pending():
+    """Send the waiting change. True if nothing is left waiting."""
+    with _lock:
+        s = load()
+        event = s['pending']
+        if event is None:
+            return True
+    try:
+        frame_telemetry.post([event], timeout=30)
+    except frame_telemetry.SendError:
+        return False
+    with _lock:
+        s = load()
+        if s['pending'] and s['pending'].get('uuid') == event['uuid']:  # not replaced meanwhile
+            s['pending'] = None
+            _save(s)
+    try:
+        frame_telemetry.record_sent([event])
+    except OSError:
+        pass
+    return True
+
+
+def save(body):
+    """Set, change or remove the address and the two choices. An address needs at least one
+    choice ticked; an empty address (or neither ticked) removes it and withdraws both."""
+    email = str(body.get('email') or '').strip()
+    updates, followup = bool(body.get('updates')), bool(body.get('followup'))
+    if email and not valid_email(email):
+        raise ValueError("that doesn't look like an email address")
+    if email and not (updates or followup):
+        raise ValueError('tick what the address may be used for, or remove it')
+    if not email:
+        updates = followup = False
+    with _lock:
+        s = load()
+        changed = (email, updates, followup) != (s['email'], s['updates'], s['followup'])
+        s.update(email=email, updates=updates, followup=followup)
+        if body.get('fromPrompt') or email:
+            s['prompt'] = 'answered'
+        if changed:
+            # Only the newest choice matters, so it replaces anything still waiting. A withdrawal
+            # is sent even for an address still waiting here: its send may already be under way.
+            s['pending'] = _event(s)
+        _save(s)
+    if changed:
+        _send_pending()
+    return state()
+
+
+def prompt(body):
+    """The one-time prompt was shown, or dismissed with No thanks. Either way it stays gone."""
+    action = body.get('prompt')
+    if action not in ('shown', 'dismissed'):
+        raise ValueError('unknown prompt action')
+    with _lock:
+        s = load()
+        if s['prompt'] in ('new', 'shown'):
+            s['prompt'] = action
+            _save(s)
+    return state()
+
+
+def start():
+    """Retry a change that couldn't be sent, from now on in the background."""
+    global _retrier
+    if _retrier:
+        return
+
+    def loop():
+        while True:
+            try:
+                _send_pending()
+            except Exception:
+                pass
+            time.sleep(RETRY_EVERY)
+
+    _retrier = threading.Thread(target=loop, name='contact', daemon=True)
+    _retrier.start()

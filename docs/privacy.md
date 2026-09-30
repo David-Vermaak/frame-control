@@ -103,8 +103,10 @@ privately to Frame Control's PostHog project as a `problem_report` event, the
 same way as the analytics above, so only the maintainer can read it and
 nothing is published. It works whatever the analytics settings are, because
 the person sends it deliberately. The report has the kind, title and text you
-wrote, how to reach you if you gave it, a short reference shown after sending,
-and the diagnostics below. It has its own random id, so it isn't linked to
+wrote, a short reference shown after sending, and the diagnostics below. Your
+email address goes with it only if you tick **The maintainer may contact me
+with follow-up questions** (the report then carries `contact_followup: true`);
+it's filled in from **Contact email** below when you've agreed there. It has its own random id, so it isn't linked to
 your analytics events.
 
 With **Include diagnostics** ticked (the default), the report adds:
@@ -127,6 +129,46 @@ the whole report on the clipboard.
 The maintainer reads reports on the Frame Control dashboard in PostHog, or
 with `python3 ui/frame_report.py inbox [days]`, which uses the same personal
 API key as `frame_compat_db.py sync`.
+
+## Contact email (optional)
+
+Frame Control never needs an email address. If you'd like to leave one, there
+are two separate choices, both off until you tick them:
+
+| Choice | What it's for |
+|---|---|
+| **Email me about Frame Control updates** | Occasional notices about new releases and updates |
+| **The maintainer may contact me with follow-up questions** | Questions about problem reports you send, mostly |
+
+You're asked once, in a bar at the top of the page, after the Frame has
+connected for the first time. **No thanks** hides it for good, and it isn't
+shown again even if you ignore it. **Contact email** in **Privacy & updates**
+is where you add, change or remove the address and either choice at any time.
+
+**What's sent, and where.** The address and the two choices go privately to
+Frame Control's PostHog project, the same place as problem reports, as a
+`contact_consent` event with `email`, `updates`, `followup`, `action` (`set`
+or `withdraw`) and the common properties above. Only the maintainer can read
+that project, and nothing in it is published or shared. It's sent only when
+you save, whatever the analytics settings are, because you chose to. It
+carries its own random contact id, not the analytics id, so it isn't linked
+to your usage events. On this computer the address and choices are kept in
+`contact/contact.json` in Frame Control's data folder. An address is only
+kept with at least one choice ticked.
+
+**Removing it.** **Remove my email** (or clearing the address and saving)
+deletes it from this computer and sends a `withdraw` event with no address in
+it. The maintainer's list only uses the newest event from each copy, so from
+then on the address isn't listed for either choice. Unticking one choice
+works the same way for that choice. If you're offline, the change waits on
+this computer and is sent when PostHog can be reached. The earlier event
+stays in PostHog until its data retention removes it; to have it deleted
+sooner, ask the maintainer (for example in a problem report).
+
+Nothing sends email yet: this only records who agreed to what. The
+maintainer lists the addresses with
+`python3 ui/frame_report.py contacts [updates|followup]`, which uses the same
+personal API key as `inbox`.
 
 ## Turning it all off
 
