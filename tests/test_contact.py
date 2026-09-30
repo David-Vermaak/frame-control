@@ -172,6 +172,15 @@ class Contact(Base):
         fr.send({**REPORT, "contact": "me@example.com", "contactFollowup": True})
         self.assertIn("me@example.com", tm.SENT.read_text())  # sent again after removal: logged as sent
 
+    def test_only_reports_started_before_the_removal_are_redacted_even_within_a_second(self):
+        fc._removed["me@example.com"] = 1790000000.3
+        event = lambda: {"timestamp": "2026-09-21T12:53:20Z", "properties": {"contact": "me@example.com"}}
+        before, after = event(), event()  # the same whole second as the removal
+        fc.redact_removed(before, 1790000000.1)
+        fc.redact_removed(after, 1790000000.6)
+        self.assertEqual((before["properties"]["contact"], after["properties"]["contact"]),
+                         ("<removed>", "me@example.com"))
+
     def test_saving_during_a_slow_send_returns_at_once(self):
         busy = fc._send_lock
         busy.acquire()
@@ -199,6 +208,7 @@ class Contact(Base):
                     s = threading.Thread(target=fc.save, args=({"email": "me@example.com", "updates": True},))
                     s.start()
                     s.join(5)
+                    assert not s.is_alive()  # the change is saved while the sender still holds the lock
                 real.release()
 
         with mock.patch.object(fc, "_send_lock", Lock()):
