@@ -623,7 +623,9 @@ class Registry:
                 return a
         raise DeviceError(f"{host} isn't one of this headset's addresses")
 
-    def add_address(self, device_id, host, kind=None, label=""):
+    def add_address(self, device_id, host, kind=None, label="", first=False):
+        """Add an address at the end of the list, or at the front (first=True), where the
+        user's order makes it win over the others that work on the same network."""
         with self._changing():
             d = self._find(device_id)
             a = new_address(host, kind, label)
@@ -631,7 +633,7 @@ class Registry:
                 raise DeviceError(f"{a['host']} is already on the list")
             if len(d["addresses"]) >= 32:
                 raise DeviceError("That's enough addresses for one headset")
-            d["addresses"].append(a)
+            d["addresses"].insert(0 if first else len(d["addresses"]), a)
             self.save()
             return copy.deepcopy(a)
 

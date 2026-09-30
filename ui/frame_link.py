@@ -1111,7 +1111,8 @@ def devices_action(link, body, open_setup, busy=lambda: 0):
                 raise frame_devices.DeviceError(f"Removed, but couldn't edit ~/.ssh/config: {e}")
         msg = f"Removed {d['name']}" + (f" and its '{d['alias']}' entry in ~/.ssh/config" if removed else "")
     elif action == "address-add":
-        a = reg.add_address(did, body.get("host"), body.get("kind") or None, body.get("label") or "")
+        a = reg.add_address(did, body.get("host"), body.get("kind") or None, body.get("label") or "",
+                            first=body.get("first") is True)
         if is_active and link.state["phase"] == "failed":
             link.kick("retry")
         msg = f"Added {a['host']}"

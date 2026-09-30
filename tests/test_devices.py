@@ -296,6 +296,20 @@ class Pins(Base):
 
 
 class Registry(Base):
+    def test_an_address_added_first_wins_on_its_own_network(self):
+        # The page's "Add 192.168.x.x" offer: the headset is reached over Tailscale, which has
+        # worked here before. The LAN address has to go ahead of it to be used at home.
+        d = self.reg.add_device("frame-4", hosts=["frame.tail1234.ts.net"])
+        self.reg.record_success(d["id"], "frame.tail1234.ts.net", "n-home", 6.0)
+        self.reg.add_address(d["id"], "192.168.1.40", kind="lan", first=True)
+        self.reg.record_success(d["id"], "192.168.1.40", "n-home", 1.0)  # Test now found it
+        addrs = self.reg.get(d["id"])["addresses"]
+        self.assertEqual([a["host"] for a in addrs], ["192.168.1.40", "frame.tail1234.ts.net"])
+        at_home = [a["host"] for a, _ in fd.order_addresses(addrs, "n-home", True)]
+        self.assertEqual(at_home[0], "192.168.1.40")
+        away = [a["host"] for a, _ in fd.order_addresses(addrs, "n-cafe", True)]
+        self.assertEqual(away[0], "frame.tail1234.ts.net")  # elsewhere Tailscale still leads
+
     def test_address_editing(self):
         d = self.reg.add_device("frame-3", hosts=["192.168.1.40"])
         a = self.reg.add_address(d["id"], "frame-3.local", label="mDNS")

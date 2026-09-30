@@ -4323,7 +4323,7 @@ window.connBanner = renderBanner;
 
 // The pill's dialog: how it's connected, and the headset's addresses, which can be added,
 // edited and reordered right here. The steps it took stay folded away while all is well.
-const cd = { editing: null, sig: "", phase: null };
+const cd = { editing: null, editDev: null, sig: "", phase: null };
 function renderConnDlg() {
   const s = link.s;
   if (!s || !$("connDlg").open) return;
@@ -4361,7 +4361,7 @@ const sameSubnet = (a, b) => !!a && !!b && a.split(".").slice(0, 3).join(".") ==
 // saving it lets Frame Control connect directly at home rather than over Tailscale.
 function lanOffer(s, d) {
   const ip = state && state.ip, n = s.network || {};
-  if (!d || d.transient || !ip || !PRIVATE_V4.test(ip) || !sameSubnet(ip, n.local_ip)) return null;
+  if (!d || d.transient || !ip || !PRIVATE_V4.test(ip) || ip === n.local_ip || !sameSubnet(ip, n.local_ip)) return null;
   if (d.addresses.some(a => a.host === ip) || (s.probes || []).some(p => p.ip === ip && p.kind !== "tailscale")) return null;
   const named = dv.data && dv.data.networks.find(x => x.id === n.id && x.name);
   return { ip, label: named ? named.name : n.ssid || "" };
@@ -4372,14 +4372,15 @@ function renderConnAddrs() {
   const offer = s && lanOffer(s, d);
   $("connOffer").hidden = !offer;
   if (offer) {
-    const key = offer.ip + offer.label;
+    const key = JSON.stringify([d.id, offer.ip, offer.label]);
     if ($("connOffer").dataset.key !== key) {
       $("connOffer").dataset.key = key;
-      $("connOffer").innerHTML = `<div class="grow">The Frame is at <b>${esc(offer.ip)}</b> on this network. Add it for this
-        network? Frame Control will then connect to it directly whenever you're here.</div>
+      $("connOffer").innerHTML = `<div class="grow">The Frame is at <b>${esc(offer.ip)}</b> on this network. Add it, and
+        Frame Control tries it first here, reaching the headset directly.</div>
         <button class="small action" id="connOfferAdd">Add ${esc(offer.ip)}</button>`;
+      // First in the list: on this network it then wins over the address in use now.
       $("connOfferAdd").onclick = e => devAction(`Add ${offer.ip}`, { action: "address-add", id: d.id, host: offer.ip,
-                                                                     kind: "lan", label: offer.label }, e.currentTarget)
+                                                                     kind: "lan", label: offer.label, first: true }, e.currentTarget)
         .then(res => res && testQuietly(d.id));
     }
   } else $("connOffer").dataset.key = "";
@@ -4394,13 +4395,19 @@ function renderConnAddrs() {
   const tested = new Map((((s.tests || {})[d.id] || {}).rows || []).map(r => [r.host, r]));
   const inUse = s.phase === "connected" && s.via ? s.via.host : null;
   const sig = JSON.stringify([d.id, d.addresses, [...probes.values(), ...tested.values()].map(p => [p.host, p.state, p.ssh, p.detail]), cd.editing, inUse]);
-  // Leave the rows alone when nothing has changed, and while an address is being edited.
-  if (sig === cd.sig || cd.editing && list.contains(document.activeElement) && document.activeElement.matches("input")) return;
+  // Leave the rows alone when nothing has changed, and while an address is being edited: what's
+  // typed stays put until it's saved or cancelled, wherever the focus is.
+  if (sig === cd.sig || cd.editing && $("ceHost") && cd.editDev === d.id && d.addresses.some(a => a.host === cd.editing)) return;
   cd.sig = sig;
-  const refocus = cd.refocus;  // after an edit, back to that row's Edit button
+  // Rebuilding the rows would drop the keyboard focus: put it back on the same button of the
+  // same address (after an edit, on that row's Edit button).
+  const held = list.contains(document.activeElement) && document.activeElement.closest("[data-host]");
+  const refocus = cd.refocus ? [cd.refocus, "[data-ed]"]
+    : held ? [held.dataset.host, ["[data-use]", "[data-mv='-1']", "[data-mv='1']", "[data-ed]", "[data-rm]"].find(q => document.activeElement.matches(q))] : null;
   cd.refocus = null;
+  const usedAt = d.addresses.findIndex(a => a.host === inUse);
   list.innerHTML = d.addresses.map((a, i) => {
-    if (cd.editing === a.host) return `<div class="item addr"><div class="addr-edit conn-edit">
+    if (cd.editing === a.host && cd.editDev === d.id) return `<div class="item addr"><div class="addr-edit conn-edit">
       <input type="text" id="ceHost" value="${esc(a.host)}" maxlength="253" aria-label="Address">
       <input type="text" id="ceLabel" value="${esc(a.label)}" maxlength="60" placeholder="Label" aria-label="Label">
       <button class="small action" id="ceSave">Save</button><button class="small" id="ceCancel">Cancel</button></div></div>`;
@@ -4412,16 +4419,23 @@ function renderConnAddrs() {
     return `<div class="item addr" data-host="${esc(a.host)}">
       <div class="grow"><div class="t">${esc(a.host)} <span class="tag">${esc(KIND_TAG[a.kind] || a.kind)}</span>${a.label ? ` <span class="sub">${esc(a.label)}</span>` : ""}</div>
         <div class="s">${result}</div></div>
+      ${t && t.ssh === "ok" && usedAt > i ? `<button class="small" data-use title="Reconnect through this address">Use now</button>` : ""}
       <button class="small" data-mv="-1" title="Try earlier" aria-label="Move ${esc(a.host)} up"${i ? "" : " disabled"}>↑</button>
       <button class="small" data-mv="1" title="Try later" aria-label="Move ${esc(a.host)} down"${i < d.addresses.length - 1 ? "" : " disabled"}>↓</button>
       <button class="small" data-ed>Edit</button><button class="small danger" data-rm>Remove</button></div>`;
   }).join("") || `<div class="sub">No addresses yet. Add the Frame's IP address below.</div>`;
-  if (refocus) list.querySelector(`[data-host="${CSS.escape(refocus)}"] [data-ed]`)?.focus();
+  if (refocus) {
+    const row = list.querySelector(`[data-host="${CSS.escape(refocus[0])}"]`);
+    const again = row && refocus[1] && row.querySelector(refocus[1]);
+    if (row) (again && !again.disabled ? again : row.querySelector("[data-ed]")).focus();
+  }
   list.querySelectorAll("[data-host]").forEach(row => {
     const host = row.dataset.host;
     row.querySelectorAll("[data-mv]").forEach(b => b.onclick = () =>
       devAction("Move " + host, { action: "address-move", id: d.id, host, delta: +b.dataset.mv }, b));
-    row.querySelector("[data-ed]").onclick = () => { cd.editing = host; renderConnAddrs(); $("ceHost").focus(); };
+    row.querySelector("[data-ed]").onclick = () => { cd.editing = host; cd.editDev = d.id; renderConnAddrs(); $("ceHost").focus(); };
+    const use = row.querySelector("[data-use]");
+    if (use) use.onclick = () => devAction(`Switch to ${host}`, { action: "retry", id: d.id }, use);
     row.querySelector("[data-rm]").onclick = e => {
       if (host === inUse && !confirm(`${host} is how Frame Control is reaching the headset now. Remove it?`)) return;
       devAction(`Remove ${host}`, { action: "address-remove", id: d.id, host }, e.currentTarget);
@@ -4429,12 +4443,19 @@ function renderConnAddrs() {
   });
   if ($("ceSave")) {
     const host = cd.editing, a = d.addresses.find(x => x.host === host);
-    const save = e => {
+    let saving = false;
+    const save = async e => {
       e.preventDefault();
+      if (saving) return;  // a second Enter while the first is on its way
       const newHost = $("ceHost").value.trim(), label = $("ceLabel").value;
-      cd.editing = null; cd.refocus = newHost || host;
-      devAction(`Save ${host}`, { action: "address-update", id: d.id, host, newHost, kind: a.kind, label }, $("ceSave"))
-        .then(res => res && testQuietly(d.id));
+      if (!newHost) return $("ceHost").focus();
+      saving = true;
+      const res = await devAction(`Save ${host}`, { action: "address-update", id: d.id, host, newHost, kind: a.kind, label }, $("ceSave"));
+      saving = false;
+      if (!res) return;  // refused: what was typed stays, to correct
+      cd.editing = null; cd.sig = ""; cd.refocus = newHost;
+      renderConnAddrs();
+      testQuietly(d.id);
     };
     $("ceSave").onclick = save;
     [$("ceHost"), $("ceLabel")].forEach(i => i.onkeydown = e => { if (e.key === "Enter") save(e); if (e.key === "Escape") { e.preventDefault(); $("ceCancel").click(); } });
