@@ -71,11 +71,27 @@ class OpenRdp(unittest.TestCase):
     def test_nothing_listening_says_why_and_opens_nothing(self):
         self.xrdp.close()
         for name in ("windows", "mac", "linux"):
-            with self.subTest(name), platform(name), self.assertRaises(frame_host.HostError) as cm:
+            with self.subTest(name), platform(name), self.assertRaises(frame_host.NotListening) as cm:
                 frame_host.open_rdp("frame", "127.0.0.1")
             self.assertIn("Developer Mode", str(cm.exception))
             self.assertIn(f"port {frame_host.RDP_PORT}", str(cm.exception))
         self.assertEqual(self.spawned, [])
+
+    def test_server_says_it_as_the_persons_to_fix(self):
+        # A 400 with the message, not a 500 filed as an error diagnostic.
+        self.xrdp.close()
+        with mock.patch.multiple(server, LOCAL=False, LINK=None, HOST_OPTS=["-o", "HostName=127.0.0.1"]), \
+                self.assertRaises(server.Failure) as cm:
+            server.open_thing({"what": "rdp"})
+        self.assertEqual(cm.exception.status, 400)
+        self.assertIn("Developer Mode", str(cm.exception))
+
+    def test_one_file_per_address(self):
+        with platform("windows"):
+            a, b = frame_host.rdp_file("192.168.1.5"), frame_host.rdp_file("fe80::1%eth0")
+        self.assertNotEqual(a, b)
+        self.assertIn(b"full address:s:192.168.1.5\r\n", a.read_bytes())
+        self.assertIn(b"full address:s:fe80::1%eth0\r\n", b.read_bytes())
 
     def test_address_cant_add_lines_to_the_file(self):
         with platform("windows"), self.assertRaises(frame_host.HostError):

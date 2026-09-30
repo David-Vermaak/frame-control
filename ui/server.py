@@ -1192,6 +1192,8 @@ def open_thing(body):
             SHOTS_DIR.mkdir(parents=True, exist_ok=True)
             frame_host.open_path(SHOTS_DIR)
             return {"message": f"Opened {SHOTS_DIR} in {frame_host.FILE_MANAGER}"}
+    except frame_host.NotListening as e:
+        raise Failure(str(e), 400)  # theirs to turn on; nothing failed here
     except frame_host.HostError as e:
         raise Failure(str(e), 500)
     raise Failure("unknown target", 400)
@@ -2338,6 +2340,8 @@ class Handler(BaseHTTPRequestHandler):
                 from apk_sources import _images
                 try:
                     self.send_bytes(*_images.image(path.rsplit("/", 1)[-1]))
+                except ClientGone:
+                    raise
                 except Exception:
                     self.send_json({"error": "Artwork unavailable"}, 404)
             elif path == "/api/sources/details":

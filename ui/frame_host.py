@@ -6,6 +6,7 @@ CLI (used by the Electron app, so terminal handling lives in one place):
   python3 ui/frame_host.py terminal -- CMD [ARG...]   # open CMD in a terminal window
 """
 import os
+import re
 import shlex
 import shutil
 import socket
@@ -31,6 +32,10 @@ DETACHED = ({"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP} if WINDOWS
 
 class HostError(RuntimeError):
     pass
+
+
+class NotListening(HostError):
+    """The Frame answers, but a service on it doesn't: something the person can turn on."""
 
 
 def data_dir(*parts):
@@ -286,9 +291,11 @@ def rdp_file(host):
     computer's Windows account, which xrdp turns away; the file names steamos instead."""
     if any(c in host for c in "\r\n"):
         raise HostError("That headset address can't be used for remote desktop")
-    path = cache_dir("frame.rdp")
+    # One file per address, so two launches close together can't swap headsets.
+    path = cache_dir(f"frame-{re.sub(r'[^A-Za-z0-9.-]', '_', host)}.rdp")
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(f"full address:s:{host}\nusername:s:{RDP_USER}\n", encoding="utf-8", newline="\r\n")
+    with open(path, "w", encoding="utf-8", newline="\r\n") as f:  # Path.write_text(newline=) is 3.10+
+        f.write(f"full address:s:{host}\nusername:s:{RDP_USER}\n")
     return path
 
 
@@ -297,9 +304,9 @@ def open_rdp(alias, host=None):
     host = host or ssh_hostname(alias)
     # The client would open either way and then fail on its own, with nothing said here.
     if not rdp_reachable(host):
-        raise HostError(f"The Frame isn't accepting remote desktop at {host} (nothing answered on port "
-                        f"{RDP_PORT}). Turn on Developer Mode in Steam Settings > System on the headset, "
-                        "then restart it and try again.")
+        raise NotListening(f"The Frame isn't accepting remote desktop at {host} (nothing answered on port "
+                           f"{RDP_PORT}). Turn on Developer Mode in Steam Settings > System on the headset, "
+                           "then restart it and try again.")
     if MAC:
         if subprocess.run(["open", "-a", "Windows App"], capture_output=True).returncode == 0:
             return f"Opened Windows App: connect to {host} and {RDP_LOGIN}"
