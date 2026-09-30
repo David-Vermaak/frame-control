@@ -272,8 +272,11 @@ function fromUi(e) {
   } catch { return false; }
 }
 
-// The error page's Try Again button (there is no server page while it shows).
-ipcMain.handle("server:restart", (e) => { if (win && e.sender === win.webContents && !url) restartServer(); });
+// The error page's Try Again button. The error page is the only data: page the window
+// shows (`url` can still be set then: the server answered but the page failed to load).
+ipcMain.handle("server:restart", (e) => {
+  if (win && e.sender === win.webContents && e.senderFrame && e.senderFrame.url.startsWith("data:")) restartServer();
+});
 ipcMain.handle("clipboard:read", (e) => fromUi(e) ? clipboard.readText() : "");
 // A PNG or JPEG (a screenshot) onto the clipboard as an image.
 ipcMain.handle("clipboard:writeImage", (e, bytes) => {
