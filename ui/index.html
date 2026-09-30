@@ -3549,12 +3549,13 @@ async function shotBlob(id, thumb) {
   return r.blob();
 }
 function shotThumb(id) {
-  if (!shots.thumbs.has(id)) {
+  const thumbs = shots.thumbs;  // this headset's: a late failure must not touch the next one's
+  if (!thumbs.has(id)) {
     const p = shotBlob(id, true).then(b => URL.createObjectURL(b));
-    p.catch(() => shots.thumbs.delete(id));  // try again next time
-    shots.thumbs.set(id, p);
+    p.catch(() => { if (thumbs.get(id) === p) thumbs.delete(id); });  // try again next time
+    thumbs.set(id, p);
   }
-  return shots.thumbs.get(id);
+  return thumbs.get(id);
 }
 // quiet: a background check. It keeps what's shown if the Frame can't be read,
 // and redraws only when the shots (or whether they're saved here) changed.
@@ -3570,6 +3571,7 @@ function loadShots(quiet) {
 }
 // Forget the shots of a headset we've switched away from, and ignore its answers still on their way.
 function resetShots() {
+  closeMenu();  // its items were about the other headset's shot
   shots.gen++; shots.fill++; shots.loading = null; shots.list = []; shots.sig = null;
   for (const p of shots.thumbs.values()) p.then(URL.revokeObjectURL, () => {});
   shots.thumbs = new Map();
@@ -3596,6 +3598,7 @@ async function fillThumbs(quiet) {
   const run = ++shots.fill;
   for (const img of document.querySelectorAll("#shotGrid img[data-shot]:not([src])" + (quiet ? ":not([data-failed])" : ""))) {
     const s = shots.list[+img.dataset.shot];
+    delete img.dataset.failed;  // being tried again, so a background pass taking over keeps it
     let url;
     try { url = await shotThumb(s.id); } catch (e) { img.alt = "Preview failed"; img.dataset.failed = 1; }
     if (run !== shots.fill) return;  // a newer pass (after a check, a redraw or another headset) has taken over
@@ -3669,12 +3672,19 @@ $("shotGrid").onclick = e => {
   if (b) saveShots([shots.list[+b.dataset.shotSave]], b);
 };
 // A small right-click menu. items: [label, fn] pairs, null for a divider.
-function closeMenu() { document.querySelector(".ctx-menu")?.remove(); }
+// back: the keyboard closed it, so focus returns to where it was.
+function closeMenu(back) {
+  const menu = document.querySelector(".ctx-menu");
+  if (!menu) return;
+  menu.remove();
+  if (back === true && menu.opener?.isConnected) menu.opener.focus();
+}
 function showMenu(e, items) {
   closeMenu();
   const menu = document.createElement("div");
   menu.className = "ctx-menu";
   menu.setAttribute("role", "menu");
+  menu.opener = document.activeElement;
   for (const it of items) {
     if (!it) { menu.append(document.createElement("hr")); continue; }
     const b = document.createElement("button");
@@ -3693,7 +3703,7 @@ document.addEventListener("pointerdown", e => { if (!e.target.closest(".ctx-menu
 document.addEventListener("keydown", e => {
   const menu = document.querySelector(".ctx-menu");
   if (!menu) return;
-  if (e.key === "Escape") return closeMenu();
+  if (e.key === "Escape" || e.key === "Tab") { e.preventDefault(); return closeMenu(true); }  // Tab doesn't wander off behind it
   if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
   e.preventDefault();  // arrows move through the menu, not the page
   const items = [...menu.querySelectorAll("button")];
