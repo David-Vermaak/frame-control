@@ -8,6 +8,7 @@ CLI (used by the Electron app, so terminal handling lives in one place):
 import os
 import shlex
 import shutil
+import socket
 import ssl
 import subprocess
 import sys
@@ -264,24 +265,54 @@ def open_steam_link():
     return "Steam Link isn't installed; opened its download page"
 
 
+RDP_PORT = 3389
+RDP_USER = "steamos"  # xrdp signs in with the Developer Mode password, not this computer's
+RDP_LOGIN = f"sign in as {RDP_USER} with your Developer Mode password"
+
+
+def rdp_reachable(host, timeout=3):
+    """Whether anything answers on the Frame's RDP port."""
+    try:
+        with socket.create_connection((host, RDP_PORT), timeout=timeout):
+            return True
+    except OSError:
+        return False
+
+
+def rdp_file(host):
+    """A Remote Desktop connection file for the Frame. mstsc /v: alone offers this
+    computer's Windows account, which xrdp turns away; the file names steamos instead."""
+    if any(c in host for c in "\r\n"):
+        raise HostError("That headset address can't be used for remote desktop")
+    path = cache_dir("frame.rdp")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(f"full address:s:{host}\nusername:s:{RDP_USER}\n", encoding="utf-8", newline="\r\n")
+    return path
+
+
 def open_rdp(alias, host=None):
     """Remote desktop to the Frame's xrdp (user steamos), at `host` or where the alias points."""
     host = host or ssh_hostname(alias)
+    # The client would open either way and then fail on its own, with nothing said here.
+    if not rdp_reachable(host):
+        raise HostError(f"The Frame isn't accepting remote desktop at {host} (nothing answered on port "
+                        f"{RDP_PORT}). Turn on Developer Mode in Steam Settings → System on the headset, "
+                        "then restart it and try again.")
     if MAC:
         if subprocess.run(["open", "-a", "Windows App"], capture_output=True).returncode == 0:
-            return "Opened Windows App"
+            return f"Opened Windows App: connect to {host} and {RDP_LOGIN}"
         open_url("https://apps.apple.com/app/windows-app/id1295203466")
         return "Windows App isn't installed; opened its App Store page"
     if WINDOWS:
-        _spawn(["mstsc.exe", f"/v:{host}"])
-        return f"Opened Remote Desktop to {host}"
+        _spawn(["mstsc.exe", str(rdp_file(host))])
+        return f"Opened Remote Desktop to {host}: {RDP_LOGIN}"
     if which("remmina"):
-        _spawn(["remmina", "-c", f"rdp://steamos@{host}"])
-        return f"Opened Remmina to {host}"
+        _spawn(["remmina", "-c", f"rdp://{RDP_USER}@{host}"])
+        return f"Opened Remmina to {host}: {RDP_LOGIN}"
     for name in ("xfreerdp3", "xfreerdp"):
         if which(name):
-            _spawn([name, f"/v:{host}", "/u:steamos", "/dynamic-resolution"])
-            return f"Opened FreeRDP to {host}"
+            _spawn([name, f"/v:{host}", f"/u:{RDP_USER}", "/dynamic-resolution"])
+            return f"Opened FreeRDP to {host}: {RDP_LOGIN}"
     raise HostError("No RDP client found: install Remmina or FreeRDP")
 
 

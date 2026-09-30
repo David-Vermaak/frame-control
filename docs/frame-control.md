@@ -88,8 +88,12 @@ counts them while they run.
   name your networks, and switch headsets. See [devices.md](devices.md).
 - **One-click tools**: SSH or SFTP in a terminal window, Steam Link, and remote
   desktop (Windows App on macOS, Remote Desktop on Windows, Remmina or FreeRDP on
-  Linux). Sleep, restart and shut down open a terminal window because SteamOS
-  asks for the sudo password over SSH.
+  Linux). Remote desktop first checks that the Frame's xrdp answers on port
+  3389 (Developer Mode turns it on). On Windows it opens a connection file for
+  user `steamos`, because `mstsc /v:` alone offers your Windows account, which
+  xrdp turns away. Sign in with the Developer Mode password. Sleep, restart and
+  shut down open a terminal window because SteamOS asks for the sudo password
+  over SSH.
 
 ## How it works
 

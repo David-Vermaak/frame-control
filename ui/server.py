@@ -2254,6 +2254,11 @@ def push_file(path, dest="Downloads/"):
     return f"Sent {name} to ~/{dest}"
 
 
+class ClientGone(Exception):
+    """The page went away (a reload, the app quitting) before its reply was written:
+    nobody to answer, and nothing went wrong here."""
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "FrameControl/1"
     timeout = 60  # per socket operation, so a stalled client can't hold a thread
@@ -2286,8 +2291,11 @@ class Handler(BaseHTTPRequestHandler):
         # Nobody may frame the UI (clickjacking).
         self.send_header("X-Frame-Options", "DENY")
         self.send_header("Content-Security-Policy", "frame-ancestors 'none'")
-        self.end_headers()
-        self.wfile.write(data)
+        try:
+            self.end_headers()
+            self.wfile.write(data)
+        except ConnectionError as e:  # Windows says ConnectionAbortedError, others BrokenPipeError
+            raise ClientGone() from e
 
     def send_json(self, obj, status=200):
         self.send_bytes(json.dumps(obj).encode(), "application/json", status)
@@ -2405,6 +2413,8 @@ class Handler(BaseHTTPRequestHandler):
                                 headers=[("X-Capture-Source", "gamescope")])
             else:
                 self.send_json({"error": "not found"}, 404)
+        except ClientGone:
+            raise
         except Failure as e:
             self.send_error_json(str(e), e.status, e.apk)
         except ValueError as e:
@@ -2439,6 +2449,8 @@ class Handler(BaseHTTPRequestHandler):
             with (contextlib.nullcontext() if path == "/api/devices" else working(meant)):
                 result = handler(body)
             self.send_json(result)
+        except ClientGone:
+            raise
         except Failure as e:
             if e.status >= 500:
                 frame_telemetry.diagnostic(f"POST {path} {action_of(body)}", e)
@@ -2613,6 +2625,10 @@ class LoopbackServer(ThreadingHTTPServer):
         # Loopback needs no hostname.
         socketserver.TCPServer.server_bind(self)
         self.server_name, self.server_port = "127.0.0.1", self.server_address[1]
+
+    def handle_error(self, request, client_address):
+        if not isinstance(sys.exc_info()[1], ClientGone):
+            super().handle_error(request, client_address)
 
 
 _ONE_SERVER = None
