@@ -21,6 +21,15 @@ The confidence labels are the same as in [ssh.md](ssh.md).
 | **ADB + scrcpy (Lepton only)** | A mirror of the Android container | **Guess** | `brew install scrcpy android-platform-tools`, then `adb connect frame.local:5555` while Lepton Development is running ([adb_lepton](https://partner.steamgames.com/doc/steamhardware/steamframe/adb_lepton)), then `scrcpy`. This only shows Android apps, not SteamOS. |
 | VNC server on the Frame (krfb / wayvnc) | A mirror of the Plasma desktop | **Inferred (SteamOS)** | Deck users run krfb in Desktop Mode ([one.vg](https://one.vg/blog/remote-control-your-steam-deck)). On the Frame, the in-headset desktop is a virtual screen, and krfb isn't known to be preinstalled. RDP and Steam Link cover this case, so it's not recommended. |
 
+**RDP from Windows, verified 2026-09-30:** Windows 11 25H2's Remote Desktop
+(`mstsc`) against BUILD_ID 20260925.6191901. xrdp picks TLS, not NLA, so
+Remote Desktop never asks for a user or password. It warns that the certificate
+(`www.xrdp.org`) can't be verified. After **Yes**, xrdp shows its own "Login to
+frame" box with the username blank. Any user but `steamos` gets "User does not
+exist, or could not be authenticated". Signing in as `steamos` with the
+Developer Mode password is still unchecked: the Frame's log showed no
+successful xrdp login up to that date.
+
 **Recommendation for A:** start with Steam Link for macOS, because Valve
 documents it. Use Windows App (RDP) when you want a proper Linux desktop on the
 Mac with keyboard, mouse, and clipboard.

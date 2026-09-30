@@ -8,6 +8,7 @@ A fourth, a SteamOS VM, may come later ([issue #6](https://github.com/saphid/ste
 | Unit tests (`tests/*.py`) | `python3 -m unittest discover -s tests` | Nothing | Parsing, validation, request guards; SSH and HTTP are mocked |
 | Fake Frame (`tests/e2e`) | `scripts/e2e.sh` | Linux with Docker | The real server and scripts against a container that behaves like a Frame |
 | Headset smoke test | `scripts/frame-smoke.sh` | A Frame on the `frame` alias | Install, launch and remove on the real device, recorded with its BUILD_ID |
+| [Windows test VM](#windows-test-vm) | `scripts/windows-vm.sh` | A Linux machine with KVM and Docker | The Windows build on a real Windows desktop, against a real Frame when needed |
 
 ## Unit tests
 
@@ -162,6 +163,77 @@ For example, on 2026-09-27 the smoke test found that Steam's `create-shortcut`
 refuses ids with a hyphen (`missing/invalid arguments`), which the fake had
 accepted. The fake now refuses them the same way, and Frame Control makes ids
 Steam accepts.
+
+## Windows test VM
+
+The unit tests run on Windows in CI, but the app itself doesn't. Anything that
+depends on the Windows desktop (Remote Desktop, the installer, the bundled
+Python, file dialogs) needs a real Windows machine. This is a Windows 11 VM in a
+[dockur/windows](https://github.com/dockur/windows) container on a Linux machine
+with KVM, driven from the Mac with `scripts/windows-vm.sh`.
+
+Setting it up, once, on the Linux machine:
+
+- **Windows comes from Microsoft.** The container downloads the Windows 11
+  image from Microsoft on first start. Windows runs unactivated, which is fine
+  for testing. Don't use activation workarounds or third-party Windows images.
+- **Publish its ports on loopback only.** Map `127.0.0.1:2222:22` (SSH),
+  `127.0.0.1:8006:8006` (the web console) and, if you need it,
+  `127.0.0.1:13389:3389`. The Mac reaches them through `ssh -J`. Use
+  `restart: "no"` and `stop_grace_period: 2m` so it only runs when someone is
+  testing, and a `docker stop` shuts Windows down cleanly.
+- **Give it SSH on first sign-in.** The container runs `/oem/install.bat`
+  once. Have it add the OpenSSH Server capability, start `sshd`, set PowerShell
+  as its default shell, and put a dedicated public key (for example
+  `~/.ssh/id_ed25519_winvm` on the Mac) in
+  `C:\ProgramData\ssh\administrators_authorized_keys`.
+- Give it 4 cores, 8 GB of memory and a 32 GB disk. That's enough for the app
+  and the tests.
+
+Using it, with `WINVM_HOST` set to the Linux machine's ssh alias:
+
+```sh
+scripts/windows-vm.sh up                        # start it and wait for SSH (1-2 minutes)
+scripts/windows-vm.sh put Frame-Control-Setup-x64.exe
+scripts/windows-vm.sh ps 'Start-Process "$env:USERPROFILE\Downloads\Frame-Control-Setup-x64.exe" /S -Wait'
+scripts/windows-vm.sh shot screen.png            # what's on its screen
+scripts/windows-vm.sh click 723 359              # screen pixels, as in the screenshot
+scripts/windows-vm.sh keys s t e a m o s ret     # QEMU key names
+scripts/windows-vm.sh down                       # shut Windows down
+```
+
+- **Clicks go through a scheduled task.** Commands over SSH run in a
+  session with no desktop, so `click` and `scroll` write the position to a
+  file, and a scheduled task running as the signed-in user replays it. The
+  VM's screen must be signed in; it is after `up`. QEMU's own `mouse_move` is
+  relative and drifts, so the script doesn't use it.
+- **Screenshots may not show the pointer.** Check the result of a click (a
+  menu that opens, a button that changes) rather than the pointer's position.
+- **Windows' `ssh` waits for stdin.** The script closes it for every command.
+  Do the same if you run `ssh` in the VM by hand.
+- **Starting the app.** Run Frame Control in the signed-in session, not over
+  SSH. Use its Start-menu shortcut via `click`, or a scheduled task like the
+  one `click` uses.
+
+**Testing against a real Frame.** The VM reaches the headset on the LAN like
+any other computer. Set up Frame Control in the VM once, then:
+
+```sh
+scripts/windows-vm.sh frame-key add       # let the VM's key into the headset
+# ... test ...
+scripts/windows-vm.sh frame-key remove    # and take it out again
+```
+
+`frame-key` tags the key `windows-vm-test` in the headset's
+`authorized_keys`, and `remove` deletes only that line. Follow the shared-device
+procedure in [Headset smoke test](#headset-smoke-test) before installing or
+launching anything on the headset.
+
+**Verified 2026-09-30:** Windows 11 Pro 25H2 (build 26200) against a Frame on
+BUILD_ID 20260925.6191901. The script was used to install Frame Control 0.4.0,
+connect it to the Frame and reproduce a Remote Desktop report from
+screenshots. It also took Windows-side logs, and `frame-key` left
+`authorized_keys` byte-for-byte as it was.
 
 ## Owned media player
 
