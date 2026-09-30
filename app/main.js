@@ -1,7 +1,7 @@
 // Frame Control as a desktop app (macOS, Windows, Linux): starts ui/server.py on
 // a free loopback port and shows it in a native window. The server does all the
 // work over the `frame` SSH alias; this file only hosts it.
-const { app, BrowserWindow, Menu, Notification, clipboard, dialog, ipcMain, shell } = require("electron");
+const { app, BrowserWindow, Menu, Notification, clipboard, dialog, ipcMain, nativeImage, shell } = require("electron");
 const { execFile, spawn } = require("child_process");
 const { promisify } = require("util");
 const fs = require("fs");
@@ -275,6 +275,14 @@ function fromUi(e) {
 // The error page's Try Again button (there is no server page while it shows).
 ipcMain.handle("server:restart", (e) => { if (win && e.sender === win.webContents && !url) restartServer(); });
 ipcMain.handle("clipboard:read", (e) => fromUi(e) ? clipboard.readText() : "");
+// A PNG or JPEG (a screenshot) onto the clipboard as an image.
+ipcMain.handle("clipboard:writeImage", (e, bytes) => {
+  if (!fromUi(e) || !(bytes instanceof Uint8Array)) return false;
+  const img = nativeImage.createFromBuffer(Buffer.from(bytes));
+  if (img.isEmpty()) throw new Error("not an image");
+  clipboard.writeImage(img);
+  return true;
+});
 ipcMain.handle("connection:setup", (e) => { if (fromUi(e)) setUpConnection(); });
 ipcMain.on("keys:capture", (e, on) => { if (fromUi(e)) win.webContents.setIgnoreMenuShortcuts(on === true); });
 ipcMain.handle("update:get", (e) => fromUi(e) ? publicUpdate() : null);
