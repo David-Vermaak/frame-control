@@ -159,7 +159,7 @@ def reveal_path(path):
     if MAC:
         cmd = ["open", "-R", str(path)]
     elif WINDOWS:
-        cmd = ["explorer", f"/select,{path}"]
+        cmd = f'explorer /select,"{path}"'  # as one string: Explorer wants the quotes after the comma
     else:
         return open_path(path.parent)
     subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
