@@ -205,8 +205,9 @@ scripts/windows-vm.sh down                       # shut Windows down
 - **Clicks go through a scheduled task.** Commands over SSH run in a
   session with no desktop, so `click` and `scroll` write the position to a
   file, and a scheduled task running as the signed-in user replays it. The
-  VM's screen must be signed in; it is after `up`. QEMU's own `mouse_move` is
-  relative and drifts, so the script doesn't use it.
+  VM's screen must be signed in; it is after `up`. One click or scroll at a
+  time: they share that task. QEMU's own `mouse_move` is relative and drifts,
+  so the script doesn't use it.
 - **Screenshots may not show the pointer.** Check the result of a click (a
   menu that opens, a button that changes) rather than the pointer's position.
 - **Windows' `ssh` waits for stdin.** The script closes it for every command.
@@ -216,7 +217,10 @@ scripts/windows-vm.sh down                       # shut Windows down
   one `click` uses.
 
 **Testing against a real Frame.** The VM reaches the headset on the LAN like
-any other computer. Set up Frame Control in the VM once, then:
+any other computer. Run **Set Up Connection** in the VM's Frame Control once;
+that makes the VM's key. So the VM doesn't keep access between test runs,
+take that key's line out of the headset's `~/.ssh/authorized_keys` afterwards.
+Then, around each run:
 
 ```sh
 scripts/windows-vm.sh frame-key add       # let the VM's key into the headset
@@ -224,8 +228,10 @@ scripts/windows-vm.sh frame-key add       # let the VM's key into the headset
 scripts/windows-vm.sh frame-key remove    # and take it out again
 ```
 
-`frame-key` tags the key `windows-vm-test` in the headset's
-`authorized_keys`, and `remove` deletes only that line. Follow the shared-device
+`add` appends the VM's key tagged `windows-vm-test`, unless the headset
+already trusts that key through another line. `remove` deletes only the exact
+line `add` wrote, so it doesn't undo what Set Up Connection did, and it leaves
+the file alone if it can't rewrite it. Follow the shared-device
 procedure in [Headset smoke test](#headset-smoke-test) before installing or
 launching anything on the headset.
 

@@ -30,14 +30,17 @@ opts=(-o ConnectTimeout=20 -o StrictHostKeyChecking=accept-new
 TAG=windows-vm-test  # comment on the VM's key in the headset's authorized_keys
 
 die() { print -u2 "windows-vm: $*"; exit 1 }
-int() { [[ $1 == (-|)<-> ]] || die "not a whole number: $1" }
+int() { [[ $1 == (-|)<-99999> ]] || die "not a whole number (up to 99999): $1" }
+# These go into commands run by a shell on the other machine, so keep them plain.
+for v in $host $ctr $user; do [[ $v == [A-Za-z0-9_.]##[A-Za-z0-9_.-]# ]] || die "not a plain name: $v"; done
+[[ $port == <1-65535> ]] || die "WINVM_PORT isn't a port: $port"
 
 # Windows' OpenSSH waits for stdin to close, so it always gets /dev/null. The
 # script travels UTF-16 base64-encoded, so no quoting survives two shells.
 vm_ps() {
   local b64=$(print -rn -- "\$ProgressPreference = 'SilentlyContinue'"$'\n'"$1" |
               iconv -f UTF-8 -t UTF-16LE | base64 | tr -d '\n')
-  ssh $opts -p $port $user@127.0.0.1 "powershell -NoProfile -NonInteractive -EncodedCommand $b64" </dev/null
+  ssh $opts -p $port $user@127.0.0.1 "powershell -NoProfile -NonInteractive -OutputFormat Text -EncodedCommand $b64" </dev/null
 }
 
 # QEMU's monitor inside the container: one command per line on stdin.
@@ -45,15 +48,17 @@ monitor() { ssh $host "docker exec -i $ctr nc -q 1 -U /run/shm/monitor.sock" >/d
 
 # Input has to come from the signed-in desktop session, not SSH's session 0, so
 # a scheduled task running as the user replays one click or wheel turn written
-# to input.txt, then deletes the file to say it's done.
-INPUT_PS1='$a = (Get-Content "$PSScriptRoot\input.txt").Trim() -split "\s+"
+# to input.txt, then deletes the file to say it's done. Any error stops it
+# before that, so the caller times out instead of reporting a click.
+INPUT_PS1='$ErrorActionPreference = "Stop"
+$a = (Get-Content "$PSScriptRoot\input.txt").Trim() -split "\s+"
 Add-Type -Namespace WinVm -Name Input -MemberDefinition @"
 [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
 [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
 [DllImport("user32.dll")] public static extern void mouse_event(uint flags, int dx, int dy, int data, System.IntPtr extra);
 "@
 [WinVm.Input]::SetProcessDPIAware() | Out-Null
-[WinVm.Input]::SetCursorPos([int]$a[0], [int]$a[1]) | Out-Null
+if (-not [WinVm.Input]::SetCursorPos([int]$a[0], [int]$a[1])) { throw "SetCursorPos failed" }
 Start-Sleep -Milliseconds 150
 if ($a[2] -eq "click") {
   [WinVm.Input]::mouse_event(0x2, 0, 0, 0, [IntPtr]::Zero); Start-Sleep -Milliseconds 60
@@ -65,6 +70,8 @@ pointer() {  # x y click|wheel [notches]
   local b64=$(print -rn -- $INPUT_PS1 | base64 | tr -d '\n')
   vm_ps '$d = Join-Path $env:LOCALAPPDATA "windows-vm"
 New-Item -ItemType Directory -Force $d | Out-Null
+$busy = Get-Item "$d\input.txt" -ErrorAction SilentlyContinue
+if ($busy -and $busy.LastWriteTime -gt (Get-Date).AddSeconds(-15)) { [Console]::Error.WriteLine("windows-vm: another click or scroll is in progress"); exit 1 }
 [IO.File]::WriteAllText("$d\input.ps1", [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String("'$b64'")))
 $act = New-ScheduledTaskAction -Execute powershell.exe -Argument "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$d\input.ps1`""
 $who = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive
@@ -73,7 +80,7 @@ Set-Content "$d\input.txt" "'"$*"'"
 Start-ScheduledTask -TaskName WindowsVmInput
 foreach ($i in 1..50) { if (-not (Test-Path "$d\input.txt")) { exit 0 }; Start-Sleep -Milliseconds 200 }
 Remove-Item "$d\input.txt" -ErrorAction SilentlyContinue
-Write-Error "no input after 10 s: is $env:USERNAME signed in on the VM screen?"; exit 1'
+[Console]::Error.WriteLine("windows-vm: no input after 10 s: is $env:USERNAME signed in on the VM screen, and is x,y on it?"); exit 1'
 }
 
 (( $# )) || die "usage: see the top of $0"
@@ -115,14 +122,26 @@ open(sys.argv[1], "wb").write(b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(
     for k; do [[ $k == [a-z0-9_.,/=-]## ]] || die "not a QEMU key name: $k"; done
     for k; do print "sendkey $k"; done | monitor ;;
   frame-key)
-    pub=$(vm_ps 'Get-Content (Join-Path $env:USERPROFILE ".ssh\id_ed25519_frame.pub")' | tr -d '\r')
-    pub=${${(z)pub}[1,2]}
-    [[ $pub == ssh-ed25519\ * ]] || die "the VM has no Frame Control key yet: run Set Up Connection in the app first"
-    case ${1:-} in
-      add)    ssh frame "grep -qxF '$pub $TAG' ~/.ssh/authorized_keys || echo '$pub $TAG' >> ~/.ssh/authorized_keys" </dev/null ;;
-      remove) ssh frame "f=~/.ssh/authorized_keys; grep -v ' $TAG\$' \$f > \$f.tmp; chmod 600 \$f.tmp; mv \$f.tmp \$f" </dev/null ;;
-      *)      die "usage: frame-key add|remove" ;;
-    esac
+    [[ ${1:-} == (add|remove) ]] || die "usage: frame-key add|remove"
+    pub=(${=$(vm_ps 'Get-Content (Join-Path $env:USERPROFILE ".ssh\id_ed25519_frame.pub")' | tr -d '\r')})
+    [[ ${pub[1]:-} == ssh-ed25519 && ${pub[2]:-} == [A-Za-z0-9+/=]## ]] ||
+      die "the VM has no Frame Control key yet: run Set Up Connection in the app first"
+    # $1: add|remove, $2: the key's base64, $3: the exact line this script owns.
+    ssh frame "sh -s -- $1 '$pub[2]' '$pub[1] $pub[2] $TAG'" <<'EOF'
+f=~/.ssh/authorized_keys
+if [ "$1" = add ]; then
+  if grep -qxF "$3" "$f"; then exit 0; fi
+  if grep -qF "$2" "$f"; then echo "the headset already trusts this key through another entry; left as it is"; exit 0; fi
+  [ -z "$(tail -c 1 "$f")" ] || echo >> "$f"   # a last line without a newline would swallow ours
+  echo "$3" >> "$f"
+else
+  t=$(mktemp "$f.XXXXXX") || exit 1
+  grep -vxF "$3" "$f" > "$t"   # 0: lines left, 1: none left, more: couldn't read or write
+  if [ $? -gt 1 ] || ! chmod 600 "$t" || ! mv "$t" "$f"; then
+    rm -f "$t"; echo "couldn't rewrite $f; it's unchanged" >&2; exit 1
+  fi
+fi
+EOF
     print "frame-key $1: done" ;;
   *) die "unknown command: $cmd (see the top of $0)" ;;
 esac
