@@ -3596,9 +3596,10 @@ async function readShots(quiet) {
 // tried again on Refresh, not by every background check.
 async function fillThumbs(quiet) {
   const run = ++shots.fill;
+  // Refresh puts every failed one back in line first, so a background pass that takes over carries them all on.
+  if (!quiet) for (const img of document.querySelectorAll("#shotGrid img[data-failed]")) delete img.dataset.failed;
   for (const img of document.querySelectorAll("#shotGrid img[data-shot]:not([src])" + (quiet ? ":not([data-failed])" : ""))) {
     const s = shots.list[+img.dataset.shot];
-    delete img.dataset.failed;  // being tried again, so a background pass taking over keeps it
     let url;
     try { url = await shotThumb(s.id); } catch (e) { img.alt = "Preview failed"; img.dataset.failed = 1; }
     if (run !== shots.fill) return;  // a newer pass (after a check, a redraw or another headset) has taken over
