@@ -231,9 +231,9 @@ launching anything on the headset.
 
 **Verified 2026-09-30:** Windows 11 Pro 25H2 (build 26200) against a Frame on
 BUILD_ID 20260925.6191901. The script was used to install Frame Control 0.4.0,
-connect it to the Frame and reproduce a Remote Desktop report from
-screenshots. It also took Windows-side logs, and `frame-key` left
-`authorized_keys` byte-for-byte as it was.
+connect it to the Frame and follow Remote Desktop through to the Frame's
+desktop ([what it does](streaming.md#a-see-and-control-the-frame-from-the-mac)).
+`frame-key` left `authorized_keys` byte-for-byte as it was.
 
 ## Owned media player
 

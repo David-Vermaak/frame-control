@@ -27,8 +27,13 @@ Remote Desktop never asks for a user or password. It warns that the certificate
 (`www.xrdp.org`) can't be verified. After **Yes**, xrdp shows its own "Login to
 frame" box with the username blank. Any user but `steamos` gets "User does not
 exist, or could not be authenticated". Signing in as `steamos` with the
-Developer Mode password is still unchecked: the Frame's log showed no
-successful xrdp login up to that date.
+Developer Mode password opens a Plasma (X11) desktop within about 6 seconds.
+It's a new session on display `:10`, separate from what the headset shows,
+and it uses about 1.3 GB of the Frame's memory. Closing Remote Desktop leaves
+it running, and the next sign-in reconnects to it. To end it, find its
+session with `loginctl list-sessions` over SSH (its leader is `xrdp-sesexec`)
+and run `loginctl terminate-session <id>`; the headset's own session keeps
+running.
 
 **Recommendation for A:** start with Steam Link for macOS, because Valve
 documents it. Use Windows App (RDP) when you want a proper Linux desktop on the
