@@ -161,6 +161,7 @@
            border-radius: 4px; padding: 18px; box-shadow: 0 8px 24px rgba(0,0,0,.25); min-width: 0; }
   /* Buttons in a heading row wrap onto a line of their own rather than squeeze the heading. */
   .shelf-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px 12px; margin: 0 0 14px; }
+  .panel > .shelf-head:first-child h2 { line-height: 28px; }  /* as tall as a button, so headings line up across panels */
   .shelf-head h2 { margin: 0; font-size: 13px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: var(--text); white-space: nowrap; }
   .shelf-head .count { color: var(--muted); font-size: 13px; }
   .shelf-head .spacer { flex: 1; }
@@ -252,6 +253,7 @@
   .batt .detail { color: var(--muted); font-size: 12.5px; margin-top: 2px; }
   button.chip { height: 32px; padding: 0 12px; font-size: 13px; }
   .stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1px; margin-top: 14px; border-radius: 3px; overflow: hidden; }
+  .stats > .stat:last-child:nth-child(odd) { grid-column: 1 / -1; }
   .stat { background: rgba(0,0,0,.18); padding: 10px 12px; min-width: 0; }
   .stat .k { color: var(--muted); font-size: 11px; letter-spacing: 1px; text-transform: uppercase; }
   .stat .v { color: var(--bright); font-size: 17px; margin-top: 1px; font-variant-numeric: tabular-nums;
@@ -417,7 +419,6 @@
   .game-card .bar > i { display: block; height: 100%; background: var(--action); }
   .f-0 { color: var(--muted); }
   /* ---- Android display ---- */
-  #mvQuality { background: rgba(0,0,0,.28); color: var(--text); border: 1px solid transparent; border-radius: 3px; padding: 4px 6px; font: inherit; font-size: 12px; }
   .mv-windows { max-height: 420px; overflow-y: auto; }
   .mv-perm { background: rgba(255,190,60,.08); border: 1px solid rgba(255,190,60,.25); border-radius: 4px; padding: 10px 12px; margin-bottom: 12px; font-size: 13px; }
   .mv-perm .row { margin-top: 8px; }
@@ -1102,22 +1103,23 @@
 
     <section class="panel" id="panels">
       <div class="shelf-head"><h2>Panel switcher</h2><span class="spacer"></span>
-        <button class="small" id="panelsRefresh">Refresh</button>
-        <button class="small action" id="panelsOpen">Open in headset</button></div>
+        <button class="small" id="panelsRefresh">Refresh</button></div>
       <div class="list" id="panelList"><div class="sub">Refresh to see open panels.</div></div>
+      <div class="row" style="margin-top:12px"><button class="small action" id="panelsOpen">Open in headset</button></div>
       <div class="hint">Choose a panel to show it in SteamVR. The headset switcher stays available from Steam's dashboard.
         Saved spatial layouts are not available yet.</div>
     </section>
 
     <section class="panel" id="macview" hidden>
       <div class="shelf-head"><h2>Mac in the headset</h2><span class="count" id="mvCount"></span><span class="spacer"></span>
-        <select id="mvQuality" title="Picture quality and bandwidth">
-          <option value="sharp">Sharp</option><option value="balanced" selected>Balanced</option>
-          <option value="light">Light</option><option value="compatible">Compatible (JPEG)</option>
-        </select>
         <button class="small" id="mvRefresh">Refresh</button></div>
       <label class="mv-opt"><input type="checkbox" id="mvSeparate" checked> Give each window its own display
         <span class="sub">its menus and sheets come along, nothing covers it, and it goes back when you stop</span></label>
+      <div class="row" style="margin:0 0 12px"><label for="mvQuality">Picture quality</label>
+        <select id="mvQuality" title="Sharper pictures use more of your network">
+          <option value="sharp">Sharp</option><option value="balanced" selected>Balanced</option>
+          <option value="light">Light</option><option value="compatible">Compatible (JPEG)</option>
+        </select></div>
       <div class="mv-perm" id="mvPerm" hidden></div>
       <div class="list" id="mvDisplays"></div>
       <div class="shelf-head" style="margin-top:16px"><h2>Windows</h2><span class="count" id="mvWinCount"></span></div>
@@ -1678,7 +1680,7 @@ function battery(b, power) {
     if (b?.timeToEmpty > 0 && b.timeToEmpty < 86400) detail.push(`About ${dur(b.timeToEmpty)} left`);
   }
   if (power) detail.push(`${/PD/.test(power.type || "") ? "USB-C PD" : power.type || "Charger"}${power.watts ? ` ${Math.round(power.watts)} W` : ""}`);
-  if (b?.tempC != null) detail.push(`${b.tempC.toFixed(0)}°C`);
+  if (b?.tempC != null) detail.push(`battery ${b.tempC.toFixed(0)}°C`);
   $("battState").textContent = label;
   $("battState").className = "state " + cls;
   $("battDetail").textContent = detail.join(" · ") || " ";
