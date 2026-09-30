@@ -267,7 +267,9 @@ def open_steam_link():
 
 RDP_PORT = 3389
 RDP_USER = "steamos"  # xrdp signs in with the Developer Mode password, not this computer's
-RDP_LOGIN = f"sign in as {RDP_USER} with your Developer Mode password"
+# xrdp's certificate is its own, so every client warns about it first.
+RDP_LOGIN = (f"accept the warning about the Frame's certificate, then sign in as {RDP_USER} "
+             "with your Developer Mode password")
 
 
 def rdp_reachable(host, timeout=3):

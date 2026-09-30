@@ -91,7 +91,8 @@ counts them while they run.
   Linux). Remote desktop first checks that the Frame's xrdp answers on port
   3389 (Developer Mode turns it on). On Windows it opens a connection file for
   user `steamos`, because `mstsc /v:` alone offers your Windows account, which
-  xrdp turns away. Sign in with the Developer Mode password. Sleep, restart and
+  xrdp turns away. Accept the warning about the Frame's own certificate, then
+  sign in with the Developer Mode password. Sleep, restart and
   shut down open a terminal window because SteamOS asks for the sudo password
   over SSH.
 

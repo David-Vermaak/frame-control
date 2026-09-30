@@ -65,6 +65,7 @@ class OpenRdp(unittest.TestCase):
         self.assertIn("username:s:steamos", lines)
         self.assertIn("steamos", message)
         self.assertIn("Developer Mode password", message)
+        self.assertIn("certificate", message)
 
     def test_nothing_listening_says_why_and_opens_nothing(self):
         self.xrdp.close()
