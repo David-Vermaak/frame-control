@@ -68,18 +68,24 @@ Remove-Item "$PSScriptRoot\input.txt"'
 
 pointer() {  # x y click|wheel [notches]
   local b64=$(print -rn -- $INPUT_PS1 | base64 | tr -d '\n')
-  vm_ps '$d = Join-Path $env:LOCALAPPDATA "windows-vm"
+  vm_ps '$ErrorActionPreference = "Stop"
+$d = Join-Path $env:LOCALAPPDATA "windows-vm"; $req = "$d\input.txt"; $held = $false
+trap { [Console]::Error.WriteLine("windows-vm: $_"); if ($held) { Remove-Item $req -ErrorAction SilentlyContinue }; exit 1 }
 New-Item -ItemType Directory -Force $d | Out-Null
-$busy = Get-Item "$d\input.txt" -ErrorAction SilentlyContinue
-if ($busy -and $busy.LastWriteTime -gt (Get-Date).AddSeconds(-15)) { [Console]::Error.WriteLine("windows-vm: another click or scroll is in progress"); exit 1 }
+$old = Get-Item $req -ErrorAction SilentlyContinue   # left behind by a run that died
+if ($old -and $old.LastWriteTime -lt (Get-Date).AddSeconds(-15)) { Remove-Item $req }
+# Creating input.txt is the lock: CreateNew fails if another request already has it.
+try { $f = [IO.File]::Open($req, "CreateNew", "Write") }
+catch { [Console]::Error.WriteLine("windows-vm: another click or scroll is in progress"); exit 1 }
+$held = $true
+$text = [Text.Encoding]::ASCII.GetBytes("'"$*"'"); $f.Write($text, 0, $text.Length); $f.Close()
 [IO.File]::WriteAllText("$d\input.ps1", [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String("'$b64'")))
 $act = New-ScheduledTaskAction -Execute powershell.exe -Argument "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$d\input.ps1`""
 $who = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive
 Register-ScheduledTask -TaskName WindowsVmInput -Action $act -Principal $who -Force | Out-Null
-Set-Content "$d\input.txt" "'"$*"'"
 Start-ScheduledTask -TaskName WindowsVmInput
-foreach ($i in 1..50) { if (-not (Test-Path "$d\input.txt")) { exit 0 }; Start-Sleep -Milliseconds 200 }
-Remove-Item "$d\input.txt" -ErrorAction SilentlyContinue
+foreach ($i in 1..50) { if (-not (Test-Path $req)) { exit 0 }; Start-Sleep -Milliseconds 200 }
+Remove-Item $req -ErrorAction SilentlyContinue
 [Console]::Error.WriteLine("windows-vm: no input after 10 s: is $env:USERNAME signed in on the VM screen, and is x,y on it?"); exit 1'
 }
 

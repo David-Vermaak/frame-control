@@ -218,9 +218,12 @@ scripts/windows-vm.sh down                       # shut Windows down
 
 **Testing against a real Frame.** The VM reaches the headset on the LAN like
 any other computer. Run **Set Up Connection** in the VM's Frame Control once;
-that makes the VM's key. So the VM doesn't keep access between test runs,
-take that key's line out of the headset's `~/.ssh/authorized_keys` afterwards.
-Then, around each run:
+that makes the VM's keys. So the VM doesn't keep access between test runs,
+afterwards take the lines it added out of the headset's
+`~/.ssh/authorized_keys`: the ones matching the VM's
+`~/.ssh/id_ed25519_frame.pub` and, if pairing made one,
+`~/.ssh/id_rsa_frame_devkit.pub`. Check that `ssh -o BatchMode=yes frame true`
+in the VM now fails. Then, around each run:
 
 ```sh
 scripts/windows-vm.sh frame-key add       # let the VM's key into the headset
