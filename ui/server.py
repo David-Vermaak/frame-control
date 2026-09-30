@@ -50,6 +50,7 @@ import frame_catalog  # noqa: E402
 import frame_devices  # noqa: E402
 import frame_steamgriddb
 import frame_comfort  # noqa: E402
+import frame_contact  # noqa: E402
 import frame_host  # noqa: E402
 import frame_link  # noqa: E402
 import frame_macview  # noqa: E402
@@ -2157,6 +2158,7 @@ POST = {
         "/api/webinstall/check": webinstall_check, "/api/webinstall/start": webinstall_start,
         "/api/webinstall/cancel": webinstall_cancel,
         "/api/telemetry": frame_telemetry.update_settings, "/api/telemetry/event": frame_telemetry.page_event,
+        "/api/contact": frame_contact.save, "/api/contact/prompt": frame_contact.prompt,
         "/api/report/preview": report_preview, "/api/report": report_send, "/api/macview": macview_action, "/api/panels": panels_action,
         "/api/devices": lambda body: devices_post(body)}
 
@@ -2386,6 +2388,8 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(macview_state(parse_qs(url.query)))
             elif path == "/api/telemetry":
                 self.send_json(frame_telemetry.state())
+            elif path == "/api/contact":
+                self.send_json(frame_contact.state())
             elif path == "/api/computer/state":
                 self.send_json(json.loads(ssh("python3 -", stdin=(HERE / "frame_computer.py").read_text(), timeout=20)))
             elif path == "/api/status":
@@ -2650,6 +2654,7 @@ def main():
     sweep_tmp()
     threading.Thread(target=apk_search.warm, daemon=True).start()  # big indexes download before the first search
     frame_telemetry.start()
+    frame_contact.start()
     global LINK, _ONE_SERVER
     if not LOCAL:
         if not PRIVATE:  # a private server only uses the headsets (see one_server)

@@ -175,7 +175,7 @@
   .seg { display: inline-flex; background: rgba(0,0,0,.3); border-radius: 3px; padding: 2px; }
   .seg button { background: transparent; height: 28px; font-size: 12.5px; letter-spacing: .6px; text-transform: uppercase; }
   .seg button.on { background: var(--btn-hi); color: var(--bright); }
-  input[type=text], input[type=search], input[type=url], input[type=password], textarea { width: 100%; background: rgba(0,0,0,.28); color: var(--text); border: 1px solid transparent;
+  input[type=text], input[type=search], input[type=url], input[type=password], input[type=email], textarea { width: 100%; background: rgba(0,0,0,.28); color: var(--text); border: 1px solid transparent;
                                border-radius: 3px; padding: 9px 11px; font: inherit; }
   textarea { resize: vertical; min-height: 76px; }
   input:focus, textarea:focus { outline: none; border-color: var(--blue); background: rgba(0,0,0,.4); }
@@ -301,6 +301,11 @@
             background: rgba(26,159,255,.12); border-left: 3px solid var(--blue); font-size: 13.5px; line-height: 1.5; }
   .notice .grow { flex: 1; min-width: 260px; }
   .notice .progress { width: 160px; margin-top: 0; display: block; }
+  .contact-opts { display: flex; gap: 6px 18px; flex-wrap: wrap; margin-top: 8px; }
+  .contact-opts label { display: inline-flex; gap: 7px; align-items: center; cursor: pointer; }
+  .contact-opts input { width: 15px; height: 15px; margin: 0; accent-color: var(--blue); }
+  #contactNotice input[type=email] { width: min(320px, 100%); margin-top: 8px; padding: 7px 10px; }
+  #cEmail { max-width: 420px; }
   .popt { display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; align-items: start; margin: 0 0 14px; cursor: pointer; }
   .popt input { margin: 3px 0 0; width: 16px; height: 16px; accent-color: var(--blue); }
   .popt b { font-weight: 600; color: var(--text); }
@@ -679,6 +684,17 @@
     <button class="small" id="noticeMore" title="Also share compatibility results and error details (you can turn either off later)">Share more to help fix problems</button>
     <button class="action small" id="noticeOk">OK</button>
   </div>
+  <form class="notice" id="contactNotice" hidden>
+    <div class="grow"><b>Leave an email address?</b> Optional: Frame Control works the same either way, and
+      you can change or remove it any time in Privacy &amp; updates.
+      <div><input type="email" id="cpEmail" maxlength="254" placeholder="you@example.com" aria-label="Email address" required></div>
+      <div class="contact-opts">
+        <label><input type="checkbox" id="cpUpdates"> Email me about Frame Control updates</label>
+        <label><input type="checkbox" id="cpFollowup"> The maintainer may contact me with follow-up questions</label></div></div>
+    <span class="sub" id="cpMsg" role="status"></span>
+    <button type="button" class="small" id="cpNo">No thanks</button>
+    <button type="submit" class="action small" id="cpSave">Save</button>
+  </form>
   <div class="banner" id="offline" role="alert" hidden>
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M2 8.5a15 15 0 0 1 20 0M5.5 12a10 10 0 0 1 13 0M9 15.5a5 5 0 0 1 6 0"/><circle cx="12" cy="19" r="1.2" fill="currentColor"/><path d="M3 3l18 18"/></svg>
     <div class="grow"><div class="t" id="offMsg">Can't reach the Frame</div>
@@ -1133,6 +1149,17 @@
         <span class="sub">Error messages and where in Frame Control they happened, with your home
           folder, user name, addresses and keys removed.</span></label>
       <div class="hint" id="tStatus"></div>
+      <h3 style="margin-top:22px">Contact email (optional)</h3>
+      <form id="contactForm">
+        <input type="email" id="cEmail" maxlength="254" placeholder="you@example.com" aria-label="Email address">
+        <div class="contact-opts">
+          <label><input type="checkbox" id="cUpdates"> Email me about Frame Control updates</label>
+          <label><input type="checkbox" id="cFollowup"> The maintainer may contact me with follow-up questions</label></div>
+        <div class="row" style="margin-top:10px"><button type="submit" class="small action" id="cSave">Save</button>
+          <button type="button" class="small" id="cRemove">Remove my email</button></div>
+      </form>
+      <div class="hint" id="cStatus">Sent privately to the Frame Control maintainer, never shared or published.
+        Updates are occasional release notices; follow-up questions are mainly about problem reports you send.</div>
       <details id="tSentBox"><summary>Show what's been sent</summary><div class="sentlog" id="tSent"></div></details>
       <div class="row" style="margin-top:14px"><button class="small action" data-report>Report a problem</button>
         <button class="small" id="updateCheck" hidden>Check for updates</button>
@@ -1240,7 +1267,9 @@
       placeholder="e.g. Installing an APK stops at 'copying to the Frame'"></label>
     <label class="field">What happened?<textarea id="bugText" maxlength="5000" required minlength="10"
       placeholder="What you did, what happened, and what you expected."></textarea></label>
-    <label class="field">How can we reach you? (optional, for a reply)<input type="text" id="bugContact" maxlength="120" placeholder="Email, GitHub or Discord name"></label>
+    <label class="popt"><input type="checkbox" id="bugFollowup"><b>The maintainer may contact me with follow-up questions</b>
+      <span class="sub">Optional. Your email address goes with this report only when this is ticked.</span></label>
+    <label class="field">Your email address<input type="email" id="bugContact" maxlength="254" placeholder="you@example.com" disabled></label>
     <label class="popt"><input type="checkbox" id="bugDiag" checked><b>Include diagnostics</b>
       <span class="sub">Frame Control's version, your OS and the Frame's SteamOS build.</span></label>
     <label class="popt"><input type="checkbox" id="bugLogs"><b>Also include recent activity and the server log</b>
@@ -4132,7 +4161,68 @@ $("noticeMore").onclick = async () => {
   toast("Thanks! Compatibility results and error details will be shared too. Change it any time in Privacy.");
 };
 $("noticeSettings").onclick = () => { $("privacyNotice").hidden = true; location.hash = "#privacy"; };
-loadTelemetry();
+const telemetryLoaded = loadTelemetry();
+
+// ---- contact email: two separate opt-ins (ui/frame_contact.py, docs/privacy.md) ----
+const contact = { email: "", updates: false, followup: false };
+function renderContact(s) {
+  Object.assign(contact, s);
+  $("cEmail").value = s.email; $("cUpdates").checked = s.updates; $("cFollowup").checked = s.followup;
+  $("cRemove").hidden = !s.email;
+  $("cStatus").textContent = s.waiting ? "Saved here; it's sent to the maintainer when Frame Control can reach PostHog."
+    : s.email ? `Saved. ${s.email} may get ${[s.updates && "update notices", s.followup && "follow-up questions"].filter(Boolean).join(" and ")}. Remove it any time.`
+    : "Sent privately to the Frame Control maintainer, never shared or published. Updates are occasional release notices; follow-up questions are mainly about problem reports you send.";
+}
+async function saveContact(change) {
+  const s = await api("/api/contact", change);
+  renderContact(s);
+  return s;
+}
+async function loadContact() {
+  await telemetryLoaded;
+  try { renderContact(await api("/api/contact")); } catch { return; }
+  checkContactPrompt();
+}
+// One time only, only once the Frame has connected, and never on top of the privacy notice or
+// straight after it (two asks in a row is nagging): checked at load and whenever the Frame connects.
+async function checkContactPrompt() {
+  if (!$("contactNotice").hidden || !$("privacyNotice").hidden) return;
+  let s;
+  try { s = await api("/api/contact"); } catch { return; }
+  if (!s.showPrompt || !$("contactNotice").hidden || !$("privacyNotice").hidden) return;
+  $("contactNotice").hidden = false;
+  api("/api/contact/prompt", { prompt: "shown" }).catch(() => {});
+}
+$("contactNotice").onsubmit = async e => {
+  e.preventDefault();
+  if (!$("cpUpdates").checked && !$("cpFollowup").checked) { $("cpMsg").textContent = "Tick at least one, or choose No thanks."; return; }
+  $("cpSave").disabled = true;
+  try {
+    await saveContact({ email: $("cpEmail").value, updates: $("cpUpdates").checked, followup: $("cpFollowup").checked, fromPrompt: true });
+    $("contactNotice").hidden = true;
+    toast("Thanks! Change or remove it any time in Privacy & updates.");
+  } catch (err) { $("cpMsg").textContent = `Couldn't save: ${err.message}`; }
+  finally { $("cpSave").disabled = false; }
+};
+$("cpNo").onclick = async () => {
+  try { await api("/api/contact/prompt", { prompt: "dismissed" }); $("contactNotice").hidden = true; }
+  catch (err) { $("cpMsg").textContent = `Couldn't save that: ${err.message}. Try again.`; }
+};
+$("contactForm").onsubmit = async e => {
+  e.preventDefault();
+  const email = $("cEmail").value.trim();
+  if (email && !$("cUpdates").checked && !$("cFollowup").checked) {
+    $("cStatus").textContent = "Tick what your email may be used for, or use Remove my email."; return;
+  }
+  try { await saveContact({ email, updates: $("cUpdates").checked, followup: $("cFollowup").checked });
+        toast(email ? "Contact email saved." : "Contact email removed."); }
+  catch (err) { toast(`Couldn't save: ${err.message}`, true); }
+};
+$("cRemove").onclick = async () => {
+  try { await saveContact({ email: "", updates: false, followup: false }); toast("Contact email removed. Neither choice applies any more."); }
+  catch (err) { toast(`Couldn't remove it: ${err.message}`, true); }
+};
+loadContact();
 function pageEvent(event, properties) {
   if (telemetry.usage && !telemetry.blocked) api("/api/telemetry/event", { event, properties }).catch(() => {});
 }
@@ -4147,8 +4237,8 @@ document.querySelectorAll("nav a").forEach(a => a.addEventListener("click", () =
 const bug = { preview: "" };
 const activityLines = () => [...$("log").children].slice(0, 25).map(el => el.textContent.trim());
 function bugReportText() {
-  const contact = $("bugContact").value.trim();
-  const body = `Kind: ${$("bugKind").value}${contact ? `\nContact: ${contact}` : ""}\n\n${$("bugText").value.trim()}${bug.preview ? "\n\n---\nDiagnostics:\n```\n" + bug.preview + "\n```" : ""}`;
+  const email = $("bugFollowup").checked ? $("bugContact").value.trim() : "";
+  const body = `Kind: ${$("bugKind").value}${email ? `\nFollow-up questions welcome: ${email}` : ""}\n\n${$("bugText").value.trim()}${bug.preview ? "\n\n---\nDiagnostics:\n```\n" + bug.preview + "\n```" : ""}`;
   return { title: $("bugTitleIn").value.trim(), body };
 }
 // The preview is a snapshot: exactly this text is sent, even if more activity happens meanwhile.
@@ -4164,12 +4254,20 @@ function openBugReport() {
   $("bugMsg").textContent = ""; $("bugSend").disabled = false;
   $("bugCancel").textContent = "Cancel";
   $("bugDiagBox").open = false; $("bugLogs").disabled = false;
+  // A standing yes to follow-up questions (Privacy & updates) fills this in; it can be unticked.
+  $("bugFollowup").checked = contact.followup; $("bugContact").value = contact.followup ? contact.email : "";
+  $("bugContact").disabled = !contact.followup; $("bugContact").required = contact.followup;
   $("bugDlg").showModal();
   loadBugPreview();
 }
 document.body.addEventListener("click", e => { if (e.target.closest("[data-report]")) openBugReport(); });
 $("bugDiag").onchange = () => { $("bugLogs").disabled = !$("bugDiag").checked; loadBugPreview(); };
 $("bugLogs").onchange = loadBugPreview;
+$("bugFollowup").onchange = () => {
+  const on = $("bugFollowup").checked;
+  $("bugContact").disabled = !on; $("bugContact").required = on;
+  if (on && !$("bugContact").value) { $("bugContact").value = contact.email; $("bugContact").focus(); }
+};
 $("bugCancel").onclick = () => $("bugDlg").close();
 $("bugCopy").onclick = async () => {
   const { title, body } = bugReportText();
@@ -4183,7 +4281,8 @@ $("bugForm").onsubmit = async e => {
   try {
     const res = await api("/api/report", {
       kind: $("bugKind").value, title: $("bugTitleIn").value, message: $("bugText").value,
-      contact: $("bugContact").value, diagnostics: $("bugDiag").checked ? bug.preview : "" });
+      contactFollowup: $("bugFollowup").checked, contact: $("bugFollowup").checked ? $("bugContact").value : "",
+      diagnostics: $("bugDiag").checked ? bug.preview : "" });
     $("bugMsg").textContent = `Sent, thank you. Your reference is ${res.id}.`;
     $("bugCancel").textContent = "Close";
     log(res.message, "ok");
@@ -4491,7 +4590,7 @@ function onConnection(s) {
       $("offline").hidden = true;
       const reload = link.reload;
       link.reload = false;
-      refresh().then(() => { if (reload) reloadAll(); });
+      refresh().then(() => { if (reload) reloadAll(); checkContactPrompt(); });
     } else if (s.phase === "failed" && s.error) {
       setOnline(false, s.error.message);
     } else if (s.phase === "connecting" && prev && prev.phase === "connected") {
