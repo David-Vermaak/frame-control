@@ -75,7 +75,7 @@ def ssh_g(alias):
     ssh alias. proxied: it goes through ProxyJump or ProxyCommand, so only ssh can reach it."""
     try:
         out = frame_host.run_ssh(["ssh", "-G", alias], capture_output=True, stdin=subprocess.DEVNULL, text=True,
-                             timeout=10).stdout
+                                 timeout=10).stdout
     except (OSError, subprocess.TimeoutExpired):
         out = ""
     got = {}
@@ -766,7 +766,7 @@ class Link:
             return False
         try:
             return frame_host.run_ssh([*self.mux_base, *opts, "-O", "check", alias or self.alias], capture_output=True,
-                                  stdin=subprocess.DEVNULL, timeout=5).returncode == 0
+                                      stdin=subprocess.DEVNULL, timeout=5).returncode == 0
         except (OSError, subprocess.TimeoutExpired):
             return False
 
@@ -778,7 +778,7 @@ class Link:
         if self.control and self.alias:
             try:
                 frame_host.run_ssh([*self.mux_base, *self.opts, "-O", "exit", self.alias], capture_output=True,
-                               stdin=subprocess.DEVNULL, timeout=5)
+                                   stdin=subprocess.DEVNULL, timeout=5)
             except (OSError, subprocess.TimeoutExpired):
                 pass
         if proc and proc.poll() is None:
@@ -984,7 +984,7 @@ class Link:
                     "-o", "StrictHostKeyChecking=yes", device["alias"], "true"]
             try:
                 r = frame_host.run_ssh(argv, capture_output=True, stdin=subprocess.DEVNULL, text=True,
-                                   errors="replace", timeout=20)
+                                       errors="replace", timeout=20)
                 err = r.stderr.strip()
                 if r.returncode == 0:
                     rows[i].update(ssh="ok", detail=f"{lead} · SSH works")

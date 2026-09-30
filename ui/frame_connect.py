@@ -352,8 +352,8 @@ def _write_config(host, port, user):
 def key_login_works():
     # accept-new: trust a first-seen host key (as the copy step does); a changed one still fails.
     return frame_host.run_ssh(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5",
-                           "-o", "StrictHostKeyChecking=accept-new", FRAME_ALIAS, "true"],
-                          capture_output=True).returncode == 0
+                               "-o", "StrictHostKeyChecking=accept-new", FRAME_ALIAS, "true"],
+                              capture_output=True).returncode == 0
 
 
 def configured_user():

@@ -333,7 +333,7 @@ def ssh(remote, *, stdin=None, timeout=30, text=True):
         # --exit-on-eof, and Windows' ssh.exe waits on it forever.
         feed = {"input": stdin} if stdin is not None else {"stdin": subprocess.DEVNULL}
         r = frame_host.run_ssh([*SSH, FRAME, remote], capture_output=True, **feed,
-                           text=text, errors="replace" if text else None, timeout=timeout)
+                               text=text, errors="replace" if text else None, timeout=timeout)
     except subprocess.TimeoutExpired:
         raise Failure(f"Timed out talking to {FRAME}")
     if r.returncode != 0:
@@ -504,7 +504,7 @@ def save_shots(body):
         try:
             try:
                 r = frame_host.run_ssh(["scp", "-p", *SSH[1:], *(f"{FRAME}:{p}" for p in todo), str(incoming)],
-                                   capture_output=True, stdin=subprocess.DEVNULL, text=True, timeout=300)
+                                       capture_output=True, stdin=subprocess.DEVNULL, text=True, timeout=300)
             except subprocess.TimeoutExpired:
                 raise Failure("Copying screenshots timed out")
             if r.returncode != 0:
