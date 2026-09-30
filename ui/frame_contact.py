@@ -8,9 +8,10 @@ Two separate opt-in choices, both off until ticked:
 The address and the choices are kept on this computer (frame_host.data_dir('contact')) and
 sent privately to Frame Control's PostHog project as a `contact_consent` event, the same way
 as problem reports (frame_report.py), so only the maintainer can read them. Every change
-sends a new event under this copy's own random contact id (not the analytics id), and the
-newest event for an id is the one that counts: removing the address sends a withdrawal with
-no address in it. The maintainer lists who agreed to what with
+sends a new event under this copy's own random contact id (not the analytics id), numbered
+by `rev`, and the highest rev for an id is the one that counts, whatever the clocks say:
+removing the address sends a withdrawal with no address in it, and wipes the address from
+the local log of what was sent. The maintainer lists who agreed to what with
 `python3 ui/frame_report.py contacts`. Nothing here sends email.
 
 A change that can't be sent (offline) waits in the state file and is retried in the
@@ -35,12 +36,13 @@ PROMPTS = ('new', 'shown', 'dismissed', 'answered')
 RETRY_EVERY = 600
 
 _lock = threading.RLock()
+_send_lock = threading.Lock()  # one send at a time, so events reach PostHog in rev order
 _retrier = None
 
 
 def _defaults():
     return {'id': str(uuid.uuid4()), 'email': '', 'updates': False, 'followup': False,
-            'prompt': 'new', 'pending': None}
+            'prompt': 'new', 'pending': None, 'rev': 0}
 
 
 def load():
@@ -82,30 +84,50 @@ def _event(s):
             'timestamp': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
             'properties': {**frame_telemetry.common(), 'email': email, 'updates': bool(email and s['updates']),
                            'followup': bool(email and s['followup']),
-                           'action': 'set' if email else 'withdraw', 'level': 'contact'}}
+                           'action': 'set' if email else 'withdraw', 'rev': s['rev'], 'level': 'contact'}}
 
 
 def _send_pending():
     """Send the waiting change. True if nothing is left waiting."""
-    with _lock:
-        s = load()
-        event = s['pending']
+    with _send_lock:
+        with _lock:
+            event = load()['pending']
         if event is None:
             return True
-    try:
-        frame_telemetry.post([event], timeout=30)
-    except frame_telemetry.SendError:
-        return False
+        try:
+            frame_telemetry.post([event], timeout=30)
+        except frame_telemetry.SendError:
+            return False
+        _sent(event)
+    return True
+
+
+def _sent(event):
     with _lock:
         s = load()
         if s['pending'] and s['pending'].get('uuid') == event['uuid']:  # not replaced meanwhile
             s['pending'] = None
             _save(s)
-    try:
-        frame_telemetry.record_sent([event])
-    except OSError:
-        pass
-    return True
+        # A withdrawal, or the address still in use: not an old one removed while this was on its way.
+        if event['properties']['email'] in ('', s['email']):
+            try:
+                frame_telemetry.record_sent([event])
+            except OSError:
+                pass
+
+
+def _forget_locally(email):
+    """Take a removed address out of the log of what was sent (contact events and reports)."""
+    with frame_telemetry._lock:
+        rows = frame_telemetry._read_lines(frame_telemetry.SENT)
+        hit = False
+        for e in rows:
+            p = e.get('properties') or {}
+            for k in ('email', 'contact'):
+                if p.get(k) and str(p[k]).strip().lower() == email.lower():
+                    p[k], hit = '<removed>', True
+        if hit:
+            frame_telemetry._write_lines(frame_telemetry.SENT, rows)
 
 
 def save(body):
@@ -121,6 +143,7 @@ def save(body):
         updates = followup = False
     with _lock:
         s = load()
+        old = s['email']
         changed = (email, updates, followup) != (s['email'], s['updates'], s['followup'])
         s.update(email=email, updates=updates, followup=followup)
         if body.get('fromPrompt') or email:
@@ -128,8 +151,14 @@ def save(body):
         if changed:
             # Only the newest choice matters, so it replaces anything still waiting. A withdrawal
             # is sent even for an address still waiting here: its send may already be under way.
+            s['rev'] += 1
             s['pending'] = _event(s)
         _save(s)
+        if old and old.lower() != email.lower():
+            try:
+                _forget_locally(old)
+            except OSError:
+                pass
     if changed:
         _send_pending()
     return state()

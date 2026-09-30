@@ -5,6 +5,8 @@ Run: python3 -m unittest discover -s tests
 """
 import sandbox  # noqa: F401  (first: keeps tests off real data and services)
 import sys
+import threading
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -110,6 +112,51 @@ class Contact(Base):
         self.assertFalse(fc.state()["waiting"])
         self.assertEqual([e["properties"]["action"] for e in self.events()], ["set", "withdraw"])
 
+    def test_removing_the_address_wipes_it_from_the_sent_log_too(self):
+        fc.save({"email": "me@example.com", "followup": True})
+        fr.send({**REPORT, "contact": "me@example.com", "contactFollowup": True})
+        self.assertIn("me@example.com", tm.SENT.read_text())
+        fc.save({"email": ""})
+        self.assertNotIn("me@example.com", tm.SENT.read_text())
+        self.assertEqual([e["properties"].get("action") for e in tm._read_lines(tm.SENT)
+                          if e["event"] == "contact_consent"], ["set", "withdraw"])
+
+    def test_each_change_has_a_higher_rev_so_the_newest_wins_whatever_the_clock(self):
+        fc.save({"email": "me@example.com", "updates": True})
+        fc.save({"email": "new@example.com", "updates": True})
+        fc.save({"email": ""})
+        self.assertEqual([e["properties"]["rev"] for e in self.events()], [1, 2, 3])
+
+    def test_a_withdrawal_during_a_send_goes_after_it(self):
+        started, release, order = threading.Event(), threading.Event(), []
+        real = tm.post
+
+        def slow(batch, timeout=20):
+            order.append(batch[0]["properties"]["action"])
+            if len(order) == 1:
+                started.set()
+                release.wait(5)
+            real(batch, timeout)
+
+        with mock.patch.object(tm, "post", side_effect=slow):
+            t = threading.Thread(target=fc.save, args=({"email": "me@example.com", "updates": True},))
+            t.start()
+            self.assertTrue(started.wait(5))
+            w = threading.Thread(target=fc.save, args=({"email": ""},))
+            w.start()
+            for _ in range(500):  # the withdrawal is saved while the first send is still out
+                if fc.load()["rev"] == 2:
+                    break
+                time.sleep(0.01)
+            self.assertEqual(fc.load()["pending"]["properties"]["action"], "withdraw")
+            release.set()
+            t.join(5)
+            w.join(5)
+        self.assertEqual(order, ["set", "withdraw"])
+        self.assertEqual([e["properties"]["action"] for e in self.events()], ["set", "withdraw"])
+        self.assertFalse(fc.state()["waiting"])
+        self.assertNotIn("me@example.com", tm.SENT.read_text())
+
     # ---- the one-time prompt
 
     def test_the_prompt_waits_for_a_working_setup_then_stays_dismissed(self):
@@ -149,7 +196,8 @@ class Contact(Base):
                 ["d", "not-an-address", True, True, "2026-09-03T10:00:00Z"], ["short"]]
         with mock.patch.object(db, "_posthog_query", return_value={"results": rows}) as q:
             found = fr.contacts()
-        self.assertIn("argMax", q.call_args.args[0])
+        self.assertIn("argMax(properties.email, tuple(ifNull(toInt(properties.rev), 0), timestamp))",
+                      q.call_args.args[0])
         self.assertEqual(found, {"updates": [("both@example.com", "2026-09-01"), ("news@example.com", "2026-09-02")],
                                  "followup": [("both@example.com", "2026-09-01")]})
         with mock.patch.object(fr, "contacts", return_value=found), \

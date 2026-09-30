@@ -158,12 +158,15 @@ def _yes(v):
 def contacts():
     """{'updates': [(email, since)], 'followup': [...]}: the addresses whose newest
     contact_consent event agrees to each, oldest first. A withdrawal, or a change to another
-    address, replaces what came before, so withdrawn addresses are never listed."""
+    address, replaces what came before, so withdrawn addresses are never listed. "Newest" is
+    the highest rev from that copy (then time), so every field comes from the same event
+    whatever order they arrived in or what the clocks said."""
     import frame_compat_db
+    newest = "tuple(ifNull(toInt(properties.rev), 0), timestamp)"
     res = frame_compat_db._posthog_query(
-        "SELECT distinct_id, argMax(properties.email, timestamp), argMax(properties.updates, timestamp), "
-        "argMax(properties.followup, timestamp), max(timestamp) FROM events WHERE event = 'contact_consent' "
-        "GROUP BY distinct_id ORDER BY max(timestamp) LIMIT 100000")
+        f"SELECT distinct_id, argMax(properties.email, {newest}), argMax(properties.updates, {newest}), "
+        f"argMax(properties.followup, {newest}), argMax(timestamp, {newest}) FROM events "
+        "WHERE event = 'contact_consent' GROUP BY distinct_id ORDER BY max(timestamp) LIMIT 100000")
     out = {'updates': [], 'followup': []}
     for row in res.get('results') or []:
         if not isinstance(row, list) or len(row) != 5:

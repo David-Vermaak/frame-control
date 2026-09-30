@@ -141,7 +141,8 @@ are two separate choices, both off until you tick them:
 | **The maintainer may contact me with follow-up questions** | Questions about problem reports you send, mostly |
 
 You're asked once, in a bar at the top of the page, after the Frame has
-connected for the first time. **No thanks** hides it for good, and it isn't
+connected for the first time (never while the first-run privacy notice is
+showing). **No thanks** hides it for good, and it isn't
 shown again even if you ignore it. **Contact email** in **Privacy & updates**
 is where you add, change or remove the address and either choice at any time.
 
@@ -152,13 +153,16 @@ or `withdraw`) and the common properties above. Only the maintainer can read
 that project, and nothing in it is published or shared. It's sent only when
 you save, whatever the analytics settings are, because you chose to. It
 carries its own random contact id, not the analytics id, so it isn't linked
-to your usage events. On this computer the address and choices are kept in
+to your usage events, and a `rev` number that goes up with each change, so
+the newest choice always wins. Like everything else sent, it's listed under
+**Show what's been sent**. On this computer the address and choices are kept in
 `contact/contact.json` in Frame Control's data folder. An address is only
 kept with at least one choice ticked.
 
 **Removing it.** **Remove my email** (or clearing the address and saving)
-deletes it from this computer and sends a `withdraw` event with no address in
-it. The maintainer's list only uses the newest event from each copy, so from
+deletes it from this computer, including from the **Show what's been sent**
+log (in earlier contact events and problem reports), and sends a `withdraw`
+event with no address in it. The maintainer's list only uses the newest event from each copy, so from
 then on the address isn't listed for either choice. Unticking one choice
 works the same way for that choice. If you're offline, the change waits on
 this computer and is sent when PostHog can be reached. The earlier event
@@ -174,7 +178,11 @@ personal API key as `inbox`.
 
 Untick the boxes, or set `DO_NOT_TRACK=1` or `FRAME_CONTROL_TELEMETRY=0` in
 the environment that starts Frame Control. A copy run from a source checkout
-never sends anything unless `FRAME_CONTROL_TELEMETRY=1` is set.
+never sends analytics unless `FRAME_CONTROL_TELEMETRY=1` is set.
+
+These switches cover the analytics above. A problem report or a contact email
+is only ever sent when you press its Send or Save button, so those still go
+when you choose to send them; if you don't, nothing is sent.
 
 ## Update checks
 

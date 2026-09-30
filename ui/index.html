@@ -4010,16 +4010,20 @@ async function saveContact(change) {
   renderContact(s);
   return s;
 }
-// One time only, never on top of the privacy notice, and only once the Frame has connected.
 async function loadContact() {
   await telemetryLoaded;
+  try { renderContact(await api("/api/contact")); } catch { return; }
+  checkContactPrompt();
+}
+// One time only, never on top of the privacy notice, and only once the Frame has connected:
+// checked at load and again whenever the Frame connects.
+async function checkContactPrompt() {
+  if (!$("contactNotice").hidden || !$("privacyNotice").hidden) return;
   let s;
   try { s = await api("/api/contact"); } catch { return; }
-  renderContact(s);
-  if (s.showPrompt && $("privacyNotice").hidden) {
-    $("contactNotice").hidden = false;
-    api("/api/contact/prompt", { prompt: "shown" }).catch(() => {});
-  }
+  if (!s.showPrompt) return;
+  $("contactNotice").hidden = false;
+  api("/api/contact/prompt", { prompt: "shown" }).catch(() => {});
 }
 $("contactNotice").onsubmit = async e => {
   e.preventDefault();
@@ -4032,9 +4036,9 @@ $("contactNotice").onsubmit = async e => {
   } catch (err) { $("cpMsg").textContent = `Couldn't save: ${err.message}`; }
   finally { $("cpSave").disabled = false; }
 };
-$("cpNo").onclick = () => {
-  $("contactNotice").hidden = true;
-  api("/api/contact/prompt", { prompt: "dismissed" }).catch(() => {});
+$("cpNo").onclick = async () => {
+  try { await api("/api/contact/prompt", { prompt: "dismissed" }); $("contactNotice").hidden = true; }
+  catch (err) { $("cpMsg").textContent = `Couldn't save that: ${err.message}. Try again.`; }
 };
 $("contactForm").onsubmit = async e => {
   e.preventDefault();
@@ -4418,7 +4422,7 @@ function onConnection(s) {
       $("offline").hidden = true;
       const reload = link.reload;
       link.reload = false;
-      refresh().then(() => { if (reload) reloadAll(); });
+      refresh().then(() => { if (reload) reloadAll(); checkContactPrompt(); });
     } else if (s.phase === "failed" && s.error) {
       setOnline(false, s.error.message);
     } else if (s.phase === "connecting" && prev && prev.phase === "connected") {
