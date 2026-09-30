@@ -205,9 +205,9 @@ scripts/windows-vm.sh down                       # shut Windows down
 - **Clicks go through a scheduled task.** Commands over SSH run in a
   session with no desktop, so `click` and `scroll` write the position to a
   file, and a scheduled task running as the signed-in user replays it. The
-  VM's screen must be signed in; it is after `up`. One click or scroll at a
-  time: they share that task. QEMU's own `mouse_move` is relative and drifts,
-  so the script doesn't use it.
+  VM's screen must be signed in; it is after `up`. Clicks and scrolls sent at
+  the same time run one after another. QEMU's own `mouse_move` is relative
+  and drifts, so the script doesn't use it.
 - **Screenshots may not show the pointer.** Check the result of a click (a
   menu that opens, a button that changes) rather than the pointer's position.
 - **Windows' `ssh` waits for stdin.** The script closes it for every command.

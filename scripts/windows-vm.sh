@@ -69,16 +69,15 @@ Remove-Item "$PSScriptRoot\input.txt"'
 pointer() {  # x y click|wheel [notches]
   local b64=$(print -rn -- $INPUT_PS1 | base64 | tr -d '\n')
   vm_ps '$ErrorActionPreference = "Stop"
-$d = Join-Path $env:LOCALAPPDATA "windows-vm"; $req = "$d\input.txt"; $held = $false
-trap { [Console]::Error.WriteLine("windows-vm: $_"); if ($held) { Remove-Item $req -ErrorAction SilentlyContinue }; exit 1 }
+$d = Join-Path $env:LOCALAPPDATA "windows-vm"; $req = "$d\input.txt"; $mine = $false
+trap { [Console]::Error.WriteLine("windows-vm: $_"); if ($mine) { Remove-Item $req -ErrorAction SilentlyContinue }; exit 1 }
+# One request at a time: the helper, the task and input.txt are shared. Windows
+# frees the mutex when this process ends, however it ends.
+$lock = New-Object Threading.Mutex($false, "windows-vm-input")
+try { $mine = $lock.WaitOne(15000) } catch [Threading.AbandonedMutexException] { $mine = $true }
+if (-not $mine) { [Console]::Error.WriteLine("windows-vm: another click or scroll is still in progress"); exit 1 }
 New-Item -ItemType Directory -Force $d | Out-Null
-$old = Get-Item $req -ErrorAction SilentlyContinue   # left behind by a run that died
-if ($old -and $old.LastWriteTime -lt (Get-Date).AddSeconds(-15)) { Remove-Item $req }
-# Creating input.txt is the lock: CreateNew fails if another request already has it.
-try { $f = [IO.File]::Open($req, "CreateNew", "Write") }
-catch { [Console]::Error.WriteLine("windows-vm: another click or scroll is in progress"); exit 1 }
-$held = $true
-$text = [Text.Encoding]::ASCII.GetBytes("'"$*"'"); $f.Write($text, 0, $text.Length); $f.Close()
+[IO.File]::WriteAllText($req, "'"$*"'")
 [IO.File]::WriteAllText("$d\input.ps1", [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String("'$b64'")))
 $act = New-ScheduledTaskAction -Execute powershell.exe -Argument "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$d\input.ps1`""
 $who = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive
