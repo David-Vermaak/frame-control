@@ -648,7 +648,7 @@ class PadEvents(unittest.TestCase):
         self.assertEqual(out[3:5], [{"button": "left", "down": True}, {"button": "left", "down": False}])
         self.assertEqual(out[5], {"scroll": [0, -15]})  # up = content follows the finger
         self.assertEqual(out[6:], [{"button": "right", "down": True}, {"button": "right", "down": False}])
-        self.assertEqual(extra, "")
+        self.assertEqual(extra, [])
 
     def test_keys_and_modifiers(self):
         out, _ = self.pad([{"specialKey": 12}, {"specialKey": 1, "ctrl": True}, {"key": "c", "ctrl": True}])
@@ -657,11 +657,101 @@ class PadEvents(unittest.TestCase):
         self.assertEqual([(e["key"], e["down"]) for e in out[6:]],
                          [(29, True), (46, True), (46, False), (29, False)])  # Ctrl+C
 
-    def test_text_and_accents(self):
-        out, extra = self.pad([{"key": "Hi "}, {"key": "café 😀"}])
-        self.assertEqual(out, [{"text": "Hi caf "}])
-        self.assertEqual(extra, "é😀")
+    def test_text_stays_ascii_through_gamescope(self):
+        out, slow = self.pad([{"key": "Hi "}, {"key": "there"}])
+        self.assertEqual(out, [{"text": "Hi there"}])
+        self.assertEqual(slow, [])
+
+    def test_keyboard_goes_to_kde_whole_and_in_order(self):
+        events = [{"key": "a"}, {"key": "é"}, {"specialKey": 12}, {"key": "c", "ctrl": True}, {"dx": 2, "dy": 1}]
+        out, slow = self.pad(events, kde=True)
+        self.assertEqual(out, [{"dx": 2, "dy": 1}])  # the pointer still goes through gamescope
+        self.assertEqual(slow, events[:4])  # the keyboard as sent, in order
 
     def test_shifted_key_with_modifier(self):
         out, _ = self.pad([{"key": "A", "ctrl": True}])
         self.assertEqual([e["key"] for e in out], [29, 42, 30, 30, 42, 29])
+
+
+class PadDelivery(unittest.TestCase):
+    """remote_input's promises: "sent" means the whole batch is taken; accents go once, in order."""
+
+    class Agent:
+        def __init__(self, sent=True, state="ready"):
+            self.sent, self.state, self.got = sent, state, []
+
+        def send(self, events):
+            if events and self.sent:
+                self.got.append(events)
+            return {"state": self.state, "sent": self.sent and bool(events)}
+
+    def setUp(self):
+        import server
+        self.s = server
+        self.saved = (server._touch, server._input, server.KDE_WAIT)
+        server._touch, server._input = self.Agent(), self.Agent()
+        server._kde_queue.clear()
+
+    def tearDown(self):
+        self.s._touch, self.s._input, self.s.KDE_WAIT = self.saved
+        self.s._kde_queue.clear()
+
+    def settle(self):
+        worker = self.s._kde_worker[0]
+        if worker:
+            worker.join(5)
+
+    def typed(self):
+        return [e for batch in self.s._input.got for e in batch]
+
+    def test_accent_only_batch_is_acknowledged_and_typed_once(self):
+        status = self.s.remote_input({"events": [{"key": "é"}]})
+        self.assertTrue(status["sent"])  # so the page doesn't send it again
+        self.settle()
+        self.assertEqual(self.typed(), [{"key": "é"}])
+
+    def test_mixed_text_stays_in_one_ordered_stream(self):
+        self.s.remote_input({"events": [{"key": "aéb"}, {"specialKey": 12}]})
+        self.settle()
+        self.assertEqual(self.typed(), [{"key": "aéb"}, {"specialKey": 12}])
+        self.assertEqual(self.s._touch.got, [])  # none of it split off through gamescope
+
+    def test_batch_gamescope_didnt_take_is_not_queued(self):
+        self.s._touch = self.Agent(sent=False, state="starting")
+        status = self.s.remote_input({"events": [{"dx": 1, "dy": 1}, {"key": "é"}]})
+        self.assertFalse(status["sent"])  # the page tries the whole batch again...
+        self.assertEqual(self.s._kde_queue, [])  # ...so the accent isn't queued twice
+
+    def test_waits_for_kde_connect_then_sends_without_more_input(self):
+        self.s._input = self.Agent(sent=False, state="starting")
+        self.s.remote_input({"events": [{"key": "é"}]})
+        time.sleep(0.2)
+        self.assertEqual(self.s._kde_queue, [{"key": "é"}])
+        self.s._input.sent = True
+        self.settle()
+        self.assertEqual(self.typed(), [{"key": "é"}])
+        self.assertEqual(self.s._kde_queue, [])
+
+    def test_later_ascii_waits_behind_a_pending_accent(self):
+        self.s._input = self.Agent(sent=False, state="starting")
+        self.s.remote_input({"events": [{"key": "é"}]})
+        self.s.remote_input({"events": [{"key": "x"}]})
+        self.assertEqual(self.s._touch.got, [])  # "x" can't overtake the "é"
+        self.assertEqual(self.s._kde_queue, [{"key": "é"}, {"key": "x"}])
+        self.s._input.sent = True
+        self.settle()
+        self.assertEqual(self.typed(), [{"key": "é"}, {"key": "x"}])
+
+    def test_queue_is_bounded_and_dropped_on_error(self):
+        self.s._input = self.Agent(sent=False, state="error")
+        self.s.remote_input({"events": [{"key": "é"}] * 150})
+        self.s.remote_input({"events": [{"key": "é"}] * 150})
+        self.settle()
+        self.assertEqual(self.s._kde_queue, [])
+        self.s._input = self.Agent(sent=False, state="starting")
+        self.s.KDE_WAIT = 0.3
+        self.s.remote_input({"events": [{"key": "é"}] * 150})
+        self.s.remote_input({"events": [{"key": "é"}] * 150})
+        self.assertLessEqual(len(self.s._kde_queue), self.s.KDE_QUEUE_LIMIT)
+        self.settle()
+        self.assertEqual(self.s._kde_queue, [])

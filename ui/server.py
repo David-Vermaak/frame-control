@@ -856,14 +856,23 @@ PAD_CLICKS = {"singleclick": "left", "rightclick": "right", "middleclick": "midd
 PAD_NOTCH = 15  # scroll units for one wheel notch
 
 
-def pad_events(events):
-    """The trackpad's and key row's events as (gamescope events, text for KDE Connect).
+def typed_in_kde(events):
+    """Whether these events must go the KDE Connect way: they hold an accent or emoji, or
+    earlier ones are still waiting there (typing must stay in order, so it can't be split)."""
+    with _kde_lock:
+        waiting = bool(_kde_queue)
+    return waiting or any(ch not in frame_touch.ASCII for e in events for ch in e.get("key", ""))
+
+
+def pad_events(events, kde=False):
+    """The trackpad's and key row's events as (gamescope events, KDE Connect events).
 
     Gamescope's own input reaches every panel and needs nothing installed, but types only
-    US-keyboard characters; accents and emoji go the KDE Connect way.
+    US-keyboard characters. With kde, the keyboard goes to KDE Connect as it was sent, so
+    text stays in order; the pointer always goes through gamescope.
     """
     ascii_keys = frame_touch.ASCII
-    out, extra = [], []
+    out, slow = [], []
 
     def tap(code, mods):
         down = [{"key": c, "down": True} for c in mods]
@@ -885,12 +894,15 @@ def pad_events(events):
             out.append({"button": "left", "down": True})
         if e.get("singlerelease"):
             out.append({"button": "left", "down": False})
+        if kde and ("key" in e or "specialKey" in e):
+            slow.append({k: e[k] for k in ("key", "specialKey", "ctrl", "alt", "shift", "super") if k in e})
+            continue
         if "specialKey" in e and e["specialKey"] in PAD_KEYS:
             tap(PAD_KEYS[e["specialKey"]], mods)
         if "key" in e:
             for ch in e["key"]:
                 if ch not in ascii_keys:
-                    extra.append(ch)
+                    continue  # only reached when kde is wrong; the caller checks typed_in_kde first
                 elif mods:
                     code, shifted = ascii_keys[ch]
                     tap(code, mods + ([42] if shifted and 42 not in mods else []))
@@ -899,36 +911,63 @@ def pad_events(events):
                         out[-1]["text"] += ch
                     else:
                         out.append({"text": ch})
-    return out, "".join(extra)
+    return out, slow
 
 
 def remote_input(body):
-    """{"events": [...]} sends keyboard and pointer events; {} (or none yet) just starts the agent."""
+    """{"events": [...]} sends keyboard and pointer events; {} (or none yet) just starts the agent.
+
+    "sent" in the answer means the whole batch is taken (the page keeps it and tries again
+    if not), so the keyboard's share is queued only once that's so.
+    """
     events = body.get("events", [])
     if not isinstance(events, list) or len(events) > INPUT_BATCH_LIMIT:
         raise Failure(f"events must be a list of at most {INPUT_BATCH_LIMIT}", 400)
     events = [input_event(e) for e in events]
-    touch, accents = pad_events(events)
+    touch, slow = pad_events(events, typed_in_kde(events))
     status = _touch.send(touch)
-    if accents:
-        _accents.append(accents)
-    _send_accents(status.get("sent") or not touch)
-    return status
+    if touch and not status.get("sent"):
+        return status
+    if slow:
+        _queue_for_kde(slow)
+    return {**status, "sent": True}
 
 
-_accents = []  # accents and emoji waiting for KDE Connect, which starts the first time they're typed
+# Typing KDE Connect is to do: it starts the first time it's needed, so this waits for it.
+_kde_queue = []
+_kde_lock = threading.Lock()
+_kde_worker = [None]
+KDE_QUEUE_LIMIT = 200
+KDE_WAIT = 90  # seconds to wait for KDE Connect before giving up on what's queued
 
 
-def _send_accents(wanted):
-    """Type what gamescope can't through KDE Connect, starting it if needed; kept until it's up."""
-    if not _accents or not wanted:
-        return
-    status = _input.send([{"key": "".join(_accents)}])
-    if status.get("sent"):
-        _accents.clear()
-    elif status.get("state") == "error":
-        _accents.clear()  # not coming; don't hold them forever
-    del _accents[:-50]
+def _queue_for_kde(events):
+    with _kde_lock:
+        _kde_queue.extend(events)
+        del _kde_queue[:-KDE_QUEUE_LIMIT]
+        if not (_kde_worker[0] and _kde_worker[0].is_alive()):
+            _kde_worker[0] = threading.Thread(target=_drain_kde, daemon=True)
+            _kde_worker[0].start()
+
+
+def _drain_kde():
+    """The only sender: in order, dropping from the queue just what went, until it's empty."""
+    deadline = time.time() + KDE_WAIT
+    while True:
+        with _kde_lock:
+            batch = _kde_queue[:INPUT_BATCH_LIMIT]
+            if not batch:
+                return
+        status = _input.send(batch)
+        with _kde_lock:
+            if status.get("sent"):
+                del _kde_queue[:len(batch)]
+                deadline = time.time() + KDE_WAIT
+            elif status.get("state") == "error" or time.time() > deadline:
+                _kde_queue.clear()  # not coming; don't hold it forever
+                return
+        if not status.get("sent"):
+            time.sleep(0.4)
 
 
 # ---- touch: the headset's panels, through gamescope's own input (frame_touch.py) ----
