@@ -304,19 +304,6 @@ class Connecting(unittest.TestCase):
         self.assertEqual(self.link.active_device()["alias"], "frame-bare")
         self.assertEqual(self.routes[-1][0], "frame-bare")
 
-    def test_devices_view_ranks_addresses_for_the_current_network(self):
-        # The page offers Use now only on the address a reconnect would pick: rank says which.
-        d = self.device("frame.tail1234.ts.net")
-        self.reg.add_address(d["id"], "192.168.1.40", kind="lan", first=True)
-        self.reg.record_success(d["id"], "frame.tail1234.ts.net", "n-home", 6.0)
-        self.link.state["network"] = {"id": "n-home", "name": "Home", "tailscale": {"up": True}}
-        view = next(x for x in fl.devices_view(self.link)["devices"] if x["id"] == d["id"])
-        self.assertEqual({a["host"]: a["rank"] for a in view["addresses"]},
-                         {"192.168.1.40": 1, "frame.tail1234.ts.net": 0})  # only Tailscale worked here so far
-        self.reg.record_success(d["id"], "192.168.1.40", "n-home", 1.0)
-        view = next(x for x in fl.devices_view(self.link)["devices"] if x["id"] == d["id"])
-        self.assertEqual([a["rank"] for a in view["addresses"]], [0, 1])  # now the user's order decides
-
     def test_removing_the_headset_frame_alias_named_doesnt_bring_it_back_bare(self):
         d = self.device("localhost")
         self.link.override = self.link.session_alias = "frame-t"
@@ -462,11 +449,19 @@ class Connecting(unittest.TestCase):
         d = self.device("::1", "127.0.0.1", "nothing.invalid")
         self.pin(d["id"])
         self.hosts({"::1": "wrong", "127.0.0.1": "ok"})
+        self.link.state["network"] = {"id": "n-home", "name": "Home", "tailscale": {"up": False}}
         self.link.test(d["id"])
         rows = {r["host"]: r for r in self.link.snapshot()["tests"][d["id"]]["rows"]}
         self.assertEqual(rows["127.0.0.1"]["ssh"], "ok")
         self.assertEqual(rows["::1"]["ssh"], "wrong")
         self.assertEqual(rows["nothing.invalid"]["state"], "unresolved")
+        done = self.link.snapshot()["tests"][d["id"]]
+        self.assertTrue(done["done"])
+        self.assertEqual(done["network"], "n-home")
+        # The address that passed has now worked on this network, so a reconnect tries it first:
+        # the page offers Use now from this order, which comes with the finished result.
+        self.assertEqual(done["order"][0], "127.0.0.1")
+        self.assertEqual(sorted(done["order"]), sorted(["::1", "127.0.0.1", "nothing.invalid"]))
         self.assertEqual(self.routes, [])
         self.assertTrue(all("ControlPath=none" in c for c in self.calls() if "-G" not in c))
 

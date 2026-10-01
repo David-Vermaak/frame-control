@@ -3876,7 +3876,7 @@ const SECTION_PAGE = { view: "home", device: "home", shots: "home", comfort: "ho
                        transfer: "tools", apps: "tools", power: "tools", macview: "tools", media: "tools", panels: "tools",
                        privacy: "settings", artworkSettings: "settings", assistant: "settings" };
 let page = "home";
-function showPage() {
+function showPage(e) {
   const id = location.hash.slice(1);
   const next = PAGES.includes(id) ? id : SECTION_PAGE[id] || "home";
   if (next !== page && page === "home" && live) toggleLive(false);  // don't stream video nobody is watching
@@ -3889,8 +3889,9 @@ function showPage() {
   const section = !PAGES.includes(id) && id && $(id);
   if (section) section.scrollIntoView(); else scrollToY(0);
   if (page === "tools") { loadMacView(); loadPanelSwitcher(); }
-  // Another computer may have added or removed a title: phones have no Refresh button.
-  if (page === "games" && prev !== "games" && link.s && link.s.phase === "connected") loadTitles();
+  // Another computer may have added or removed a title: phones have no Refresh button. Only
+  // on navigating here (e: the hashchange); at startup the first load is already on its way.
+  if (e && page === "games" && prev !== "games") loadTitles();
 }
 window.addEventListener("hashchange", showPage);
 // While a text field has focus, phones hide the bottom tab bar (see body.typing in the CSS).
@@ -4539,12 +4540,11 @@ function renderConnAddrs() {
   const refocus = cd.refocus ? [cd.refocus, "[data-ed]"]
     : held ? [held.dataset.host, ["[data-use]", "[data-mv='-1']", "[data-mv='1']", "[data-ed]", "[data-rm]"].find(q => document.activeElement.matches(q))] : null;
   cd.refocus = null;
-  // A reconnect picks the first-ranked address that answers: offer it when that's a tested
-  // address other than the one in use.
-  const used = d.addresses.find(a => a.host === inUse);
-  const best = used && d.addresses.filter(a => (tested.get(a.host) || {}).ssh === "ok")
-    .reduce((x, a) => !x || a.rank < x.rank ? a : x, null);
-  const switchTo = best && best.rank < used.rank ? best.host : null;
+  // A reconnect tries the addresses in the order the finished test reports for this network
+  // and picks the first that answers: offer Use now on that one, if it isn't the one in use.
+  const test = (s.tests || {})[d.id], order = test && test.done && test.network === (s.network || {}).id && test.order;
+  const pick = order && order.find(h => (tested.get(h) || {}).ssh === "ok");
+  const switchTo = pick && inUse && pick !== inUse && order.indexOf(inUse) > order.indexOf(pick) ? pick : null;
   list.innerHTML = d.addresses.map((a, i) => {
     if (cd.editing === a.host && cd.editDev === d.id) return `<div class="item addr"><div class="addr-edit conn-edit">
       <input type="text" id="ceHost" value="${esc(a.host)}" maxlength="253" aria-label="Address">
