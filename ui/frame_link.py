@@ -169,6 +169,7 @@ class Link:
         self.version = 0
         self.stopped = False
         self.kicks = []                 # reasons someone asked for a (re)connect
+        self.test_gen = {}              # device id -> its newest test of the addresses (see test())
         self.busy = False               # the loop is handling kicks
         self.state = {"phase": "idle", "reason": None, "device": None, "network": None, "stages": [],
                       "probes": [], "via": None, "error": None, "retry_at": None, "attempt": 0,
@@ -955,9 +956,13 @@ class Link:
         started = now()
         rows = [{"host": a["host"], "kind": a["kind"], "state": "waiting", "detail": "Waiting", "ip": None,
                  "rtt_ms": None, "ssh": None} for a in device["addresses"]]
+        with self.cond:
+            gen = self.test_gen[device_id] = self.test_gen.get(device_id, 0) + 1
 
         def put(**fields):
             with self.cond:
+                if gen != self.test_gen[device_id]:
+                    return  # a newer test has started: its results are the ones to show
                 self.state["tests"][device_id] = dict({"started": started, "done": False, "rows": rows}, **fields)
                 self.version += 1
                 self.cond.notify_all()
@@ -1006,15 +1011,7 @@ class Link:
             t.start()
         for t in threads:
             t.join(40)
-        # The order a reconnect on this network would try them in, now that this test has
-        # recorded where they work: the page offers Use now only on the one it would pick.
-        try:
-            fresh = self.reg.get(device_id)["addresses"]
-        except frame_devices.DeviceError:
-            fresh = []
-        order = [a["host"] for a, _ in frame_devices.order_addresses(
-            fresh, net.get("id"), bool((net.get("tailscale") or {}).get("up")))]
-        put(done=True, finished=now(), network=net.get("id"), order=order)
+        put(done=True, finished=now())
         self.devices_changed()
 
 
