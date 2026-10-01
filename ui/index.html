@@ -3827,7 +3827,7 @@ const SECTION_PAGE = { view: "home", device: "home", shots: "home", comfort: "ho
                        transfer: "tools", apps: "tools", power: "tools", macview: "tools", media: "tools", panels: "tools",
                        privacy: "settings", artworkSettings: "settings", assistant: "settings" };
 let page = "home";
-function showPage() {
+function showPage(e) {
   const id = location.hash.slice(1);
   const next = PAGES.includes(id) ? id : SECTION_PAGE[id] || "home";
   if (next !== page && page === "home" && live) toggleLive(false);  // don't stream video nobody is watching
@@ -3840,8 +3840,9 @@ function showPage() {
   const section = !PAGES.includes(id) && id && $(id);
   if (section) section.scrollIntoView(); else scrollToY(0);
   if (page === "tools") { loadMacView(); loadPanels(); }
-  // Another computer may have added or removed a title: phones have no Refresh button.
-  if (page === "games" && prev !== "games" && link.s && link.s.phase === "connected") loadTitles();
+  // Another computer may have added or removed a title: phones have no Refresh button. Only
+  // on navigating here (e: the hashchange); at startup the first load is already on its way.
+  if (e && page === "games" && prev !== "games") loadTitles();
 }
 window.addEventListener("hashchange", showPage);
 // While a text field has focus, phones hide the bottom tab bar (see body.typing in the CSS).
