@@ -491,6 +491,9 @@ class Connecting(unittest.TestCase):
             finally:
                 for e in release.values():
                     e.set()
+                for t in tests:
+                    if t.ident:  # started
+                        t.join(10)
         result = self.link.snapshot()["tests"][d["id"]]
         self.assertTrue(result["done"])
         self.assertEqual(result["rows"][0]["detail"], "test 2")
