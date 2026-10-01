@@ -107,9 +107,12 @@ wrote, a short reference shown after sending, and the diagnostics below. Your
 email address goes with it only if you tick **The maintainer may contact me
 with follow-up questions** (the report then carries `contact_followup: true`);
 it's filled in from **Contact email** below when you've agreed there. It has its own random id, so it isn't linked to
-your analytics events. With that box ticked it also carries this copy's contact
-id (`contact_id`, see below), so removing or changing the address later takes
-back the follow-up permission given with the report too.
+your analytics events. With that box ticked, the address also becomes your
+**Contact email** below with follow-up questions ticked (your update choice
+stays as it was), so you remove it there like any other. The report then also
+carries this copy's contact id and change number (`contact_id`, `contact_rev`,
+see below), so removing or changing the address later takes back the
+follow-up permission given with the report too.
 
 With **Include diagnostics** ticked (the default), the report adds:
 
@@ -167,9 +170,10 @@ log (in earlier contact events and problem reports), and sends a `withdraw`
 event with no address in it. The maintainer's list only uses the newest event from each copy, so from
 then on the address isn't listed for either choice. Unticking one choice
 works the same way for that choice. This also covers problem reports you sent
-from this copy with follow-up questions ticked: if your newest choice no longer
-agrees to follow-up questions at that address, the maintainer's inbox shows the
-permission as withdrawn and leaves the address out. If you're offline, the change waits on
+from this copy with follow-up questions ticked: if your newest choice since the
+report (by change number, not the clock) no longer agrees to follow-up
+questions at that address, the maintainer's inbox shows the permission as
+withdrawn and leaves the address out. If you're offline, the change waits on
 this computer and is sent when PostHog can be reached. The earlier event
 stays in PostHog until its data retention removes it; to have it deleted
 sooner, ask the maintainer (for example in a problem report).

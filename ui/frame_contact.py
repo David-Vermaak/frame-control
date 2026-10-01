@@ -79,14 +79,18 @@ def flag(body, key):
     return v is True
 
 
-def contact_id():
-    """This copy's contact id, kept from now on. A report with follow-up consent carries it, so
-    removing the address later takes back the follow-up permission given with the report too."""
-    with _lock:
+def from_report(email):
+    """Follow-up questions agreed to with a problem report: the address becomes the contact
+    email with that choice ticked (the update choice stays as it was), so it shows in Settings
+    and is removed the same way. Returns (contact id, rev) for the report to carry: a later
+    change from this copy has a higher rev, and the newest such change decides whether the
+    report's follow-up permission still stands, whatever the clocks say."""
+    s = load()
+    if s['email'].lower() != email.lower() or not s['followup']:
+        save({'email': s['email'] if s['email'].lower() == email.lower() else email,
+              'updates': s['updates'], 'followup': True})
         s = load()
-        if not FILE.exists():
-            _save(s)
-        return s['id']
+    return s['id'], s['rev']
 
 
 def state():

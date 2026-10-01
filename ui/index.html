@@ -1262,7 +1262,7 @@
     <label class="field">What happened?<textarea id="bugText" maxlength="5000" required minlength="10"
       placeholder="What you did, what happened, and what you expected."></textarea></label>
     <label class="popt"><input type="checkbox" id="bugFollowup"><b>The maintainer may contact me with follow-up questions</b>
-      <span class="sub">Optional. Your email address goes with this report only when this is ticked.</span></label>
+      <span class="sub">Optional. Your email address goes with this report only when this is ticked, and is kept as your contact email in Privacy &amp; updates, where you can remove it.</span></label>
     <label class="field">Your email address<input type="email" id="bugContact" maxlength="254" placeholder="you@example.com" disabled></label>
     <label class="popt"><input type="checkbox" id="bugDiag" checked><b>Include diagnostics</b>
       <span class="sub">Frame Control's version, your OS and the Frame's SteamOS build.</span></label>
@@ -4125,6 +4125,7 @@ $("bugForm").onsubmit = async e => {
     $("bugMsg").textContent = `Couldn't send it: ${err.message}. Try again later, or use Copy report.`;
     $("bugSend").disabled = false;
   }
+  if ($("bugFollowup").checked) api("/api/contact").then(renderContact).catch(() => {});
 };
 if (window.frameApp && window.frameApp.onReportProblem) window.frameApp.onReportProblem(openBugReport);
 

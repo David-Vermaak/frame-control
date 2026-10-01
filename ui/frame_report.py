@@ -116,11 +116,13 @@ def send(body):
     contact = str(body.get('contact') or '').strip() if followup else ''
     if followup and not frame_contact.valid_email(contact):
         raise ValueError('add your email address for follow-up questions, or untick that box')
+    # It becomes the contact email in Settings, where it's changed or removed like any other.
+    contact_id, contact_rev = frame_contact.from_report(contact) if followup else ('', 0)
     ref = uuid.uuid4().hex[:8].upper()
     props = {**frame_telemetry.common(), 'kind': kind, 'title': title, 'message': text,
              'contact': contact, 'contact_followup': followup, 'diagnostics': diag,
-             # Only with an address: so removing it later (Settings) also takes this permission back.
-             'contact_id': frame_contact.contact_id() if followup else '',
+             # Only with an address: a later change from this copy (higher rev) can take it back.
+             'contact_id': contact_id, 'contact_rev': contact_rev,
              'report_id': ref, 'steamos': str(frame.get('build') or '')[:120], 'level': 'report'}
     # Its own random id: a report can carry contact details, so it isn't linked to this copy's analytics.
     event = {'event': 'problem_report', 'distinct_id': str(uuid.uuid4()), 'uuid': str(uuid.uuid4()),
@@ -152,36 +154,43 @@ def inbox(days=30):
     res = frame_compat_db._posthog_query(
         "SELECT timestamp, properties.report_id, properties.kind, properties.title, properties.message, "
         "properties.contact, properties.app_version, properties.os, properties.steamos, properties.diagnostics, "
-        "properties.contact_followup, properties.contact_id "
+        "properties.contact_followup, properties.contact_id, properties.contact_rev "
         f"FROM events WHERE event = 'problem_report' AND timestamp > now() - INTERVAL {days} DAY "
         "ORDER BY timestamp DESC LIMIT 200")
-    rows = [r for r in res.get('results') or [] if isinstance(r, list) and len(r) == 12]
+    rows = [r for r in res.get('results') or [] if isinstance(r, list) and len(r) == 13]
     if any(r[11] and _yes(r[10]) for r in rows):
         later = frame_compat_db._posthog_query(
-            "SELECT distinct_id, properties.email, properties.followup, ifNull(toInt(properties.rev), 0), timestamp "
-            f"FROM events WHERE event = 'contact_consent' AND timestamp > now() - INTERVAL {days} DAY LIMIT 100000")
+            "SELECT distinct_id, properties.email, properties.followup, ifNull(toInt(properties.rev), 0) "
+            "FROM events WHERE event = 'contact_consent' LIMIT 100000")
         mark_withdrawn(rows, later.get('results') or [])
     return rows
 
 
 def mark_withdrawn(reports, consents):
     """Mark reports whose follow-up permission was taken back: the newest contact choice from
-    the same copy made at or after the report (same second counts, so a withdrawal wins) no
+    the same copy made after the report (a higher rev than it carries, not a later clock) no
     longer agrees to follow-up questions at that address."""
     newest = {}
     for c in consents:
-        if not isinstance(c, list) or len(c) != 5:
+        if not isinstance(c, list) or len(c) != 4:
             continue
-        cid, email, followup, rev, ts = c
-        newest.setdefault(str(cid), []).append(((int(rev or 0), str(ts or '')), str(email or ''), followup))
+        cid, email, followup, rev = c
+        try:
+            rev = int(rev or 0)
+        except (TypeError, ValueError):
+            continue
+        if rev > newest.get(str(cid), (-1,))[0]:
+            newest[str(cid)] = (rev, str(email or ''), followup)
     for r in reports:
         if not (r[11] and _yes(r[10])):
             continue
-        after = [c for c in newest.get(str(r[11]), []) if c[0][1] >= str(r[0] or '')]
-        if after:
-            _, email, followup = max(after, key=lambda c: c[0])
-            if not (_yes(followup) and email.strip().lower() == str(r[5] or '').strip().lower()):
-                r[10] = 'withdrawn'
+        try:
+            sent_at = int(r[12] or 0)
+        except (TypeError, ValueError):
+            sent_at = 0
+        rev, email, followup = newest.get(str(r[11]), (-1, '', None))
+        if rev > sent_at and not (_yes(followup) and email.strip().lower() == str(r[5] or '').strip().lower()):
+            r[10] = 'withdrawn'
 
 
 def _yes(v):

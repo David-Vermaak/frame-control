@@ -249,69 +249,92 @@ class Contact(Base):
 
     # ---- reports and the maintainer's list
 
+    def reports(self):
+        return [e["properties"] for e in self.events() if e["event"] == "problem_report"]
+
     def test_a_report_carries_the_address_only_with_follow_up_consent(self):
         fr.send({**REPORT, "contact": "me@example.com"})
+        self.assertFalse(fc.FILE.exists())  # no follow-up: nothing kept, nothing linked
         fr.send({**REPORT, "contact": "me@example.com", "contactFollowup": True})
-        without, with_ = (e["properties"] for e in self.events())
-        self.assertEqual((without["contact"], without["contact_followup"]), ("", False))
+        without, with_ = self.reports()
+        self.assertEqual((without["contact"], without["contact_followup"], without["contact_id"]), ("", False, ""))
         self.assertEqual((with_["contact"], with_["contact_followup"]), ("me@example.com", True))
+        self.assertEqual((with_["contact_id"], with_["contact_rev"]), (fc.load()["id"], fc.load()["rev"]))
+        self.assertNotEqual(with_["contact_id"], tm.settings()["id"])  # not the analytics id
         with self.assertRaisesRegex(ValueError, "email address"):
             fr.send({**REPORT, "contact": "discord:me", "contactFollowup": True})
 
-    def test_a_report_with_follow_up_carries_the_kept_contact_id(self):
-        fr.send({**REPORT, "contact": "me@example.com"})
-        self.assertFalse(fc.FILE.exists())  # no follow-up, nothing kept or linked
+    def test_follow_up_given_with_a_report_is_kept_and_removed_in_settings(self):
         fr.send({**REPORT, "contact": "me@example.com", "contactFollowup": True})
-        without, with_ = (e["properties"] for e in self.events())
-        self.assertEqual(without["contact_id"], "")
-        self.assertEqual(with_["contact_id"], fc.load()["id"])
-        self.assertNotEqual(with_["contact_id"], tm.settings()["id"])  # not the analytics id
-        fc.save({"email": "me@example.com", "updates": True})
-        self.assertEqual(self.events()[-1]["distinct_id"], with_["contact_id"])  # same copy, same id
+        s = fc.state()
+        self.assertEqual((s["email"], s["updates"], s["followup"]), ("me@example.com", False, True))
+        consent = [e for e in self.events() if e["event"] == "contact_consent"]
+        self.assertEqual([(e["properties"]["action"], e["properties"]["rev"]) for e in consent], [("set", 1)])
+        self.assertEqual(consent[0]["distinct_id"], self.reports()[0]["contact_id"])
+        fr.send({**REPORT, "contact": "ME@example.com", "contactFollowup": True})  # already agreed
+        self.assertEqual(len([e for e in self.events() if e["event"] == "contact_consent"]), 1)
+        self.assertEqual(self.reports()[1]["contact_rev"], 1)
+        fc.save({"email": ""})  # Remove my email
+        last = self.events()[-1]
+        self.assertEqual((last["properties"]["action"], last["properties"]["email"], last["properties"]["rev"]),
+                         ("withdraw", "", 2))
+        logged = [e["properties"].get("contact") for e in tm._read_lines(tm.SENT) if e["event"] == "problem_report"]
+        self.assertEqual(logged, ["<removed>", "<removed>"])
 
-    def report_row(self, ts, contact="me@example.com", followup=True, cid="copy"):
-        return [ts, "AB12CD34", "bug", "RDP", "It never connects.", contact, "0.4.0", "Windows", "", "", followup, cid]
+    def test_a_report_to_another_address_keeps_the_update_choice(self):
+        fc.save({"email": "old@example.com", "updates": True})
+        fr.send({**REPORT, "contact": "new@example.com", "contactFollowup": True})
+        s = fc.state()
+        self.assertEqual((s["email"], s["updates"], s["followup"]), ("new@example.com", True, True))
+        self.assertEqual(self.reports()[0]["contact_rev"], 2)
 
-    def test_a_later_withdrawal_takes_back_a_reports_follow_up_permission(self):
-        reports = [self.report_row("2026-09-10T10:00:00Z"),                      # removed later
-                   self.report_row("2026-09-12T10:00:00Z", cid="other"),         # another copy
-                   self.report_row("2026-09-20T10:00:00Z"),                      # after the withdrawal
-                   self.report_row("2026-09-11T10:00:00Z", cid="", followup=True),  # sent before contact_id
-                   self.report_row("2026-09-15T10:00:00Z", cid="same-second")]
-        consents = [["copy", "me@example.com", True, 1, "2026-09-01T10:00:00Z"],
-                    ["copy", "", False, 2, "2026-09-14T10:00:00Z"],
-                    ["other", "me@example.com", True, 1, "2026-09-13T10:00:00Z"],   # still agrees
-                    ["same-second", "", False, 1, "2026-09-15T10:00:00Z"], ["short"]]
+    def report_row(self, contact="me@example.com", followup=True, cid="copy", rev=1):
+        return ["2026-09-10T10:00:00Z", "AB12CD34", "bug", "RDP", "It never connects.", contact,
+                "0.4.0", "Windows", "", "", followup, cid, rev]
+
+    def test_a_later_change_takes_back_a_reports_follow_up_permission(self):
+        reports = [self.report_row(),                                   # removed later
+                   self.report_row(cid="other"),                        # another copy, still agrees
+                   self.report_row(rev=3),                              # sent after the removal
+                   self.report_row(cid="moved"),                        # address changed later
+                   self.report_row(cid="news-only"),                    # follow-up unticked later
+                   self.report_row(contact="Me@Example.com", cid="case"),  # same address, any case
+                   self.report_row(cid="", followup=True),              # no contact id: left alone
+                   self.report_row(cid="bad", rev="x")]                 # malformed rev: treated as 0
+        consents = [["copy", "me@example.com", True, 1], ["copy", "", False, 2],
+                    ["other", "me@example.com", True, 1], ["other", "me@example.com", True, 2],
+                    ["moved", "new@example.com", True, 2], ["news-only", "me@example.com", False, 2],
+                    ["case", "me@example.com", True, 2], ["bad", "", False, 1], ["short"], ["x", "", False, "?"]]
         fr.mark_withdrawn(reports, consents)
-        self.assertEqual([r[10] for r in reports], ["withdrawn", True, True, True, "withdrawn"])
+        self.assertEqual([r[10] for r in reports],
+                         ["withdrawn", True, True, "withdrawn", "withdrawn", True, True, "withdrawn"])
 
-    def test_changing_the_address_or_unticking_follow_up_takes_it_back_too(self):
-        reports = [self.report_row("2026-09-10T10:00:00Z", cid="moved"),
-                   self.report_row("2026-09-10T10:00:00Z", cid="news-only"),
-                   self.report_row("2026-09-10T10:00:00Z", contact="Me@Example.com", cid="case")]
-        consents = [["moved", "new@example.com", True, 1, "2026-09-11T10:00:00Z"],
-                    ["news-only", "me@example.com", False, 1, "2026-09-11T10:00:00Z"],
-                    ["case", "me@example.com", True, 1, "2026-09-11T10:00:00Z"],
-                    # rev, not the clock, decides which later choice is newest
-                    ["case", "", False, 2, "2026-09-11T09:59:00Z"]]
-        fr.mark_withdrawn(reports, consents)
-        self.assertEqual([r[10] for r in reports], ["withdrawn", "withdrawn", "withdrawn"])
-        reports[2][10] = True
-        fr.mark_withdrawn(reports[2:], consents[2:3])
-        self.assertIs(reports[2][10], True)  # same address, any case, still agrees
+    def test_the_change_number_decides_not_the_clock(self):
+        """The clock went back between the report and the removal: the removal still counts."""
+        fr.send({**REPORT, "contact": "me@example.com", "contactFollowup": True})
+        with mock.patch.object(fc.time, "gmtime", return_value=time.gmtime(0)):
+            fc.save({"email": ""})
+        report = self.reports()[0]
+        row = self.report_row(cid=report["contact_id"], rev=report["contact_rev"])
+        consents = [[e["distinct_id"], e["properties"]["email"], e["properties"]["followup"], e["properties"]["rev"]]
+                    for e in self.events() if e["event"] == "contact_consent"]
+        self.assertEqual(self.events()[-1]["timestamp"], "1970-01-01T00:00:00Z")
+        fr.mark_withdrawn([row], consents)
+        self.assertEqual(row[10], "withdrawn")
 
     def test_the_inbox_shows_withdrawn_follow_up_without_the_address(self):
-        reports = [self.report_row("2026-09-10T10:00:00Z"), ["short"]]
-        consents = [["copy", "", False, 2, "2026-09-14T10:00:00Z"]]
+        reports = [self.report_row(), ["short"]]
+        consents = [["copy", "", False, 2]]
         with mock.patch.object(db, "_posthog_query", side_effect=[{"results": reports}, {"results": consents}]) as q, \
              mock.patch.object(sys, "argv", ["frame_report.py", "inbox", "30"]), \
              mock.patch("builtins.print") as out:
             fr.main()
+        self.assertIn("properties.contact_rev", q.call_args_list[0].args[0])
         self.assertIn("event = 'contact_consent'", q.call_args_list[1].args[0])
         printed = " ".join(str(c.args[0]) for c in out.call_args_list if c.args)
         self.assertIn("follow-up permission since withdrawn", printed)
         self.assertNotIn("me@example.com", printed)
-        with mock.patch.object(db, "_posthog_query", return_value={"results": [self.report_row("x", followup=False)]}) as q:
+        with mock.patch.object(db, "_posthog_query", return_value={"results": [self.report_row(followup=False)]}) as q:
             fr.inbox()
         self.assertEqual(q.call_count, 1)  # nothing to reconcile, no second query
 

@@ -391,15 +391,16 @@ class ReportProblem(Base):
     def test_send_is_a_private_posthog_event_whatever_the_settings(self):
         got = self.serve()
         tm.update_settings({"usage": False})  # analytics off: a deliberate report still goes
-        res = fr.send({"kind": "idea", "title": "Live view stops", "message": "It stops after a minute.",
-                       "contact": "me@example.com", "contactFollowup": True})
+        with mock.patch.object(fr.frame_contact, "from_report", return_value=("contact-id", 1)):  # test_contact
+            res = fr.send({"kind": "idea", "title": "Live view stops", "message": "It stops after a minute.",
+                           "contact": "me@example.com", "contactFollowup": True})
         path, body = got[0]
         event = body["batch"][0]
         self.assertEqual((path, body["api_key"], event["event"]), ("/batch/", "phc_test", "problem_report"))
         props = event["properties"]
         self.assertEqual((props["kind"], props["title"], props["message"], props["contact"], props["report_id"]),
                          ("idea", "Live view stops", "It stops after a minute.", "me@example.com", res["id"]))
-        self.assertIs(props["contact_followup"], True)
+        self.assertEqual((props["contact_followup"], props["contact_id"], props["contact_rev"]), (True, "contact-id", 1))
         self.assertEqual((props["$process_person_profile"], props["$geoip_disable"]), (False, True))
         self.assertNotEqual(event["distinct_id"], tm.settings()["id"])  # not linked to the analytics
         self.assertIn(res["id"], res["message"])
@@ -422,8 +423,8 @@ class ReportProblem(Base):
 
     def test_the_inbox_skips_malformed_reports(self):
         good = ["2026-09-28T09:50:00Z", "AB12CD34", "bug", "Live view stops", "It stops.", None,
-                "0.4.0", "macOS", "", "", None, None]
-        rows = [["2026-09-28T10:00:00Z", "X", "bug", "Hand-made", None, None, None, None, None, None, None, None],
+                "0.4.0", "macOS", "", "", None, None, None]
+        rows = [["2026-09-28T10:00:00Z", "X", "bug", "Hand-made", None, None, None, None, None, None, None, None, None],
                 ["short"], good]
         with mock.patch.object(db, "_posthog_query", return_value={"results": rows}), \
              mock.patch.object(sys, "argv", ["frame_report.py", "inbox"]), \
