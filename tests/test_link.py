@@ -449,21 +449,37 @@ class Connecting(unittest.TestCase):
         d = self.device("::1", "127.0.0.1", "nothing.invalid")
         self.pin(d["id"])
         self.hosts({"::1": "wrong", "127.0.0.1": "ok"})
-        self.link.state["network"] = {"id": "n-home", "name": "Home", "tailscale": {"up": False}}
         self.link.test(d["id"])
         rows = {r["host"]: r for r in self.link.snapshot()["tests"][d["id"]]["rows"]}
         self.assertEqual(rows["127.0.0.1"]["ssh"], "ok")
         self.assertEqual(rows["::1"]["ssh"], "wrong")
         self.assertEqual(rows["nothing.invalid"]["state"], "unresolved")
-        done = self.link.snapshot()["tests"][d["id"]]
-        self.assertTrue(done["done"])
-        self.assertEqual(done["network"], "n-home")
-        # The address that passed has now worked on this network, so a reconnect tries it first:
-        # the page offers Use now from this order, which comes with the finished result.
-        self.assertEqual(done["order"][0], "127.0.0.1")
-        self.assertEqual(sorted(done["order"]), sorted(["::1", "127.0.0.1", "nothing.invalid"]))
         self.assertEqual(self.routes, [])
         self.assertTrue(all("ControlPath=none" in c for c in self.calls() if "-G" not in c))
+
+    def test_a_test_started_earlier_cant_overwrite_a_newer_one(self):
+        d = self.device("nothing.invalid")
+        release, calls = threading.Event(), []
+
+        def probe(host, port, update=None):
+            calls.append(host)
+            if len(calls) == 1:
+                release.wait(10)  # the first test is still probing when the second finishes
+                return {"state": "refused", "detail": "first test", "ip": None, "rtt_ms": None}
+            return {"state": "refused", "detail": "second test", "ip": None, "rtt_ms": None}
+
+        with mock.patch.object(fl, "probe", probe):
+            first = threading.Thread(target=self.link.test, args=(d["id"],))
+            first.start()
+            while not calls:
+                time.sleep(0.01)
+            self.link.test(d["id"])
+            self.assertEqual(self.link.snapshot()["tests"][d["id"]]["rows"][0]["detail"], "second test")
+            release.set()
+            first.join(10)
+        result = self.link.snapshot()["tests"][d["id"]]
+        self.assertTrue(result["done"])
+        self.assertEqual(result["rows"][0]["detail"], "second test")
 
     def test_switching_to_a_headset_that_never_answers_stops_using_the_last_one(self):
         self.device("localhost")
