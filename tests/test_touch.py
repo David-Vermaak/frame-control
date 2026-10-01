@@ -147,6 +147,14 @@ class Apply(unittest.TestCase):
         self.assertFalse(self.t.STALE[0])
         self.assertEqual(self.said[-1][1].get("stale"), None)
 
+    def test_stale_survives_a_bare_release(self):
+        gs = FakeGamescope()
+        panel = self.t.apply(gs, {"button": "left", "down": True, "window": 99, "display": ":1"}, None)
+        self.assertTrue(self.t.STALE[0])
+        self.t.apply(gs, {"button": "left", "down": False}, panel)  # the page's release names no panel
+        self.assertTrue(self.t.STALE[0])
+        self.assertEqual(self.said[-1][1].get("stale"), True)
+
     def test_same_window_id_on_the_other_display_is_another_panel(self):
         gs = FakeGamescope()
         self.t.apply(gs, {"fx": 0.5, "fy": 0.5, "window": 7, "display": ":0"}, None)

@@ -369,8 +369,10 @@ def apply(gs, event, panel):
         say("ready", focus=panel.get("window"), display=panel.get("display"), stale=True)  # the page re-syncs
         STALE[0] = True
         return panel
-    if STALE[0] and not stale:
+    release = event.get("down") is False and ("button" in event or "key" in event)
+    if STALE[0] and not stale and not (release and "window" not in event):
         # Anything that goes through (a trackpad move names no panel) means caught up: stop re-syncing.
+        # A bare release doesn't: the page leaves the panel off releases, so it says nothing about focus.
         STALE[0] = False
         say("ready", focus=(panel or {}).get("window"), display=(panel or {}).get("display"))
     if "fx" in event and panel and panel.get("window"):
