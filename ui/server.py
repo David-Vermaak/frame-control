@@ -858,9 +858,10 @@ PAD_NOTCH = 15  # scroll units for one wheel notch
 
 def typed_in_kde(events):
     """Whether these events must go the KDE Connect way: they hold an accent or emoji, or
-    earlier ones are still waiting there (typing must stay in order, so it can't be split)."""
+    earlier ones are queued, being sent or still being typed there (typing must stay in
+    order, so it can't be split between the two ways)."""
     with _kde_lock:
-        waiting = bool(_kde_queue)
+        waiting = bool(_kde_queue) or time.time() < _kde_until
     return waiting or any(ch not in frame_touch.ASCII for e in events for ch in e.get("key", ""))
 
 
@@ -928,46 +929,74 @@ def remote_input(body):
     status = _touch.send(touch)
     if touch and not status.get("sent"):
         return status
+    if touch:
+        _note_typed(touch)
     if slow:
         _queue_for_kde(slow)
     return {**status, "sent": True}
 
 
 # Typing KDE Connect is to do: it starts the first time it's needed, so this waits for it.
+# Nothing on the Frame says when typed text has landed, so each way holds the other back
+# for as long as what it was given should take (a short margin on a time estimate).
 _kde_queue = []
 _kde_lock = threading.Lock()
 _kde_worker = [None]
+_kde_until = 0.0     # keys typed through KDE Connect should have landed by then
+_typed_until = 0.0   # likewise for gamescope's
 KDE_QUEUE_LIMIT = 200
 KDE_WAIT = 90  # seconds to wait for KDE Connect before giving up on what's queued
+TYPING_SETTLE = 0.6  # seconds past the estimate
+
+
+def _note_typed(touch):
+    """Gamescope types a key every ~8 ms; remember when what was just sent should be done."""
+    global _typed_until
+    keys = sum(len(e["text"]) if "text" in e else 1 for e in touch if "text" in e or "key" in e)
+    if keys:
+        with _kde_lock:
+            _typed_until = max(_typed_until, time.time()) + keys * 0.012 + TYPING_SETTLE
 
 
 def _queue_for_kde(events):
     with _kde_lock:
         _kde_queue.extend(events)
         del _kde_queue[:-KDE_QUEUE_LIMIT]
-        if not (_kde_worker[0] and _kde_worker[0].is_alive()):
+        if _kde_worker[0] is None:
             _kde_worker[0] = threading.Thread(target=_drain_kde, daemon=True)
             _kde_worker[0].start()
 
 
 def _drain_kde():
-    """The only sender: in order, dropping from the queue just what went, until it's empty."""
+    """The only sender, in order. A batch leaves the queue while it's being sent (the queue
+    can be trimmed meanwhile) and goes back to the front if it didn't go."""
+    global _kde_until
     deadline = time.time() + KDE_WAIT
     while True:
         with _kde_lock:
             batch = _kde_queue[:INPUT_BATCH_LIMIT]
+            del _kde_queue[:len(batch)]
             if not batch:
+                _kde_worker[0] = None  # retired under the lock, so a new request starts another
                 return
+            wait = _typed_until - time.time()
+            _kde_until = time.time() + 3600  # held while in flight
+        if wait > 0:
+            time.sleep(wait)  # gamescope's typing, from just before, goes first
         status = _input.send(batch)
         with _kde_lock:
             if status.get("sent"):
-                del _kde_queue[:len(batch)]
+                _kde_until = time.time() + len(batch) * 0.03 + TYPING_SETTLE
                 deadline = time.time() + KDE_WAIT
-            elif status.get("state") == "error" or time.time() > deadline:
+                continue
+            _kde_until = 0.0
+            if status.get("state") == "error" or time.time() > deadline:
                 _kde_queue.clear()  # not coming; don't hold it forever
+                _kde_worker[0] = None
                 return
-        if not status.get("sent"):
-            time.sleep(0.4)
+            _kde_queue[:0] = batch
+            del _kde_queue[:-KDE_QUEUE_LIMIT]  # as when queuing: the oldest go first
+        time.sleep(0.4)
 
 
 # ---- touch: the headset's panels, through gamescope's own input (frame_touch.py) ----

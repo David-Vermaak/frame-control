@@ -690,11 +690,17 @@ class PadDelivery(unittest.TestCase):
         self.s = server
         self.saved = (server._touch, server._input, server.KDE_WAIT)
         server._touch, server._input = self.Agent(), self.Agent()
-        server._kde_queue.clear()
+        self.reset()
 
     def tearDown(self):
         self.s._touch, self.s._input, self.s.KDE_WAIT = self.saved
+        self.settle()
+        self.reset()
+
+    def reset(self):
         self.s._kde_queue.clear()
+        self.s._kde_until = self.s._typed_until = 0.0
+        self.s._kde_worker[0] = None
 
     def settle(self):
         worker = self.s._kde_worker[0]
@@ -755,3 +761,50 @@ class PadDelivery(unittest.TestCase):
         self.assertLessEqual(len(self.s._kde_queue), self.s.KDE_QUEUE_LIMIT)
         self.settle()
         self.assertEqual(self.s._kde_queue, [])
+
+    def test_ascii_just_after_an_accent_stays_behind_it(self):
+        self.s.remote_input({"events": [{"key": "é"}]})
+        self.settle()
+        self.s.remote_input({"events": [{"key": "x"}]})  # KDE Connect may still be typing the é
+        self.settle()
+        self.assertEqual(self.s._touch.got, [])
+        self.assertEqual(self.typed(), [{"key": "é"}, {"key": "x"}])
+
+    def test_accent_just_after_gamescope_text_waits_for_it(self):
+        self.s.remote_input({"events": [{"key": "x" * 50}]})
+        self.assertEqual(self.s._touch.got, [[{"text": "x" * 50}]])
+        start = time.time()
+        self.s.remote_input({"events": [{"key": "é"}]})
+        self.settle()
+        self.assertGreater(time.time() - start, 0.5)  # the 50 keys' time, plus a margin
+        self.assertEqual(self.typed(), [{"key": "é"}])
+
+    def test_trimming_while_sending_doesnt_drop_unsent_events(self):
+        slow = self.Agent()
+        gate = threading.Event()
+        send = slow.send
+
+        def held(events):
+            gate.wait(5)
+            return send(events)
+        slow.send = held
+        self.s._input = slow
+        self.s.remote_input({"events": [{"key": "é"}] * 150})
+        time.sleep(0.2)  # the worker has taken its 150 and is mid-send
+        self.s.remote_input({"events": [{"key": "ü"}] * 150})
+        gate.set()
+        self.settle()
+        sent = self.typed()
+        self.assertEqual(sent[:150], [{"key": "é"}] * 150)
+        self.assertEqual(sent[150:], [{"key": "ü"}] * 150)  # none of the new ones went missing
+
+    def test_input_queued_as_the_worker_finishes_is_still_sent(self):
+        for _ in range(40):
+            self.reset()
+            self.s._input.got.clear()
+            self.s.remote_input({"events": [{"key": "é"}]})
+            time.sleep(0.002)
+            self.s.remote_input({"events": [{"key": "ü"}]})
+            self.settle()
+            self.assertEqual(self.s._kde_queue, [])
+            self.assertEqual(self.typed(), [{"key": "é"}, {"key": "ü"}])
