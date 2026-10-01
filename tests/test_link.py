@@ -304,6 +304,19 @@ class Connecting(unittest.TestCase):
         self.assertEqual(self.link.active_device()["alias"], "frame-bare")
         self.assertEqual(self.routes[-1][0], "frame-bare")
 
+    def test_devices_view_ranks_addresses_for_the_current_network(self):
+        # The page offers Use now only on the address a reconnect would pick: rank says which.
+        d = self.device("frame.tail1234.ts.net")
+        self.reg.add_address(d["id"], "192.168.1.40", kind="lan", first=True)
+        self.reg.record_success(d["id"], "frame.tail1234.ts.net", "n-home", 6.0)
+        self.link.state["network"] = {"id": "n-home", "name": "Home", "tailscale": {"up": True}}
+        view = next(x for x in fl.devices_view(self.link)["devices"] if x["id"] == d["id"])
+        self.assertEqual({a["host"]: a["rank"] for a in view["addresses"]},
+                         {"192.168.1.40": 1, "frame.tail1234.ts.net": 0})  # only Tailscale worked here so far
+        self.reg.record_success(d["id"], "192.168.1.40", "n-home", 1.0)
+        view = next(x for x in fl.devices_view(self.link)["devices"] if x["id"] == d["id"])
+        self.assertEqual([a["rank"] for a in view["addresses"]], [0, 1])  # now the user's order decides
+
     def test_removing_the_headset_frame_alias_named_doesnt_bring_it_back_bare(self):
         d = self.device("localhost")
         self.link.override = self.link.session_alias = "frame-t"

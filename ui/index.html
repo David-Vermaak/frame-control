@@ -219,7 +219,7 @@
   /* Every drop-down dark, like the fields; the panels' own rules below still size them. */
   select { background: rgba(0,0,0,.28); color: var(--text); border: 1px solid transparent; border-radius: 3px;
            padding: 7px 8px; font: inherit; font-size: 13px; max-width: 100%; min-width: 0; }
-  select:focus { outline: none; border-color: var(--blue); }
+  select:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
   option { background: #1e2329; color: var(--text); }
   .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 
@@ -294,6 +294,7 @@
          padding: 16px; border: 1px solid rgba(255,255,255,.1); border-radius: 6px; background: #1e2329; color: var(--text);
          box-shadow: 0 20px 60px rgba(0,0,0,.6); -webkit-app-region: no-drag; }
   .pop .shelf-head { margin-bottom: 10px; }
+  .pop .shelf-head h2 { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .pop .stats { margin-top: 12px; }
   .pop .chips { margin-top: 12px; }
   .batt .state { font-weight: 700; font-size: 12.5px; letter-spacing: 1.2px; text-transform: uppercase; }
@@ -699,7 +700,7 @@
     .detail-layout { display:flex; flex-direction:column; gap:24px; } .detail-buy { order:-1; width:100%; }
     .sources-dialog { padding:24px; } .sources-dialog .store-close { margin:-12px -12px -20px 0; }
   }
-  @media(prefers-reduced-motion:reduce) { html { scroll-behavior:auto; } .store-card, .source-toggle::after { transition:none; } .store-skeleton { animation:none; } }
+  @media(prefers-reduced-motion:reduce) { html, #scroll { scroll-behavior:auto; } .store-card, .source-toggle::after { transition:none; } .store-skeleton { animation:none; } }
 
 </style>
 </head>
@@ -1787,9 +1788,8 @@ function battery(b, power) {
   $("battChip").innerHTML = pct == null ? "—" :
     `<svg width="22" height="12" viewBox="0 0 22 12" aria-hidden="true"><rect x=".75" y=".75" width="18" height="10.5" rx="2" fill="none" stroke="#8f98a0" stroke-width="1.5"/><rect x="19.8" y="3.5" width="1.8" height="5" rx=".6" fill="#8f98a0"/><rect x="2.5" y="2.5" width="${(14.5 * chipPct / 100).toFixed(1)}" height="7" rx="1" fill="${color}"/></svg>${bolt}<span>${pct}%</span>`;
   $("battChip").title = `${label}. Click for the headset's details.`;
-  $("battChip").setAttribute("aria-label", `Battery ${pct}%, ${label}. Headset details`);
-  $("battChip").hidden = pct == null;
-  if (pct == null) closeDevPop();
+  $("battChip").setAttribute("aria-label", pct == null ? "Headset details" : `Battery ${pct}%, ${label}. Headset details`);
+  $("battChip").hidden = false;  // even without a battery reading: it's the way to the headset's details
 }
 // hidePopover throws where the menu isn't open (and doesn't exist in older browsers).
 function closeDevPop() { try { $("devPop").hidePopover(); } catch {} }
@@ -1798,13 +1798,14 @@ $("devPop").addEventListener("beforetoggle", e => {
   if (e.newState !== "open") return;
   const r = $("battChip").getBoundingClientRect();
   $("devPop").style.top = `${Math.round(r.bottom + 8)}px`;
-  $("devPop").style.right = `${Math.max(12, Math.round(innerWidth - r.right))}px`;
+  const width = Math.min(390, innerWidth - 24);  // as .pop's CSS width
+  $("devPop").style.right = `${Math.max(12, Math.min(Math.round(innerWidth - r.right), innerWidth - width - 12))}px`;
 });
 
 function render(s) {
   renderPerformance(s);
   battery(s.battery, s.power);
-  $("devPopTitle").textContent = window.connName || "Headset";
+  $("devPopTitle").textContent = $("devPopTitle").title = window.connName || "Headset";
   $("devName").textContent = `${s.hostname} · ${s.ip ?? "no IP"}`;
   $("updated").textContent = new Date(s.time * 1000).toLocaleTimeString();
   const h = s.disk.home;
@@ -4394,7 +4395,7 @@ window.connBanner = renderBanner;
 
 // The pill's dialog: how it's connected, and the headset's addresses, which can be added,
 // edited and reordered right here. The steps it took stay folded away while all is well.
-const cd = { editing: null, sig: "", phase: null };
+const cd = { editing: null, editDev: null, session: 0, sig: "", phase: null };
 function renderConnDlg() {
   const s = link.s;
   if (!s || !$("connDlg").open) return;
@@ -4432,7 +4433,7 @@ const sameSubnet = (a, b) => !!a && !!b && a.split(".").slice(0, 3).join(".") ==
 // saving it lets Frame Control connect directly at home rather than over Tailscale.
 function lanOffer(s, d) {
   const ip = state && state.ip, n = s.network || {};
-  if (!d || d.transient || !ip || !PRIVATE_V4.test(ip) || !sameSubnet(ip, n.local_ip)) return null;
+  if (!d || d.transient || !ip || !PRIVATE_V4.test(ip) || ip === n.local_ip || !sameSubnet(ip, n.local_ip)) return null;
   if (d.addresses.some(a => a.host === ip) || (s.probes || []).some(p => p.ip === ip && p.kind !== "tailscale")) return null;
   const named = dv.data && dv.data.networks.find(x => x.id === n.id && x.name);
   return { ip, label: named ? named.name : n.ssid || "" };
@@ -4443,14 +4444,15 @@ function renderConnAddrs() {
   const offer = s && lanOffer(s, d);
   $("connOffer").hidden = !offer;
   if (offer) {
-    const key = offer.ip + offer.label;
+    const key = JSON.stringify([d.id, offer.ip, offer.label]);
     if ($("connOffer").dataset.key !== key) {
       $("connOffer").dataset.key = key;
-      $("connOffer").innerHTML = `<div class="grow">The Frame is at <b>${esc(offer.ip)}</b> on this network. Add it for this
-        network? Frame Control will then connect to it directly whenever you're here.</div>
+      $("connOffer").innerHTML = `<div class="grow">The Frame is at <b>${esc(offer.ip)}</b> on this network. Add it, and
+        Frame Control tries it first here, reaching the headset directly.</div>
         <button class="small action" id="connOfferAdd">Add ${esc(offer.ip)}</button>`;
+      // First in the list: on this network it then wins over the address in use now.
       $("connOfferAdd").onclick = e => devAction(`Add ${offer.ip}`, { action: "address-add", id: d.id, host: offer.ip,
-                                                                     kind: "lan", label: offer.label }, e.currentTarget)
+                                                                     kind: "lan", label: offer.label, first: true }, e.currentTarget)
         .then(res => res && testQuietly(d.id));
     }
   } else $("connOffer").dataset.key = "";
@@ -4465,13 +4467,24 @@ function renderConnAddrs() {
   const tested = new Map((((s.tests || {})[d.id] || {}).rows || []).map(r => [r.host, r]));
   const inUse = s.phase === "connected" && s.via ? s.via.host : null;
   const sig = JSON.stringify([d.id, d.addresses, [...probes.values(), ...tested.values()].map(p => [p.host, p.state, p.ssh, p.detail]), cd.editing, inUse]);
-  // Leave the rows alone when nothing has changed, and while an address is being edited.
-  if (sig === cd.sig || cd.editing && list.contains(document.activeElement) && document.activeElement.matches("input")) return;
+  // Leave the rows alone when nothing has changed, and while an address is being edited: what's
+  // typed stays put until it's saved or cancelled, wherever the focus is.
+  if (sig === cd.sig || cd.editing && $("ceHost") && cd.editDev === d.id && d.addresses.some(a => a.host === cd.editing)) return;
   cd.sig = sig;
-  const refocus = cd.refocus;  // after an edit, back to that row's Edit button
+  // Rebuilding the rows would drop the keyboard focus: put it back on the same button of the
+  // same address (after an edit, on that row's Edit button).
+  const held = list.contains(document.activeElement) && document.activeElement.closest("[data-host]");
+  const refocus = cd.refocus ? [cd.refocus, "[data-ed]"]
+    : held ? [held.dataset.host, ["[data-use]", "[data-mv='-1']", "[data-mv='1']", "[data-ed]", "[data-rm]"].find(q => document.activeElement.matches(q))] : null;
   cd.refocus = null;
+  // A reconnect picks the first-ranked address that answers: offer it when that's a tested
+  // address other than the one in use.
+  const used = d.addresses.find(a => a.host === inUse);
+  const best = used && d.addresses.filter(a => (tested.get(a.host) || {}).ssh === "ok")
+    .reduce((x, a) => !x || a.rank < x.rank ? a : x, null);
+  const switchTo = best && best.rank < used.rank ? best.host : null;
   list.innerHTML = d.addresses.map((a, i) => {
-    if (cd.editing === a.host) return `<div class="item addr"><div class="addr-edit conn-edit">
+    if (cd.editing === a.host && cd.editDev === d.id) return `<div class="item addr"><div class="addr-edit conn-edit">
       <input type="text" id="ceHost" value="${esc(a.host)}" maxlength="253" aria-label="Address">
       <input type="text" id="ceLabel" value="${esc(a.label)}" maxlength="60" placeholder="Label" aria-label="Label">
       <button class="small action" id="ceSave">Save</button><button class="small" id="ceCancel">Cancel</button></div></div>`;
@@ -4483,33 +4496,51 @@ function renderConnAddrs() {
     return `<div class="item addr" data-host="${esc(a.host)}">
       <div class="grow"><div class="t">${esc(a.host)} <span class="tag">${esc(KIND_TAG[a.kind] || a.kind)}</span>${a.label ? ` <span class="sub">${esc(a.label)}</span>` : ""}</div>
         <div class="s">${result}</div></div>
+      ${a.host === switchTo ? `<button class="small" data-use title="Reconnect through this address">Use now</button>` : ""}
       <button class="small" data-mv="-1" title="Try earlier" aria-label="Move ${esc(a.host)} up"${i ? "" : " disabled"}>↑</button>
       <button class="small" data-mv="1" title="Try later" aria-label="Move ${esc(a.host)} down"${i < d.addresses.length - 1 ? "" : " disabled"}>↓</button>
       <button class="small" data-ed>Edit</button><button class="small danger" data-rm>Remove</button></div>`;
   }).join("") || `<div class="sub">No addresses yet. Add the Frame's IP address below.</div>`;
-  if (refocus) list.querySelector(`[data-host="${CSS.escape(refocus)}"] [data-ed]`)?.focus();
+  if (refocus) {
+    const row = list.querySelector(`[data-host="${CSS.escape(refocus[0])}"]`);
+    const again = row && refocus[1] && row.querySelector(refocus[1]);
+    if (row) (again && !again.disabled ? again : row.querySelector("[data-ed]")).focus();
+  }
   list.querySelectorAll("[data-host]").forEach(row => {
     const host = row.dataset.host;
     row.querySelectorAll("[data-mv]").forEach(b => b.onclick = () =>
       devAction("Move " + host, { action: "address-move", id: d.id, host, delta: +b.dataset.mv }, b));
-    row.querySelector("[data-ed]").onclick = () => { cd.editing = host; renderConnAddrs(); $("ceHost").focus(); };
+    row.querySelector("[data-ed]").onclick = () => {
+      cd.editing = host; cd.editDev = d.id; cd.session++; renderConnAddrs(); $("ceHost").focus();
+    };
+    const use = row.querySelector("[data-use]");
+    if (use) use.onclick = () => devAction(`Switch to ${host}`, { action: "retry", id: d.id }, use);
     row.querySelector("[data-rm]").onclick = e => {
       if (host === inUse && !confirm(`${host} is how Frame Control is reaching the headset now. Remove it?`)) return;
       devAction(`Remove ${host}`, { action: "address-remove", id: d.id, host }, e.currentTarget);
     };
   });
   if ($("ceSave")) {
-    const host = cd.editing, a = d.addresses.find(x => x.host === host);
-    const save = e => {
+    const host = cd.editing, a = d.addresses.find(x => x.host === host), session = cd.session;
+    let saving = false;
+    const save = async e => {
       e.preventDefault();
+      if (saving) return;  // a second Enter while the first is on its way
       const newHost = $("ceHost").value.trim(), label = $("ceLabel").value;
-      cd.editing = null; cd.refocus = newHost || host;
-      devAction(`Save ${host}`, { action: "address-update", id: d.id, host, newHost, kind: a.kind, label }, $("ceSave"))
-        .then(res => res && testQuietly(d.id));
+      if (!newHost) return $("ceHost").focus();
+      saving = true;
+      const res = await devAction(`Save ${host}`, { action: "address-update", id: d.id, host, newHost, kind: a.kind, label }, $("ceSave"));
+      saving = false;
+      if (res) testQuietly(d.id);
+      // Refused: what was typed stays, to correct. Cancelled or another address opened for
+      // editing while this was on its way: leave that one alone.
+      if (!res || cd.session !== session) return;
+      cd.editing = null; cd.sig = ""; cd.refocus = newHost;
+      renderConnAddrs();
     };
     $("ceSave").onclick = save;
     [$("ceHost"), $("ceLabel")].forEach(i => i.onkeydown = e => { if (e.key === "Enter") save(e); if (e.key === "Escape") { e.preventDefault(); $("ceCancel").click(); } });
-    $("ceCancel").onclick = () => { cd.editing = null; cd.sig = ""; cd.refocus = host; renderConnAddrs(); };
+    $("ceCancel").onclick = () => { cd.editing = null; cd.session++; cd.sig = ""; cd.refocus = host; renderConnAddrs(); };
   }
 }
 $("connAdd").onsubmit = async e => {
@@ -4528,7 +4559,6 @@ function onConnection(s) {
   link.s = s; link.live = !s.local; link.lastData = Date.now();
   link.offset = Date.now() / 1000 - s.now;
   if (!link.live) return;
-  renderPill(); renderConnDlg();
   const devId = s.device && s.device.id;
   window.connDevice = devId || null;
   window.connName = s.device ? s.device.name : null;
@@ -4563,6 +4593,8 @@ function onConnection(s) {
     link.reload = true;     // everything on the page was the other headset's
     $("battChip").hidden = true; closeDevPop();
   }
+  // After the other headset's status is cleared: the dialog's offer reads it.
+  renderPill(); renderConnDlg();
   if (s.phase !== link.phase || devId !== link.device) {
     if (s.phase === "connected") {
       log(`Connected to ${s.device.name} via ${viaText(s.via)} on ${netLabel(s)}`, "ok");
