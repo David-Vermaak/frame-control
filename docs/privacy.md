@@ -160,8 +160,8 @@ or `withdraw`) and the common properties above. Only the maintainer can read
 that project, and nothing in it is published or shared. It's sent only when
 you save, or when you send a problem report with follow-up questions ticked,
 whatever the analytics settings are, because you chose to. With a report, the
-address is saved and sent first, so it stands even if the report itself then
-fails to send. It
+address and choices are saved before the report is sent and stay saved if it
+fails; like any change, they're sent as soon as PostHog can be reached. It
 carries its own random contact id, not the analytics id, so it isn't linked
 to your usage events, and a `rev` number that goes up with each change, so
 the newest choice always wins. Like everything else sent, it's listed under
