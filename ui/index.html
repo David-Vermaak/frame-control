@@ -575,7 +575,6 @@
   .store-chips { display:flex; flex-wrap:wrap; gap:7px; }
   .store-chips button { border-radius:20px; font-size:12px; height:34px; padding:0 14px; background:#ffffff07; color:#b5c0cb; border:1px solid #ffffff0c; }
   .store-chips button[aria-pressed=true] { background:#235779; border-color:#5287a5; color:white; }
-  .store-source-select select { max-width:180px; padding:8px 26px 8px 10px; font:inherit; font-size:12px; border:0; border-radius:5px; color:var(--text); background:#1d2b3b; }
   .store-notice { color:#a8b5c2; font-size:12px; margin:12px 0; }
   .store-heading a, .cross-link a { color:var(--link); }
   .cross-link { margin:-6px 0 12px; }
@@ -619,10 +618,8 @@
   .store-card-title strong { font-size:15px; color:var(--bright); text-overflow:ellipsis; overflow:hidden; white-space:nowrap; }
   .store-summary { display:block; color:#a8b5c2; font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .store-card-foot { display:flex; justify-content:space-between; align-items:center; gap:6px; margin-top:16px; font-size:11px; color:#a8b5c2; }
-  .store-card-foot b { color:#dbeecf; font-weight:500; }
   .store-badges { display:flex; flex-wrap:wrap; gap:7px; }
   .store-badge { font-size:11px; color:#b7d8ec; background:#6ec9ff14; padding:4px 9px; border-radius:5px; }
-  .store-badge.works { color:#b8e2ab; background:#70bb5418; }
   .store-empty { display:flex; flex-direction:column; align-items:center; text-align:center; padding:58px 20px 70px; }
   .store-empty svg { width:110px; height:90px; color:var(--link); margin-bottom:14px; }
   .store-empty h2 { font-size:23px; color:var(--bright); margin:8px 0; text-transform:none; letter-spacing:0; }
@@ -3189,7 +3186,7 @@ document.body.addEventListener("click", async e => {
 loadOwned();
 
 // ---- Discover apps ----
-const sourceState = { vr: null, installable: false, source: "", apps: [], sources: [], request: 0, detail: null, detailRequest: 0, jobs: new Map() };
+const sourceState = { vr: null, installable: false, apps: [], sources: [], request: 0, detail: null, detailRequest: 0, jobs: new Map() };
 const storeName = s => String(s || "").replace(/ \(demo\)$/i, "");
 const storeHue = name => [...String(name)].reduce((n, c) => (n * 31 + c.charCodeAt(0)) >>> 0, 7) % 360;
 const storeInitial = name => [...String(name || "?")][0].toUpperCase();  // the small icon's stand-in
@@ -3230,7 +3227,7 @@ async function loadSources() {
   } catch (e) { $("sourceError").textContent = e.message; }
 }
 // Will it run? Short enough for a card; the full sentence is in its tooltip and the details.
-const RUNS = { works: ["✓ Works on the Frame", "works"], ready: ["Should install", "ready"], unknown: ["Not checked yet", "unknown"], blocked: ["Won't run", "blocked"] };
+const RUNS = { works: ["✓ Works on the Frame", "works"], ready: ["Should install", "ready"], unknown: ["Not checked yet", "unknown"], blocked: ["May not run", "blocked"] };
 function storeRuns(o) {
   const [text, cls] = RUNS[o.verdict?.tone] || RUNS.unknown;
   return `<span class="runs ${cls}" title="${esc(o.verdict?.label || "Not yet checked on the Frame")}">${text}</span>`;
@@ -3245,7 +3242,7 @@ function storeEmpty(message) {
   return `<div class="store-empty"><svg viewBox="0 0 120 100" fill="none" aria-hidden="true"><rect x="18" y="25" width="60" height="55" rx="12" fill="currentColor" opacity=".08"/><rect x="29" y="18" width="60" height="55" rx="12" stroke="currentColor" opacity=".35"/><circle cx="61" cy="43" r="15" stroke="currentColor" stroke-width="3"/><path d="m72 55 17 18M17 12v10m-5-5h10m79-4v10m-5-5h10" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg><h2>${message ? "Couldn't load apps" : "No apps found"}</h2><p>${message ? esc(message) : "Try another name, or clear the filters."}</p><button class="action" id="storeReset">${message ? "Try again" : "Clear filters"}</button></div>`;
 }
 function renderStore() {
-  const apps=sourceState.apps, browsing=!$("sourceQ").value.trim() && sourceState.vr === null && !sourceState.installable && !sourceState.source;
+  const apps=sourceState.apps, browsing=!$("sourceQ").value.trim() && sourceState.vr === null && !sourceState.installable;
   $("searchCount").textContent = browsing ? "" : `${apps.length} ${apps.length===1 ? "app" : "apps"}${$("sourceQ").value.trim() ? ` for “${$("sourceQ").value.trim()}”` : ""}`;
   if (!apps.length) { $("searchGrid").innerHTML=storeEmpty(); return; }
   if (!browsing) { $("searchGrid").innerHTML=`<div class="store-grid">${apps.map(storeCard).join("")}</div>`; return; }
@@ -3272,7 +3269,7 @@ async function searchSources(quiet) {
   const request=++sourceState.request;
   $("searchGrid").setAttribute("aria-busy","true");
   if(!quiet)$("searchGrid").innerHTML=`<div class="store-grid" role="status" aria-label="Finding apps">${Array.from({length:8},()=>'<div class="store-skeleton" aria-hidden="true"></div>').join("")}</div>`;
-  const params=new URLSearchParams({q:$("sourceQ").value,source:sourceState.source,installable:String(sourceState.installable)});
+  const params=new URLSearchParams({q:$("sourceQ").value,installable:String(sourceState.installable)});
   if(sourceState.vr!==null)params.set("vr",String(sourceState.vr));
   try {
     const result=await api("/api/search?"+params);if(request!==sourceState.request)return;
@@ -3316,7 +3313,10 @@ async function openStoreApp(index, install=false) {
   const app=sourceState.apps[index];if(!app)return;
   sourceState.detail={app:{...app,offers:app.offers.map(o=>({...o}))},choice:0};
   renderAppDetail();if(!$("appDetail").open)$("appDetail").showModal();$("appDetail").scrollTop=0;
-  if(install)installStoreApp();  // the hero's Install: the details show its progress
+  // The hero's Install: the details show its progress. Already installed or installing: just
+  // the details, whose button says what it does (Open in Steam would launch it).
+  const o=currentOffer();
+  if(install&&!sourceState.jobs.has(`${o.source}:${o.id}`))installStoreApp();
   await loadOfferDetails();
 }
 async function loadOfferDetails() {
@@ -3347,7 +3347,7 @@ async function installStoreApp() {
 }
 async function changeSource(body) {
   $("sourceError").textContent="Saving your sources…";
-  try { const result=await api('/api/sources',body);$("sourceError").textContent=result.message;sourceState.source='';await loadSources();await searchSources(); }
+  try { const result=await api('/api/sources',body);$("sourceError").textContent=result.message;await loadSources();await searchSources(); }
   catch(e) { $("sourceError").textContent=e.message;await loadSources(); }
 }
 let storeSearchTimer;
@@ -3365,7 +3365,7 @@ async function addSource(body) {
   let error="";
   const result=await runJob('Add repository',`repo:${body.url}`,()=>api('/api/sources',body).catch(e=>{error=e.message;throw e;}),j=>{error=j.error||"";});
   $("sourceError").textContent=result ? result.message : error || "We couldn't add that repository.";
-  if(result){$("addSource").reset();sourceState.source='';await loadSources();await searchSources();}
+  if(result){$("addSource").reset();await loadSources();await searchSources();}
 }
 $("addSource").onsubmit=e=>{e.preventDefault();const f=new FormData(e.target);addSource({action:'add',url:f.get('url'),fingerprint:f.get('fingerprint')});};
 document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>$(b.dataset.close).close());
