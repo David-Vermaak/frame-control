@@ -1997,7 +1997,7 @@ async function capture() {
   let url = null;
   try {
     let url_ = "/api/screenshot?view=headset";
-    var shotPanel = null;
+    let shotPanel = null;
     if (view === "flat") {
       shotPanel = deskPanel() || (await loadPanels(), deskPanel());
       if (!shotPanel) throw new Error("no app panel is open in the headset");
@@ -3314,9 +3314,10 @@ async function openStoreApp(index, install=false) {
   sourceState.detail={app:{...app,offers:app.offers.map(o=>({...o}))},choice:0};
   renderAppDetail();if(!$("appDetail").open)$("appDetail").showModal();$("appDetail").scrollTop=0;
   // The hero's Install: the details show its progress. Already installed or installing: just
-  // the details, whose button says what it does (Open in Steam would launch it).
-  const o=currentOffer();
-  if(install&&!sourceState.jobs.has(`${o.source}:${o.id}`))installStoreApp();
+  // the details, whose button says what it does (Open in Steam would launch it). After a
+  // failed install it tries again.
+  const o=currentOffer(), job=sourceState.jobs.get(`${o.source}:${o.id}`);
+  if(install&&(!job||job.done&&!job.result))installStoreApp();
   await loadOfferDetails();
 }
 async function loadOfferDetails() {
@@ -3354,7 +3355,7 @@ let storeSearchTimer;
 $("sourceQ").oninput=()=>{clearTimeout(storeSearchTimer);storeSearchTimer=setTimeout(searchSources,300);};
 $("sourceSearch").onsubmit=e=>{e.preventDefault();clearTimeout(storeSearchTimer);searchSources();};
 $("searchFilters").onclick=e=>{const b=e.target.closest('[data-filter]');if(!b)return;const f=b.dataset.filter;if(f==='all'){sourceState.vr=null;sourceState.installable=false;}else if(f==='installable')sourceState.installable=!sourceState.installable;else sourceState.vr=sourceState.vr===(f==='vr')?null:f==='vr';storeChips();searchSources();};
-$("searchGrid").onclick=e=>{const h=e.target.closest('[data-hero-install]');if(h){openStoreApp(+h.dataset.heroInstall,true);return;}const b=e.target.closest('[data-app]');if(b)openStoreApp(+b.dataset.app);if(e.target.closest('#storeReset')){$('sourceQ').value='';sourceState.vr=null;sourceState.installable=false;sourceState.source='';storeChips();searchSources();}};
+$("searchGrid").onclick=e=>{const h=e.target.closest('[data-hero-install]');if(h){openStoreApp(+h.dataset.heroInstall,true);return;}const b=e.target.closest('[data-app]');if(b)openStoreApp(+b.dataset.app);if(e.target.closest('#storeReset')){$('sourceQ').value='';sourceState.vr=null;sourceState.installable=false;storeChips();searchSources();}};
 $("detailBody").onclick=e=>{if(e.target.closest('#detailInstall'))installStoreApp();const b=e.target.closest('[data-gallery]');if(b)$('detailGallery').scrollBy({left:+b.dataset.gallery*$('detailGallery').clientWidth*.86,behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'});};
 $("detailBody").onchange=e=>{if(e.target.name==='storeOffer'){sourceState.detail.choice=+e.target.value;renderAppDetail();loadOfferDetails();}};
 $("sourcesOpen").onclick=()=>{loadSources();$('sourcesDialog').showModal();};

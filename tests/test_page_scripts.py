@@ -12,10 +12,13 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 # Compiles the scripts as one strict-mode block. There, functions are block scoped like let
 # and const, so V8 itself rejects a name declared twice in the shared scope (however it's
 # indented or declared: function, class, let, const, destructuring), while helpers with the
-# same name inside different functions stay legal.
+# same name inside different functions stay legal. var is the exception (declaring one twice
+# is allowed), so the page doesn't use var at all.
 CHECK = r'''
 const vm = require('vm');
 const scripts = JSON.parse(require('fs').readFileSync(0, 'utf8'));
+const uses = scripts.join('\n').match(/(^|[^\w$.])var\s+[\w${[]/);
+if (uses) { console.log('declares with var: ' + uses[0].trim()); process.exit(0); }
 try { new vm.Script('"use strict"; {\n' + scripts.join('\n;\n') + '\n}'); console.log('ok'); }
 catch (e) { console.log(e.message); }
 '''
@@ -30,7 +33,10 @@ def check(scripts):
 class PageScripts(unittest.TestCase):
     def test_no_top_level_name_is_declared_twice(self):
         page = (ROOT / 'ui/index.html').read_text(encoding='utf-8')
-        self.assertEqual(check(re.findall(r'<script>(.*?)</script>', page, re.S)), 'ok')
+        # Every inline script, whatever its attributes (not src= ones, which aren't inline).
+        scripts = re.findall(r'<script(?![^>]*\bsrc=)[^>]*>(.*?)</script>', page, re.S)
+        self.assertGreaterEqual(len(scripts), 2)
+        self.assertEqual(check(scripts), 'ok')
 
     def test_the_check_finds_what_it_should(self):
         twice = {
@@ -40,6 +46,8 @@ class PageScripts(unittest.TestCase):
             'later declarator': ['let x = 1;', 'const y = 2, x = 3;'],
             'function and const': ['function f() {}', 'const f = 1;'],
         }
+        self.assertIn('var', check(['var x = 1;', 'var x = 2;']))  # legal JavaScript, so: no var
+        self.assertEqual(check(['const css = "color: var(--blue)";']), 'ok')  # CSS var() isn't one
         for what, scripts in twice.items():
             with self.subTest(what):
                 self.assertIn('already been declared', check(scripts))
