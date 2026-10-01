@@ -4406,12 +4406,11 @@ function renderConnAddrs() {
   const refocus = cd.refocus ? [cd.refocus, "[data-ed]"]
     : held ? [held.dataset.host, ["[data-use]", "[data-mv='-1']", "[data-mv='1']", "[data-ed]", "[data-rm]"].find(q => document.activeElement.matches(q))] : null;
   cd.refocus = null;
-  // A reconnect picks the first-ranked address that answers: offer it when that's a tested
-  // address other than the one in use.
-  const used = d.addresses.find(a => a.host === inUse);
-  const best = used && d.addresses.filter(a => (tested.get(a.host) || {}).ssh === "ok")
-    .reduce((x, a) => !x || a.rank < x.rank ? a : x, null);
-  const switchTo = best && best.rank < used.rank ? best.host : null;
+  // A reconnect tries the addresses in the order the finished test reports for this network
+  // and picks the first that answers: offer Use now on that one, if it isn't the one in use.
+  const test = (s.tests || {})[d.id], order = test && test.done && test.network === (s.network || {}).id && test.order;
+  const pick = order && order.find(h => (tested.get(h) || {}).ssh === "ok");
+  const switchTo = pick && inUse && pick !== inUse && order.indexOf(inUse) > order.indexOf(pick) ? pick : null;
   list.innerHTML = d.addresses.map((a, i) => {
     if (cd.editing === a.host && cd.editDev === d.id) return `<div class="item addr"><div class="addr-edit conn-edit">
       <input type="text" id="ceHost" value="${esc(a.host)}" maxlength="253" aria-label="Address">
