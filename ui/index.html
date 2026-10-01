@@ -1649,7 +1649,7 @@ $("vrUtilities").onclick = async e => {
 };
 
 // The Frame owns the clock. Poll independently of status and the selected tab.
-let comfortBusy = false, comfortSeen = new Set(), comfortSession = null, comfortHydrated = false;
+let comfortBusy = false, comfortSeen = new Set(), comfortSession = null, comfortHydrated = false, comfortActive = false;
 async function localNotification(message, request = false) {
   try {
     if (window.frameApp?.notify) await window.frameApp.notify(message, request);
@@ -1684,6 +1684,12 @@ function renderComfort(s) {
       if (el.type === "checkbox") el.checked = value; else el.value = value;
     }
   }
+  // When the running session ends, the form goes back to the page's defaults for the next one.
+  if (comfortActive && !s.active) for (const id of ["sessionMinutes", "breakMinutes", "stillMinutes", "batteryAlert", "heatAlert"]) {
+    const el = $(id);
+    if (el.type === "checkbox") el.checked = el.defaultChecked; else el.value = el.defaultValue;
+  }
+  comfortActive = !!s.active;
   let statusText = s.error || (s.active
     ? `${Math.ceil(s.remaining / 60)} min until Steam Home · ${s.activity == null ? "activity unknown" : s.activity === 3 ? "headset in standby" : "monitoring"}`
     : "No session running.");
@@ -2697,7 +2703,11 @@ $("clipMac").onclick = () => act($("clipMac").textContent, sendComputerClipboard
 const drop = $("drop");
 drop.onclick = () => $("fileInput").click();
 drop.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); $("fileInput").click(); } };
-$("fileInput").onchange = () => sendFiles([...$("fileInput").files]);
+$("fileInput").onchange = () => {
+  // Chosen from Home: show Tools' file panel, where the progress bar is (phones have no Activity bar).
+  if ($("fileInput").files.length && page !== "tools") location.hash = "#transfer";
+  sendFiles([...$("fileInput").files]);
+};
 // Files can be dropped anywhere in the window; an overlay says what happens.
 // Dialogs keep their own drops (none take files today), so the overlay stays out of them.
 let dragDepth = 0;
@@ -3821,6 +3831,7 @@ function showPage() {
   const id = location.hash.slice(1);
   const next = PAGES.includes(id) ? id : SECTION_PAGE[id] || "home";
   if (next !== page && page === "home" && live) toggleLive(false);  // don't stream video nobody is watching
+  const prev = page;
   page = next;
   document.querySelectorAll(".page").forEach(p => p.classList.toggle("on", p.dataset.page === page));
   document.querySelectorAll("nav a").forEach(a => a.classList.toggle("on", a.getAttribute("href") === "#" + page));
@@ -3829,6 +3840,8 @@ function showPage() {
   const section = !PAGES.includes(id) && id && $(id);
   if (section) section.scrollIntoView(); else scrollToY(0);
   if (page === "tools") { loadMacView(); loadPanels(); }
+  // Another computer may have added or removed a title: phones have no Refresh button.
+  if (page === "games" && prev !== "games" && link.s && link.s.phase === "connected") loadTitles();
 }
 window.addEventListener("hashchange", showPage);
 // While a text field has focus, phones hide the bottom tab bar (see body.typing in the CSS).
