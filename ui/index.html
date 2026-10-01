@@ -1417,13 +1417,16 @@ let toastTimer;
 function toast(msg, err = false) {
   const el = $("toast");
   el.textContent = msg.split("\n").slice(-1)[0] || msg;
-  el.className = "toast show" + (err ? " err" : "");
   // A popover, so it shows above an open dialog (a modal one covers everything else): opened
-  // again when a dialog has opened since, which puts it back on top.
+  // again when a dialog has opened since, which puts it back on top. Opened hidden first, so
+  // it still fades in.
   if (el.showPopover && (!el.matches(":popover-open") || document.querySelector("dialog:modal"))) {
+    el.className = "toast" + (err ? " err" : "");
     try { el.hidePopover(); } catch {}
     el.showPopover();
+    void el.offsetWidth;  // the hidden style is in place before .show changes it
   }
+  el.className = "toast show" + (err ? " err" : "");
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => el.className = "toast" + (err ? " err" : ""), 3500);
 }
