@@ -1017,6 +1017,8 @@ def devices_view(link):
     snap = link.reg.snapshot()
     active = link.active_device()
     names = {nid: link.reg.network_name(dict(n, id=nid)) for nid, n in snap["networks"].items()}
+    net = link.state["network"] or {}
+    tailscale_up = bool((net.get("tailscale") or {}).get("up"))
     devices = []
     bare = link.bare(link.session_alias) if link.session_alias and not link.reg.by_alias(link.session_alias) else None
     for extra in ([active] if active.get("transient") and not active.get("none") else []) + \
@@ -1027,8 +1029,12 @@ def devices_view(link):
         view = {k: v for k, v in d.items() if k not in ("config_host", "addresses")}
         view["active"] = d["id"] == active["id"]
         view["pinned"] = frame_devices.pinned(d["id"])
-        view["addresses"] = [dict(a, network_names=[names.get(n, "an unnamed network") for n in a["networks"]])
-                             for a in d["addresses"]]
+        # rank: where the next connection on this network tries it (0 first), so the page can
+        # tell which address a reconnect would pick.
+        ranks = {a["host"]: i for i, (a, _) in
+                 enumerate(frame_devices.order_addresses(d["addresses"], net.get("id"), tailscale_up))}
+        view["addresses"] = [dict(a, network_names=[names.get(n, "an unnamed network") for n in a["networks"]],
+                                  rank=ranks[a["host"]]) for a in d["addresses"]]
         devices.append(view)
     return {"devices": devices, "active": active["id"], "network": link.state["network"],
             "networks": [dict(n, id=nid, display=names[nid]) for nid, n in snap["networks"].items()],
@@ -1111,7 +1117,8 @@ def devices_action(link, body, open_setup, busy=lambda: 0):
                 raise frame_devices.DeviceError(f"Removed, but couldn't edit ~/.ssh/config: {e}")
         msg = f"Removed {d['name']}" + (f" and its '{d['alias']}' entry in ~/.ssh/config" if removed else "")
     elif action == "address-add":
-        a = reg.add_address(did, body.get("host"), body.get("kind") or None, body.get("label") or "")
+        a = reg.add_address(did, body.get("host"), body.get("kind") or None, body.get("label") or "",
+                            first=body.get("first") is True)
         if is_active and link.state["phase"] == "failed":
             link.kick("retry")
         msg = f"Added {a['host']}"
