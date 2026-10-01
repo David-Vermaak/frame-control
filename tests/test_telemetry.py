@@ -422,8 +422,8 @@ class ReportProblem(Base):
 
     def test_the_inbox_skips_malformed_reports(self):
         good = ["2026-09-28T09:50:00Z", "AB12CD34", "bug", "Live view stops", "It stops.", None,
-                "0.4.0", "macOS", "", "", None]
-        rows = [["2026-09-28T10:00:00Z", "X", "bug", "Hand-made", None, None, None, None, None, None, None],
+                "0.4.0", "macOS", "", "", None, None]
+        rows = [["2026-09-28T10:00:00Z", "X", "bug", "Hand-made", None, None, None, None, None, None, None, None],
                 ["short"], good]
         with mock.patch.object(db, "_posthog_query", return_value={"results": rows}), \
              mock.patch.object(sys, "argv", ["frame_report.py", "inbox"]), \

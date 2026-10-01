@@ -3963,6 +3963,7 @@ async function offerTest(m) {
 
 // ---- privacy: anonymous analytics levels (ui/frame_telemetry.py, docs/privacy.md) ----
 const telemetry = { usage: false, compat: false, blocked: "not loaded" };
+let privacyNoticeShown = false;  // this visit: then the contact prompt waits for another one
 function renderTelemetry(s) {
   Object.assign(telemetry, s);
   setRepHint();
@@ -3973,6 +3974,7 @@ function renderTelemetry(s) {
                                          : "Nothing sent yet.";
   const showNotice = !s.blocked && !s.noticeShown && s.usage;
   $("privacyNotice").hidden = !showNotice;
+  if (showNotice) privacyNoticeShown = true;
   if (showNotice) api("/api/telemetry", { noticeShown: true }).catch(() => {});
 }
 async function loadTelemetry() {
@@ -4015,13 +4017,14 @@ async function loadContact() {
   try { renderContact(await api("/api/contact")); } catch { return; }
   checkContactPrompt();
 }
-// One time only, only once the Frame has connected, and never on top of the privacy notice or
-// straight after it (two asks in a row is nagging): checked at load and whenever the Frame connects.
+// One time only, only once the Frame has connected, and never in a visit that showed the privacy
+// notice (two asks in a row is nagging): checked at load and whenever the Frame connects.
 async function checkContactPrompt() {
-  if (!$("contactNotice").hidden || !$("privacyNotice").hidden) return;
+  await telemetryLoaded;
+  if (privacyNoticeShown || !$("contactNotice").hidden) return;
   let s;
   try { s = await api("/api/contact"); } catch { return; }
-  if (!s.showPrompt || !$("contactNotice").hidden || !$("privacyNotice").hidden) return;
+  if (!s.showPrompt || privacyNoticeShown || !$("contactNotice").hidden) return;
   $("contactNotice").hidden = false;
   api("/api/contact/prompt", { prompt: "shown" }).catch(() => {});
 }

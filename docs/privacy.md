@@ -107,7 +107,9 @@ wrote, a short reference shown after sending, and the diagnostics below. Your
 email address goes with it only if you tick **The maintainer may contact me
 with follow-up questions** (the report then carries `contact_followup: true`);
 it's filled in from **Contact email** below when you've agreed there. It has its own random id, so it isn't linked to
-your analytics events.
+your analytics events. With that box ticked it also carries this copy's contact
+id (`contact_id`, see below), so removing or changing the address later takes
+back the follow-up permission given with the report too.
 
 With **Include diagnostics** ticked (the default), the report adds:
 
@@ -141,8 +143,8 @@ are two separate choices, both off until you tick them:
 | **The maintainer may contact me with follow-up questions** | Questions about problem reports you send, mostly |
 
 You're asked once, in a bar at the top of the page, after the Frame has
-connected for the first time, and never while or straight after the
-first-run privacy notice is showing. **No thanks** hides it for good, and it isn't
+connected for the first time, and never in the same visit as the first-run
+privacy notice. **No thanks** hides it for good, and it isn't
 shown again even if you ignore it. **Contact email** in **Privacy & updates**
 is where you add, change or remove the address and either choice at any time.
 
@@ -164,7 +166,10 @@ deletes it from this computer, including from the **Show what's been sent**
 log (in earlier contact events and problem reports), and sends a `withdraw`
 event with no address in it. The maintainer's list only uses the newest event from each copy, so from
 then on the address isn't listed for either choice. Unticking one choice
-works the same way for that choice. If you're offline, the change waits on
+works the same way for that choice. This also covers problem reports you sent
+from this copy with follow-up questions ticked: if your newest choice no longer
+agrees to follow-up questions at that address, the maintainer's inbox shows the
+permission as withdrawn and leaves the address out. If you're offline, the change waits on
 this computer and is sent when PostHog can be reached. The earlier event
 stays in PostHog until its data retention removes it; to have it deleted
 sooner, ask the maintainer (for example in a problem report).

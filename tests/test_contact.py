@@ -59,6 +59,16 @@ class Contact(Base):
         self.assertEqual(fc.load()["email"], "")
         self.assertEqual(self.got, [])
 
+    def test_only_a_real_true_counts_as_consent(self):
+        for wrong in ("false", "true", 1, 0, [], {}):
+            with self.assertRaisesRegex(ValueError, "true or false"):
+                fc.save({"email": "me@example.com", "updates": wrong, "followup": True})
+            with self.assertRaisesRegex(ValueError, "true or false"):
+                fr.send({**REPORT, "contact": "me@example.com", "contactFollowup": wrong})
+        self.assertEqual((fc.load()["email"], self.got), ("", []))
+        fc.save({"email": "me@example.com", "updates": True})  # left out is no
+        self.assertEqual((fc.load()["updates"], fc.load()["followup"]), (True, False))
+
     def test_each_choice_is_sent_privately_on_its_own(self):
         fc.save({"email": " me@example.com ", "updates": True})
         fc.save({"email": "me@example.com", "updates": False, "followup": True})
@@ -248,6 +258,63 @@ class Contact(Base):
         with self.assertRaisesRegex(ValueError, "email address"):
             fr.send({**REPORT, "contact": "discord:me", "contactFollowup": True})
 
+    def test_a_report_with_follow_up_carries_the_kept_contact_id(self):
+        fr.send({**REPORT, "contact": "me@example.com"})
+        self.assertFalse(fc.FILE.exists())  # no follow-up, nothing kept or linked
+        fr.send({**REPORT, "contact": "me@example.com", "contactFollowup": True})
+        without, with_ = (e["properties"] for e in self.events())
+        self.assertEqual(without["contact_id"], "")
+        self.assertEqual(with_["contact_id"], fc.load()["id"])
+        self.assertNotEqual(with_["contact_id"], tm.settings()["id"])  # not the analytics id
+        fc.save({"email": "me@example.com", "updates": True})
+        self.assertEqual(self.events()[-1]["distinct_id"], with_["contact_id"])  # same copy, same id
+
+    def report_row(self, ts, contact="me@example.com", followup=True, cid="copy"):
+        return [ts, "AB12CD34", "bug", "RDP", "It never connects.", contact, "0.4.0", "Windows", "", "", followup, cid]
+
+    def test_a_later_withdrawal_takes_back_a_reports_follow_up_permission(self):
+        reports = [self.report_row("2026-09-10T10:00:00Z"),                      # removed later
+                   self.report_row("2026-09-12T10:00:00Z", cid="other"),         # another copy
+                   self.report_row("2026-09-20T10:00:00Z"),                      # after the withdrawal
+                   self.report_row("2026-09-11T10:00:00Z", cid="", followup=True),  # sent before contact_id
+                   self.report_row("2026-09-15T10:00:00Z", cid="same-second")]
+        consents = [["copy", "me@example.com", True, 1, "2026-09-01T10:00:00Z"],
+                    ["copy", "", False, 2, "2026-09-14T10:00:00Z"],
+                    ["other", "me@example.com", True, 1, "2026-09-13T10:00:00Z"],   # still agrees
+                    ["same-second", "", False, 1, "2026-09-15T10:00:00Z"], ["short"]]
+        fr.mark_withdrawn(reports, consents)
+        self.assertEqual([r[10] for r in reports], ["withdrawn", True, True, True, "withdrawn"])
+
+    def test_changing_the_address_or_unticking_follow_up_takes_it_back_too(self):
+        reports = [self.report_row("2026-09-10T10:00:00Z", cid="moved"),
+                   self.report_row("2026-09-10T10:00:00Z", cid="news-only"),
+                   self.report_row("2026-09-10T10:00:00Z", contact="Me@Example.com", cid="case")]
+        consents = [["moved", "new@example.com", True, 1, "2026-09-11T10:00:00Z"],
+                    ["news-only", "me@example.com", False, 1, "2026-09-11T10:00:00Z"],
+                    ["case", "me@example.com", True, 1, "2026-09-11T10:00:00Z"],
+                    # rev, not the clock, decides which later choice is newest
+                    ["case", "", False, 2, "2026-09-11T09:59:00Z"]]
+        fr.mark_withdrawn(reports, consents)
+        self.assertEqual([r[10] for r in reports], ["withdrawn", "withdrawn", "withdrawn"])
+        reports[2][10] = True
+        fr.mark_withdrawn(reports[2:], consents[2:3])
+        self.assertIs(reports[2][10], True)  # same address, any case, still agrees
+
+    def test_the_inbox_shows_withdrawn_follow_up_without_the_address(self):
+        reports = [self.report_row("2026-09-10T10:00:00Z"), ["short"]]
+        consents = [["copy", "", False, 2, "2026-09-14T10:00:00Z"]]
+        with mock.patch.object(db, "_posthog_query", side_effect=[{"results": reports}, {"results": consents}]) as q, \
+             mock.patch.object(sys, "argv", ["frame_report.py", "inbox", "30"]), \
+             mock.patch("builtins.print") as out:
+            fr.main()
+        self.assertIn("event = 'contact_consent'", q.call_args_list[1].args[0])
+        printed = " ".join(str(c.args[0]) for c in out.call_args_list if c.args)
+        self.assertIn("follow-up permission since withdrawn", printed)
+        self.assertNotIn("me@example.com", printed)
+        with mock.patch.object(db, "_posthog_query", return_value={"results": [self.report_row("x", followup=False)]}) as q:
+            fr.inbox()
+        self.assertEqual(q.call_count, 1)  # nothing to reconcile, no second query
+
     def test_contacts_lists_the_newest_choice_per_copy_by_consent(self):
         rows = [["a", "both@example.com", True, "true", "2026-09-01T10:00:00Z"],
                 ["b", "news@example.com", "true", False, "2026-09-02T10:00:00Z"],
@@ -271,6 +338,22 @@ class Contact(Base):
         import server
         self.assertIs(server.POST["/api/contact"], fc.save)
         self.assertIs(server.POST["/api/contact/prompt"], fc.prompt)
+
+    def test_saving_is_not_headset_work(self):
+        """A slow send mustn't hold up switching headsets, nor be refused after a switch."""
+        import io
+        import server
+        seen = []
+        for path in ("/api/contact", "/api/contact/prompt"):
+            h = server.Handler.__new__(server.Handler)
+            body = b'{"prompt": "shown"}' if path.endswith("prompt") else b'{"email": "me@example.com", "updates": true}'
+            h.path, h.rfile = path, io.BytesIO(body)
+            h.headers = {"Content-Length": str(len(body)), "X-Frame-Device": "a-headset-switched-away-from"}
+            h.local_request = lambda: True
+            h.send_json = lambda obj, status=200: seen.append((status, server._work[0]))
+            with mock.patch.object(fc, "_send_pending", side_effect=lambda block=True: seen.append(("send", server._work[0]))):
+                h.do_POST()
+        self.assertEqual(seen, [("send", 0), (200, 0), (200, 0)])
 
 
 # Run these once, in test_telemetry, not again through the import above.

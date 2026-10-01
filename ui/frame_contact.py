@@ -71,6 +71,24 @@ def valid_email(email):
     return len(email) <= EMAIL_MAX and bool(EMAIL_RE.fullmatch(email))
 
 
+def flag(body, key):
+    """A consent choice: true only when it really is true (not "false" or 1), left out is no."""
+    v = body.get(key)
+    if v is not None and not isinstance(v, bool):
+        raise ValueError(f'{key} must be true or false')
+    return v is True
+
+
+def contact_id():
+    """This copy's contact id, kept from now on. A report with follow-up consent carries it, so
+    removing the address later takes back the follow-up permission given with the report too."""
+    with _lock:
+        s = load()
+        if not FILE.exists():
+            _save(s)
+        return s['id']
+
+
 def state():
     """What the page shows. showPrompt: the one-time prompt hasn't been shown or answered yet,
     and the Frame has connected at least once (setup worked), so it never greets a new install."""
@@ -156,7 +174,7 @@ def save(body):
     """Set, change or remove the address and the two choices. An address needs at least one
     choice ticked; an empty address (or neither ticked) removes it and withdraws both."""
     email = str(body.get('email') or '').strip()
-    updates, followup = bool(body.get('updates')), bool(body.get('followup'))
+    updates, followup = flag(body, 'updates'), flag(body, 'followup')
     if email and not valid_email(email):
         raise ValueError("that doesn't look like an email address")
     if email and not (updates or followup):

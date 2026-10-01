@@ -134,6 +134,7 @@ LINK = None  # the connector (frame_link.Link); None on the Frame itself
 # install's clean-up) to the other headset.
 _work_lock = threading.Lock()
 _work = [0]
+NOT_HEADSET_WORK = {"/api/devices", "/api/contact", "/api/contact/prompt"}
 
 
 @contextlib.contextmanager
@@ -2440,7 +2441,8 @@ class Handler(BaseHTTPRequestHandler):
             body = json.loads(self.rfile.read(length) or b"{}")
             if not isinstance(body, dict):
                 raise Failure("request body must be a JSON object", 400)
-            with (contextlib.nullcontext() if path == "/api/devices" else working(meant)):
+            # Not headset work: switching headsets mustn't wait for (or refuse) these.
+            with (contextlib.nullcontext() if path in NOT_HEADSET_WORK else working(meant)):
                 result = handler(body)
             self.send_json(result)
         except Failure as e:
