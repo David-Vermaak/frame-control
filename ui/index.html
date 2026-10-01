@@ -394,7 +394,7 @@
          white-space: pre-wrap; padding: 12px calc(28px + env(safe-area-inset-right)) 12px calc(28px + env(safe-area-inset-left)); }
   .log:empty::before { content: "Actions you take here are logged with their output."; color: var(--dim); }
   .log .e { color: #ff8a73; } .log .ok { color: #a4d007; } .log time { color: var(--dim); }
-  .toast { position: fixed; bottom: calc(58px + env(safe-area-inset-bottom)); right: calc(28px + env(safe-area-inset-right)); z-index: 30; max-width: 460px; padding: 12px 16px; border-radius: 3px;
+  .toast { position: fixed; inset: auto; margin: 0; border: 0; overflow: visible; width: auto; height: auto; bottom: calc(58px + env(safe-area-inset-bottom)); right: calc(28px + env(safe-area-inset-right)); z-index: 30; max-width: 460px; padding: 12px 16px; border-radius: 3px;
            background: #3d4450; color: #fff; box-shadow: 0 10px 30px rgba(0,0,0,.5); border-left: 3px solid var(--blue);
            opacity: 0; transform: translateY(10px); transition: opacity .2s, transform .2s; pointer-events: none; }
   .toast.show { opacity: 1; transform: none; }
@@ -1439,7 +1439,7 @@
       <button type="submit" class="small danger" id="rmGo">Remove</button></div>
   </form>
 </dialog>
-<div class="toast" id="toast"></div>
+<div class="toast" id="toast" popover="manual"></div>
 
 <script>
 const $ = (id) => document.getElementById(id);
@@ -1483,6 +1483,12 @@ function toast(msg, err = false) {
   const el = $("toast");
   el.textContent = msg.split("\n").slice(-1)[0] || msg;
   el.className = "toast show" + (err ? " err" : "");
+  // A popover, so it shows above an open dialog (a modal one covers everything else): opened
+  // again when a dialog has opened since, which puts it back on top.
+  if (el.showPopover && (!el.matches(":popover-open") || document.querySelector("dialog:modal"))) {
+    try { el.hidePopover(); } catch {}
+    el.showPopover();
+  }
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => el.className = "toast" + (err ? " err" : ""), 3500);
 }

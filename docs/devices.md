@@ -79,10 +79,9 @@ the headset reports a LAN IP on the same network as this computer and that IP
 isn't saved, it offers to add it. The offer puts the address first in the list,
 so on that network it wins over the Tailscale name; away from home the Tailscale
 name still leads. A new or edited address is tested straight away. While
-connected, **Reconnect** tries the addresses again in their current order, so an
-address just added or moved up is used now rather than at the next connection.
-It doesn't pick a particular address: the first to answer in order wins, and a
-slow one loses to a later one.
+connected, **Reconnect** applies your changes now rather than at the next
+connection: it tries the addresses again, ranked as above, and the best-ranked
+one that answers promptly wins. It doesn't pick a particular address.
 
 ## Networks
 
