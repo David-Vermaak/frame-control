@@ -4422,8 +4422,12 @@ function renderConnDlg() {
     : `${s.reason || "Connecting"}…`;
   // Folded while connected; opened when something's wrong. Left as the user set it otherwise.
   if (s.phase !== cd.phase) { $("connMore").open = !connected; cd.phase = s.phase; }
-  $("connRetryBtn").hidden = !failed;
+  // Connected, it's Reconnect: the addresses are tried again in their current order, so an
+  // address just added or moved up gets its chance now rather than at the next connection.
+  $("connRetryBtn").hidden = !failed && !connected;
   $("connRetryBtn").classList.toggle("action", failed);
+  $("connRetryBtn").textContent = failed ? "Retry now" : "Reconnect";
+  $("connRetryBtn").title = failed ? "" : "Try the addresses again, in order";
   $("connSetup").hidden = connected;
   const n = s.network || {}, ts = n.tailscale || {};
   const facts = [["Network", n.ssid || n.name || "—"],
@@ -4489,13 +4493,8 @@ function renderConnAddrs() {
   // same address (after an edit, on that row's Edit button).
   const held = list.contains(document.activeElement) && document.activeElement.closest("[data-host]");
   const refocus = cd.refocus ? [cd.refocus, "[data-ed]"]
-    : held ? [held.dataset.host, ["[data-use]", "[data-mv='-1']", "[data-mv='1']", "[data-ed]", "[data-rm]"].find(q => document.activeElement.matches(q))] : null;
+    : held ? [held.dataset.host, ["[data-mv='-1']", "[data-mv='1']", "[data-ed]", "[data-rm]"].find(q => document.activeElement.matches(q))] : null;
   cd.refocus = null;
-  // A reconnect tries the addresses in the order the finished test reports for this network
-  // and picks the first that answers: offer Use now on that one, if it isn't the one in use.
-  const test = (s.tests || {})[d.id], order = test && test.done && test.network === (s.network || {}).id && test.order;
-  const pick = order && order.find(h => (tested.get(h) || {}).ssh === "ok");
-  const switchTo = pick && inUse && pick !== inUse && order.indexOf(inUse) > order.indexOf(pick) ? pick : null;
   list.innerHTML = d.addresses.map((a, i) => {
     if (cd.editing === a.host && cd.editDev === d.id) return `<div class="item addr"><div class="addr-edit conn-edit">
       <input type="text" id="ceHost" value="${esc(a.host)}" maxlength="253" aria-label="Address">
@@ -4509,7 +4508,6 @@ function renderConnAddrs() {
     return `<div class="item addr" data-host="${esc(a.host)}">
       <div class="grow"><div class="t">${esc(a.host)} <span class="tag">${esc(KIND_TAG[a.kind] || a.kind)}</span>${a.label ? ` <span class="sub">${esc(a.label)}</span>` : ""}</div>
         <div class="s">${result}</div></div>
-      ${a.host === switchTo ? `<button class="small" data-use title="Reconnect through this address">Use now</button>` : ""}
       <button class="small" data-mv="-1" title="Try earlier" aria-label="Move ${esc(a.host)} up"${i ? "" : " disabled"}>↑</button>
       <button class="small" data-mv="1" title="Try later" aria-label="Move ${esc(a.host)} down"${i < d.addresses.length - 1 ? "" : " disabled"}>↓</button>
       <button class="small" data-ed>Edit</button><button class="small danger" data-rm>Remove</button></div>`;
@@ -4526,8 +4524,6 @@ function renderConnAddrs() {
     row.querySelector("[data-ed]").onclick = () => {
       cd.editing = host; cd.editDev = d.id; cd.session++; renderConnAddrs(); $("ceHost").focus();
     };
-    const use = row.querySelector("[data-use]");
-    if (use) use.onclick = () => devAction(`Switch to ${host}`, { action: "retry", id: d.id }, use);
     row.querySelector("[data-rm]").onclick = e => {
       if (host === inUse && !confirm(`${host} is how Frame Control is reaching the headset now. Remove it?`)) return;
       devAction(`Remove ${host}`, { action: "address-remove", id: d.id, host }, e.currentTarget);
