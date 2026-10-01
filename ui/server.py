@@ -943,19 +943,29 @@ _kde_queue = []
 _kde_lock = threading.Lock()
 _kde_worker = [None]
 _kde_until = 0.0     # keys typed through KDE Connect should have landed by then
-_typed_until = 0.0   # likewise for gamescope's
+_typed_until = 0.0   # when gamescope's agent will have typed everything it's been given
 KDE_QUEUE_LIMIT = 200
 KDE_WAIT = 90  # seconds to wait for KDE Connect before giving up on what's queued
-TYPING_SETTLE = 0.6  # seconds past the estimate
+TYPING_SETTLE = 0.6  # seconds past the estimate, once
+
+
+def typing_seconds(touch):
+    """How long gamescope's agent takes over these: it sleeps 8 ms after every key transition."""
+    transitions = 0
+    for e in touch:
+        if "text" in e:
+            transitions += sum(2 + 2 * frame_touch.ASCII[ch][1] for ch in e["text"] if ch in frame_touch.ASCII)
+        elif "key" in e:
+            transitions += 1
+    return transitions * 0.008
 
 
 def _note_typed(touch):
-    """Gamescope types a key every ~8 ms; remember when what was just sent should be done."""
     global _typed_until
-    keys = sum(len(e["text"]) if "text" in e else 1 for e in touch if "text" in e or "key" in e)
-    if keys:
-        with _kde_lock:
-            _typed_until = max(_typed_until, time.time()) + keys * 0.012 + TYPING_SETTLE
+    seconds = typing_seconds(touch)
+    if seconds:
+        with _kde_lock:  # the end of the work, which queues up; the margin is added once, where it's checked
+            _typed_until = max(_typed_until, time.time()) + seconds
 
 
 def _queue_for_kde(events):
@@ -979,7 +989,7 @@ def _drain_kde():
             if not batch:
                 _kde_worker[0] = None  # retired under the lock, so a new request starts another
                 return
-            wait = _typed_until - time.time()
+            wait = _typed_until + TYPING_SETTLE - time.time()
             _kde_until = time.time() + 3600  # held while in flight
         if wait > 0:
             time.sleep(wait)  # gamescope's typing, from just before, goes first

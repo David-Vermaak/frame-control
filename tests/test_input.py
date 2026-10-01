@@ -776,8 +776,21 @@ class PadDelivery(unittest.TestCase):
         start = time.time()
         self.s.remote_input({"events": [{"key": "é"}]})
         self.settle()
-        self.assertGreater(time.time() - start, 0.5)  # the 50 keys' time, plus a margin
+        self.assertGreater(time.time() - start, 0.6)  # 50 keys at 16 ms, plus the margin
         self.assertEqual(self.typed(), [{"key": "é"}])
+
+    def test_typing_time_counts_every_key_transition(self):
+        t = self.s.typing_seconds
+        self.assertAlmostEqual(t([{"text": "ab"}]), 4 * 0.008)
+        self.assertAlmostEqual(t([{"text": "A"}]), 4 * 0.008)  # shift down, key down, key up, shift up
+        self.assertAlmostEqual(t([{"text": "x" * 500}]), 8.0)  # a long paste
+        self.assertAlmostEqual(t([{"key": 29, "down": True}, {"dx": 3, "dy": 0}]), 0.008)
+
+    def test_the_margin_is_added_once_not_per_request(self):
+        for _ in range(10):
+            self.s.remote_input({"events": [{"key": "ab"}]})
+        # ten requests of 4 transitions each: the work queues up, with no margin added per request
+        self.assertLess(self.s._typed_until - time.time(), 10 * 4 * 0.008 + 0.05)
 
     def test_trimming_while_sending_doesnt_drop_unsent_events(self):
         slow = self.Agent()
