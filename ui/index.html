@@ -258,7 +258,12 @@
   .shot-card .row { flex-wrap: nowrap; }
   .shot-card .grow { flex: 1; min-width: 0; }
   .shot-card .t { color: var(--bright); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .shot-card .s { color: var(--muted); font-size: 12px; }
+  .shot-card .s { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ctx-menu { position: fixed; z-index: 1000; min-width: 200px; padding: 4px; border-radius: 4px; background: #232c38;
+              box-shadow: 0 10px 28px rgba(0,0,0,.6), 0 0 0 1px rgba(255,255,255,.08); }
+  .ctx-menu button { display: block; width: 100%; height: 30px; padding: 0 10px; text-align: left; background: none; }
+  .ctx-menu button:hover, .ctx-menu button:focus-visible { background: var(--blue); color: #fff; outline: none; }
+  .ctx-menu hr { border: 0; border-top: 1px solid rgba(255,255,255,.1); margin: 4px 2px; }
 
   /* ---- library shelf (portrait capsules, like Steam's library home) ---- */
   .shelf { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 16px; }
@@ -717,6 +722,7 @@
           <button class="action" id="shotBtn">Capture</button>
           <button id="liveBtn" title="Keep updating, as video">Live</button>
           <button id="ctrlBtn" title="Control the Frame by tapping or clicking on the view (C)">Control</button>
+          <button id="copyBtn" disabled title="Copy the image to the clipboard (or right-click it)">Copy</button>
           <button id="saveBtn" disabled>Save</button>
         </span>
       </div>
@@ -883,7 +889,7 @@
       <button class="action small" id="shotsSaveNew" disabled>Save new to this computer</button>
     </div>
     <div class="shot-grid" id="shotGrid"><div class="sub">Loading…</div></div>
-    <div class="hint">Screenshots you take in the headset with Steam's screenshot shortcut. Click one to open it in the viewer; Save copies it to <code>~/Pictures/SteamFrame</code>.</div>
+    <div class="hint">Screenshots you take in the headset with Steam's screenshot shortcut. New ones appear on their own. Click one to open it in the viewer, Copy puts it on the clipboard, and Save copies it to <code>~/Pictures/SteamFrame</code>. Right-click for more.</div>
   </section>
   </div>
 
@@ -1899,7 +1905,7 @@ async function capture() {
     if (source === "panel") $("srcBadge").textContent = `Desktop · ${shotPanel?.name || "panel"}`;
     ctrlShow();
     $("stamp").hidden = false; $("stamp").textContent = new Date().toLocaleTimeString();
-    $("saveBtn").disabled = false;
+    $("saveBtn").disabled = $("copyBtn").disabled = false;
     return true;
   } catch (e) {
     log("Capture failed: " + e.message, "e");
@@ -1981,7 +1987,7 @@ async function startVideo() {
         $("viewer").classList.remove("busy");
         c.hidden = false; $("viewerEmpty").hidden = true; $("zoombar").hidden = false; $("asleep").hidden = true;
         $("srcBadge").hidden = false; $("srcBadge").textContent = `${video.label} · video`;
-        $("stamp").hidden = false; $("saveBtn").disabled = false;
+        $("stamp").hidden = false; $("saveBtn").disabled = $("copyBtn").disabled = false;
       }
       frames++;
       const now = performance.now();
@@ -2050,6 +2056,35 @@ $("saveBtn").onclick = () => lastShot ? download(lastShot.blob, lastShot.file) :
   if (!b) return toast("Couldn't encode the image", true);
   download(b, `frame-${view}-${new Date().toISOString().replace(/[:.]/g, "-")}.png`);
 }, "image/png");
+const copyViewer = () => act("Copy image", () => copyImage(lastShot ? lastShot.blob
+  : new Promise((ok, bad) => $("canvas").toBlob(b => b ? ok(b) : bad(new Error("couldn't encode the image")), "image/png"))));
+$("copyBtn").onclick = copyViewer;
+// Right-click the viewer to copy or save what it shows (in Control, a right-click goes to the Frame).
+$("canvas").oncontextmenu = e => {
+  if (ctrl.on || $("saveBtn").disabled) return;
+  e.preventDefault();
+  showMenu(e, [["Copy image", copyViewer], ["Save image", () => $("saveBtn").click()]]);
+};
+// An image onto the clipboard. The app does it natively (JPEG too); a browser
+// takes PNG only, and the blob is handed over as a promise so the click still counts.
+async function copyImage(blob) {
+  if (window.frameApp?.writeImage) {
+    if (!await window.frameApp.writeImage(new Uint8Array(await (await blob).arrayBuffer()))) throw new Error("the app refused the image");
+    return { message: "Copied the image" };
+  }
+  if (!navigator.clipboard?.write || !window.ClipboardItem) throw new Error("This browser can't copy images here");
+  await navigator.clipboard.write([new ClipboardItem({ "image/png": Promise.resolve(blob).then(pngBlob) })]);
+  return { message: "Copied the image" };
+}
+async function pngBlob(blob) {
+  if (blob.type === "image/png") return blob;
+  const bmp = await createImageBitmap(blob);
+  const c = document.createElement("canvas");
+  c.width = bmp.width; c.height = bmp.height;
+  c.getContext("2d").drawImage(bmp, 0, 0);
+  bmp.close();
+  return new Promise((ok, bad) => c.toBlob(b => b ? ok(b) : bad(new Error("couldn't encode the image")), "image/png"));
+}
 function download(blob, name) {
   if (savesToDevice()) return act("Save image", () => saveToDevice([{ blob, name }]));
   const a = document.createElement("a");
@@ -3527,8 +3562,11 @@ loadReports();
 api("/api/host").then(applyHostWording).catch(() => {});
 
 // ---- Steam screenshots from the headset ----
-const shots = { list: [], urls: [] };
+// thumbs: id -> promise of an object URL, kept across reloads so a refresh
+// that finds a new shot fetches only that one's thumbnail.
+const shots = { list: [], sig: null, thumbs: new Map(), loading: null, gen: 0, fill: 0 };
 const STEAMVR_APPID = "250820";
+const SHOTS_POLL_MS = 8000;
 function shotApp(appid) {
   if (appid === STEAMVR_APPID) return "SteamVR";
   const g = state?.games?.find(x => x.appid === appid);
@@ -3540,35 +3578,85 @@ async function shotBlob(id, thumb) {
   if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `HTTP ${r.status}`);
   return r.blob();
 }
-async function loadShots() {
-  $("shotsRefresh").disabled = true;
+function shotThumb(id) {
+  const thumbs = shots.thumbs;  // this headset's: a late failure must not touch the next one's
+  if (!thumbs.has(id)) {
+    const p = shotBlob(id, true).then(b => URL.createObjectURL(b));
+    p.catch(() => { if (thumbs.get(id) === p) thumbs.delete(id); });  // try again next time
+    thumbs.set(id, p);
+  }
+  return thumbs.get(id);
+}
+// quiet: a background check. It keeps what's shown if the Frame can't be read,
+// and redraws only when the shots (or whether they're saved here) changed.
+function loadShots(quiet) {
+  if (shots.loading) {
+    // A check already on its way will do for another check; Refresh, or a save
+    // that just finished, reads again after it so the answer is a fresh one.
+    const again = () => loadShots();
+    return quiet === true ? shots.loading : shots.loading.then(again, again);
+  }
+  const p = readShots(quiet === true).finally(() => { if (shots.loading === p) shots.loading = null; });
+  return shots.loading = p;
+}
+// Forget the shots of a headset we've switched away from, and ignore its answers still on their way.
+function resetShots() {
+  closeMenu();  // its items were about the other headset's shot
+  shots.gen++; shots.fill++; shots.loading = null; shots.list = []; shots.sig = null;
+  for (const p of shots.thumbs.values()) p.then(URL.revokeObjectURL, () => {});
+  shots.thumbs = new Map();
+}
+async function readShots(quiet) {
+  const gen = shots.gen;
+  if (!quiet) $("shotsRefresh").disabled = true;
+  let got;
   try {
-    shots.list = (await api("/api/shots")).shots;
+    got = await api("/api/shots");
   } catch (e) {
-    return failed($("shotGrid"), e);
+    if (!quiet && gen === shots.gen) { shots.sig = null; failed($("shotGrid"), e); }
+    return;
   } finally { $("shotsRefresh").disabled = false; }
-  shots.urls.forEach(URL.revokeObjectURL); shots.urls = [];
+  if (gen !== shots.gen) return;
+  ({ shots: shots.list, folder: shots.folder } = got);
+  const sig = JSON.stringify(shots.list.map(s => [s.id, s.saved, shotApp(s.appid)]));
+  if (sig !== shots.sig) { shots.sig = sig; drawShots(); }
+  fillThumbs(quiet);  // not waited for: the next check, or a save, needn't sit behind the thumbnails
+}
+// Thumbnails one at a time over the shared SSH connection. One that failed is
+// tried again on Refresh, not by every background check.
+async function fillThumbs(quiet) {
+  const run = ++shots.fill;
+  // Refresh puts every failed one back in line first, so a background pass that takes over carries them all on.
+  if (!quiet) for (const img of document.querySelectorAll("#shotGrid img[data-failed]")) delete img.dataset.failed;
+  for (const img of document.querySelectorAll("#shotGrid img[data-shot]:not([src])" + (quiet ? ":not([data-failed])" : ""))) {
+    const s = shots.list[+img.dataset.shot];
+    let url;
+    try { url = await shotThumb(s.id); } catch (e) { img.alt = "Preview failed"; img.dataset.failed = 1; }
+    if (run !== shots.fill) return;  // a newer pass (after a check, a redraw or another headset) has taken over
+    if (url) img.src = url;
+  }
+}
+// "Sep 28, 10:37 PM": short enough to sit beside the card's buttons (the full date is its tooltip).
+function shotTime(t) {
+  return new Date(t * 1000).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+}
+function drawShots() {
+  const ids = new Set(shots.list.map(s => s.id));
+  for (const [id, p] of shots.thumbs) {
+    if (!ids.has(id)) { shots.thumbs.delete(id); p.then(URL.revokeObjectURL, () => {}); }
+  }
   const unsaved = shots.list.filter(s => !s.saved).length;
   $("shotCount").textContent = shots.list.length ? `${shots.list.length} on the Frame` + (unsaved && !HOST.mobile ? ` · ${unsaved} not on this ${HOST.computer}` : "") : "";
   $("shotsSaveNew").disabled = HOST.mobile ? !shots.list.length : !unsaved;
-  $("shotGrid").innerHTML = shots.list.length ? shots.list.map((s, i) => `<div class="shot-card">
-      <img class="thumb" data-shot="${i}" alt="Screenshot from ${esc(shotApp(s.appid))}" title="Open in the viewer">
+  $("shotGrid").innerHTML = shots.list.length ? shots.list.map((s, i) => `<div class="shot-card" data-card="${i}">
+      <img class="thumb" data-shot="${i}" alt="Screenshot from ${esc(shotApp(s.appid))}" title="Open in the viewer (right-click for more)">
       <div class="row"><div class="grow">
           <div class="t">${esc(shotApp(s.appid))}</div>
-          <div class="s">${esc(new Date(s.time * 1000).toLocaleString())}</div></div>
+          <div class="s" title="${esc(new Date(s.time * 1000).toLocaleString())}">${esc(shotTime(s.time))}</div></div>
+        <button class="small" data-shot-copy="${i}" title="Copy the image to the clipboard">Copy</button>
         ${s.saved && !HOST.mobile ? `<span class="tag">On ${HOST.computer}</span>` : `<button class="small" data-shot-save="${i}">Save</button>`}
       </div></div>`).join("")
     : `<div class="sub">No screenshots on the Frame yet.</div>`;
-  // Thumbnails one at a time over the shared SSH connection.
-  for (const img of document.querySelectorAll("#shotGrid img[data-shot]")) {
-    const s = shots.list[+img.dataset.shot];
-    try {
-      const url = URL.createObjectURL(await shotBlob(s.id, true));
-      shots.urls.push(url);
-      img.src = url;
-    } catch (e) { img.alt = "Preview failed"; }
-    if (!img.isConnected) return;  // the list was reloaded meanwhile
-  }
 }
 async function openShot(s) {
   if (live) toggleLive(false);
@@ -3586,7 +3674,7 @@ async function openShot(s) {
     draw();
     $("srcBadge").textContent = `Screenshot · ${shotApp(s.appid)}`;
     $("stamp").hidden = false; $("stamp").textContent = new Date(s.time * 1000).toLocaleString();
-    $("saveBtn").disabled = false;
+    $("saveBtn").disabled = $("copyBtn").disabled = false;
     $("view").scrollIntoView({ behavior: "smooth" });
   } catch (e) {
     toast("Couldn't open the screenshot: " + e.message, true);
@@ -3605,15 +3693,95 @@ async function saveShots(list, btn) {
                         () => api("/api/shots/save", { ids: list.map(s => s.id) }), btn);
   if (res) loadShots();
 }
+const copyShot = (s, btn) => act("Copy screenshot", () => copyImage(shotBlob(s.id, false)), btn);
 $("shotGrid").onclick = e => {
   const img = e.target.closest("img[data-shot]");
   if (img) return openShot(shots.list[+img.dataset.shot]);
+  const c = e.target.closest("[data-shot-copy]");
+  if (c) return copyShot(shots.list[+c.dataset.shotCopy], c);
   const b = e.target.closest("[data-shot-save]");
   if (b) saveShots([shots.list[+b.dataset.shotSave]], b);
 };
-$("shotsRefresh").onclick = loadShots;
+// A small right-click menu. items: [label, fn] pairs, null for a divider.
+// back: the keyboard closed it, so focus returns to where it was.
+function closeMenu(back) {
+  const menu = document.querySelector(".ctx-menu");
+  if (!menu) return;
+  menu.remove();
+  if (back === true && menu.opener?.isConnected) menu.opener.focus();
+}
+function showMenu(e, items) {
+  closeMenu();
+  const menu = document.createElement("div");
+  menu.className = "ctx-menu";
+  menu.setAttribute("role", "menu");
+  menu.opener = document.activeElement;
+  for (const it of items) {
+    if (!it) { menu.append(document.createElement("hr")); continue; }
+    const b = document.createElement("button");
+    b.textContent = it[0];
+    b.setAttribute("role", "menuitem");
+    b.onclick = () => { closeMenu(); it[1](); };
+    menu.append(b);
+  }
+  (document.fullscreenElement || document.body).append(menu);  // in front of a fullscreen viewer
+  const r = menu.getBoundingClientRect();
+  menu.style.left = Math.max(4, Math.min(e.clientX, innerWidth - r.width - 4)) + "px";
+  menu.style.top = Math.max(4, Math.min(e.clientY, innerHeight - r.height - 4)) + "px";
+  menu.querySelector("button").focus();
+}
+document.addEventListener("pointerdown", e => { if (!e.target.closest(".ctx-menu")) closeMenu(); }, true);
+document.addEventListener("keydown", e => {
+  const menu = document.querySelector(".ctx-menu");
+  if (!menu) return;
+  if (e.key === "Escape" || e.key === "Tab") { e.preventDefault(); return closeMenu(true); }  // Tab doesn't wander off behind it
+  if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+  e.preventDefault();  // arrows move through the menu, not the page
+  const items = [...menu.querySelectorAll("button")];
+  const at = items.indexOf(document.activeElement), step = e.key === "ArrowDown" ? 1 : -1;
+  items[at < 0 ? (step > 0 ? 0 : items.length - 1) : (at + step + items.length) % items.length].focus();
+});
+addEventListener("blur", closeMenu);
+document.addEventListener("fullscreenchange", closeMenu);
+addEventListener("scroll", closeMenu, true);
+// Right-click a screenshot for everything it can do.
+$("shotGrid").oncontextmenu = e => {
+  const card = e.target.closest("[data-card]");
+  if (!card) return;
+  e.preventDefault();
+  const s = shots.list[+card.dataset.card];
+  const items = [
+    ["Open in viewer", () => openShot(s)],
+    ["Copy image", () => copyShot(s)],
+  ];
+  if (!s.saved || HOST.mobile) items.push(null, [`Save to ${HOST.computer}`, () => saveShots([s])]);
+  else {
+    const sep = shots.folder.includes("\\") ? "\\" : "/";
+    items.push(null);
+    items.push([`Show in ${!HOST.fileManager || HOST.fileManager === "your file manager" ? "folder" : HOST.fileManager}`,
+                () => act("Show screenshot", () => api("/api/open", { what: "shot", id: s.id }))]);
+    items.push(["Copy file path", () => act("Copy file path", async () => {
+      await copyText(shots.folder + sep + s.file);
+      return { message: "Copied the file path" };
+    })]);
+  }
+  items.push(null, ["Copy file name", () => act("Copy file name", async () => {
+    await copyText(s.file);
+    return { message: "Copied " + s.file };
+  })]);
+  showMenu(e, items);
+};
+function copyText(text) {
+  if (!navigator.clipboard?.writeText) throw new Error("This browser can't copy here");
+  return navigator.clipboard.writeText(text);
+}
+$("shotsRefresh").onclick = () => loadShots();
 $("shotsSaveNew").onclick = e => saveShots(shots.list.filter(s => !s.saved), e.currentTarget);
 $("shotsFolder").onclick = e => act($("shotsFolder").textContent, () => api("/api/open", { what: "shots" }), e.currentTarget);
+// Watch for new shots: a cheap listing over the shared SSH connection while the
+// window is visible and the Frame is reachable, and again on coming back to it.
+setInterval(() => { if (!document.hidden && online) loadShots(true); }, SHOTS_POLL_MS);
+document.addEventListener("visibilitychange", () => { if (!document.hidden && online) loadShots(true); });
 
 // ---- Panel switcher: our UI over SteamVR's panel API ----
 let panelSeq = 0;
@@ -4292,7 +4460,7 @@ if (window.frameApp && window.frameApp.onInstallLink) {
 }
 
 setView("headset");
-refresh().then(loadShots);  // after status, so app names resolve
+refresh().then(() => loadShots());  // after status, so app names resolve
 document.addEventListener("visibilitychange", () => { if (!document.hidden && online === false) refresh(); });
 </script>
 <script>
@@ -4413,7 +4581,7 @@ function onConnection(s) {
     lastImg = null; lastShot = null;
     $("canvas").hidden = true; $("viewerEmpty").hidden = false; $("zoombar").hidden = true;
     ["stamp", "srcBadge", "asleep"].forEach(id => $(id).hidden = true);
-    $("saveBtn").disabled = true;
+    $("saveBtn").disabled = $("copyBtn").disabled = true;
     // Lists and their buttons (Remove, Launch…) were the other headset's: clear them
     // before anyone clicks one, until the new headset's arrive.
     ["games", "titleList", "andApps", "flatpaks", "shotGrid", "gmGrid"].forEach(id => {
@@ -4422,7 +4590,7 @@ function onConnection(s) {
     disp.list = []; disp.port = null;
     // The lists behind those panels too, so filters can't bring the old ones back.
     gm.owned = null; gm.byId = new Map(); gm.results = []; gm.store = []; gm.storeQ = null; gm.shown = 0; gm.seq++;
-    androidApps = []; shots.list = [];
+    androidApps = []; resetShots();
     titlesSeq++; disp.seq++;  // answers to loads already on their way are ignored
     if (cat.apps) filterCatalog();  // "Installed" tags were the other headset's
     // Confirmations still open were checked against the other headset.

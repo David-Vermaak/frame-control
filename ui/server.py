@@ -1194,6 +1194,12 @@ def open_thing(body):
             SHOTS_DIR.mkdir(parents=True, exist_ok=True)
             frame_host.open_path(SHOTS_DIR)
             return {"message": f"Opened {SHOTS_DIR} in {frame_host.FILE_MANAGER}"}
+        if what == "shot":
+            saved = SHOTS_DIR / shot_path(body.get("id")).rsplit("/", 1)[-1]
+            if not saved.exists():
+                raise Failure("That screenshot isn't saved on this computer yet", 404)
+            frame_host.reveal_path(saved)
+            return {"message": f"Showed {saved.name} in {frame_host.FILE_MANAGER}"}
     except frame_host.HostError as e:
         raise Failure(str(e), 500)
     raise Failure("unknown target", 400)
@@ -2663,12 +2669,16 @@ def main():
         signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(KeyboardInterrupt))
     if args.exit_on_eof:
         def watch_stdin():
-            sys.stdin.buffer.read()
+            # os.read, not sys.stdin.buffer.read: a buffered read holds stdin's lock,
+            # and if a signal stops the server first, Python aborts (SIGABRT) at exit
+            # when it can't take that lock back from this thread.
+            while os.read(0, 4096):
+                pass
             threading.Thread(target=httpd.shutdown, daemon=True).start()
         threading.Thread(target=watch_stdin, daemon=True).start()
-    # The real port, which --port 0 leaves to the system (the iPhone app reads it from here).
-    print(f"Frame Control on http://127.0.0.1:{httpd.server_address[1]}  (alias: {FRAME}; Ctrl-C to stop)", flush=True)
     try:
+        # The real port, which --port 0 leaves to the system (the iPhone app reads it from here).
+        print(f"Frame Control on http://127.0.0.1:{httpd.server_address[1]}  (alias: {FRAME}; Ctrl-C to stop)", flush=True)
         httpd.serve_forever()
     except KeyboardInterrupt:
         pass
