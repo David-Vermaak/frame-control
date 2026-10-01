@@ -1006,7 +1006,15 @@ class Link:
             t.start()
         for t in threads:
             t.join(40)
-        put(done=True, finished=now())
+        # The order a reconnect on this network would try them in, now that this test has
+        # recorded where they work: the page offers Use now only on the one it would pick.
+        try:
+            fresh = self.reg.get(device_id)["addresses"]
+        except frame_devices.DeviceError:
+            fresh = []
+        order = [a["host"] for a, _ in frame_devices.order_addresses(
+            fresh, net.get("id"), bool((net.get("tailscale") or {}).get("up")))]
+        put(done=True, finished=now(), network=net.get("id"), order=order)
         self.devices_changed()
 
 
@@ -1017,8 +1025,6 @@ def devices_view(link):
     snap = link.reg.snapshot()
     active = link.active_device()
     names = {nid: link.reg.network_name(dict(n, id=nid)) for nid, n in snap["networks"].items()}
-    net = link.state["network"] or {}
-    tailscale_up = bool((net.get("tailscale") or {}).get("up"))
     devices = []
     bare = link.bare(link.session_alias) if link.session_alias and not link.reg.by_alias(link.session_alias) else None
     for extra in ([active] if active.get("transient") and not active.get("none") else []) + \
@@ -1029,12 +1035,8 @@ def devices_view(link):
         view = {k: v for k, v in d.items() if k not in ("config_host", "addresses")}
         view["active"] = d["id"] == active["id"]
         view["pinned"] = frame_devices.pinned(d["id"])
-        # rank: where the next connection on this network tries it (0 first), so the page can
-        # tell which address a reconnect would pick.
-        ranks = {a["host"]: i for i, (a, _) in
-                 enumerate(frame_devices.order_addresses(d["addresses"], net.get("id"), tailscale_up))}
-        view["addresses"] = [dict(a, network_names=[names.get(n, "an unnamed network") for n in a["networks"]],
-                                  rank=ranks[a["host"]]) for a in d["addresses"]]
+        view["addresses"] = [dict(a, network_names=[names.get(n, "an unnamed network") for n in a["networks"]])
+                             for a in d["addresses"]]
         devices.append(view)
     return {"devices": devices, "active": active["id"], "network": link.state["network"],
             "networks": [dict(n, id=nid, display=names[nid]) for nid, n in snap["networks"].items()],
