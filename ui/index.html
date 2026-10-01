@@ -4324,7 +4324,7 @@ window.connBanner = renderBanner;
 
 // The pill's dialog: how it's connected, and the headset's addresses, which can be added,
 // edited and reordered right here. The steps it took stay folded away while all is well.
-const cd = { editing: null, editDev: null, sig: "", phase: null };
+const cd = { editing: null, editDev: null, session: 0, sig: "", phase: null };
 function renderConnDlg() {
   const s = link.s;
   if (!s || !$("connDlg").open) return;
@@ -4406,7 +4406,12 @@ function renderConnAddrs() {
   const refocus = cd.refocus ? [cd.refocus, "[data-ed]"]
     : held ? [held.dataset.host, ["[data-use]", "[data-mv='-1']", "[data-mv='1']", "[data-ed]", "[data-rm]"].find(q => document.activeElement.matches(q))] : null;
   cd.refocus = null;
-  const usedAt = d.addresses.findIndex(a => a.host === inUse);
+  // A reconnect picks the first-ranked address that answers: offer it when that's a tested
+  // address other than the one in use.
+  const used = d.addresses.find(a => a.host === inUse);
+  const best = used && d.addresses.filter(a => (tested.get(a.host) || {}).ssh === "ok")
+    .reduce((x, a) => !x || a.rank < x.rank ? a : x, null);
+  const switchTo = best && best.rank < used.rank ? best.host : null;
   list.innerHTML = d.addresses.map((a, i) => {
     if (cd.editing === a.host && cd.editDev === d.id) return `<div class="item addr"><div class="addr-edit conn-edit">
       <input type="text" id="ceHost" value="${esc(a.host)}" maxlength="253" aria-label="Address">
@@ -4420,7 +4425,7 @@ function renderConnAddrs() {
     return `<div class="item addr" data-host="${esc(a.host)}">
       <div class="grow"><div class="t">${esc(a.host)} <span class="tag">${esc(KIND_TAG[a.kind] || a.kind)}</span>${a.label ? ` <span class="sub">${esc(a.label)}</span>` : ""}</div>
         <div class="s">${result}</div></div>
-      ${t && t.ssh === "ok" && usedAt > i ? `<button class="small" data-use title="Reconnect through this address">Use now</button>` : ""}
+      ${a.host === switchTo ? `<button class="small" data-use title="Reconnect through this address">Use now</button>` : ""}
       <button class="small" data-mv="-1" title="Try earlier" aria-label="Move ${esc(a.host)} up"${i ? "" : " disabled"}>↑</button>
       <button class="small" data-mv="1" title="Try later" aria-label="Move ${esc(a.host)} down"${i < d.addresses.length - 1 ? "" : " disabled"}>↓</button>
       <button class="small" data-ed>Edit</button><button class="small danger" data-rm>Remove</button></div>`;
@@ -4434,7 +4439,9 @@ function renderConnAddrs() {
     const host = row.dataset.host;
     row.querySelectorAll("[data-mv]").forEach(b => b.onclick = () =>
       devAction("Move " + host, { action: "address-move", id: d.id, host, delta: +b.dataset.mv }, b));
-    row.querySelector("[data-ed]").onclick = () => { cd.editing = host; cd.editDev = d.id; renderConnAddrs(); $("ceHost").focus(); };
+    row.querySelector("[data-ed]").onclick = () => {
+      cd.editing = host; cd.editDev = d.id; cd.session++; renderConnAddrs(); $("ceHost").focus();
+    };
     const use = row.querySelector("[data-use]");
     if (use) use.onclick = () => devAction(`Switch to ${host}`, { action: "retry", id: d.id }, use);
     row.querySelector("[data-rm]").onclick = e => {
@@ -4443,7 +4450,7 @@ function renderConnAddrs() {
     };
   });
   if ($("ceSave")) {
-    const host = cd.editing, a = d.addresses.find(x => x.host === host);
+    const host = cd.editing, a = d.addresses.find(x => x.host === host), session = cd.session;
     let saving = false;
     const save = async e => {
       e.preventDefault();
@@ -4453,14 +4460,16 @@ function renderConnAddrs() {
       saving = true;
       const res = await devAction(`Save ${host}`, { action: "address-update", id: d.id, host, newHost, kind: a.kind, label }, $("ceSave"));
       saving = false;
-      if (!res) return;  // refused: what was typed stays, to correct
+      if (res) testQuietly(d.id);
+      // Refused: what was typed stays, to correct. Cancelled or another address opened for
+      // editing while this was on its way: leave that one alone.
+      if (!res || cd.session !== session) return;
       cd.editing = null; cd.sig = ""; cd.refocus = newHost;
       renderConnAddrs();
-      testQuietly(d.id);
     };
     $("ceSave").onclick = save;
     [$("ceHost"), $("ceLabel")].forEach(i => i.onkeydown = e => { if (e.key === "Enter") save(e); if (e.key === "Escape") { e.preventDefault(); $("ceCancel").click(); } });
-    $("ceCancel").onclick = () => { cd.editing = null; cd.sig = ""; cd.refocus = host; renderConnAddrs(); };
+    $("ceCancel").onclick = () => { cd.editing = null; cd.session++; cd.sig = ""; cd.refocus = host; renderConnAddrs(); };
   }
 }
 $("connAdd").onsubmit = async e => {
@@ -4479,7 +4488,6 @@ function onConnection(s) {
   link.s = s; link.live = !s.local; link.lastData = Date.now();
   link.offset = Date.now() / 1000 - s.now;
   if (!link.live) return;
-  renderPill(); renderConnDlg();
   const devId = s.device && s.device.id;
   window.connDevice = devId || null;
   window.connName = s.device ? s.device.name : null;
@@ -4514,6 +4522,8 @@ function onConnection(s) {
     link.reload = true;     // everything on the page was the other headset's
     $("battChip").hidden = true; closeDevPop();
   }
+  // After the other headset's status is cleared: the dialog's offer reads it.
+  renderPill(); renderConnDlg();
   if (s.phase !== link.phase || devId !== link.device) {
     if (s.phase === "connected") {
       log(`Connected to ${s.device.name} via ${viaText(s.via)} on ${netLabel(s)}`, "ok");

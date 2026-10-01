@@ -78,9 +78,10 @@ can add, edit, reorder and remove them without leaving the page you're on. When
 the headset reports a LAN IP on the same network as this computer and that IP
 isn't saved, it offers to add it. The offer puts the address first in the list,
 so on that network it wins over the Tailscale name; away from home the Tailscale
-name still leads. A new or edited address is tested straight away. When a tested
-address ranks above the one in use, **Use now** reconnects through it; otherwise
-the change takes effect the next time Frame Control connects.
+name still leads. A new or edited address is tested straight away. When an address
+that would be tried before the one in use passes the test, it gets **Use now**,
+which reconnects; the reconnect picks the first address that answers, which is
+that one. Otherwise the change takes effect the next time Frame Control connects.
 
 ## Networks
 
