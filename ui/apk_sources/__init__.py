@@ -43,3 +43,11 @@ Rules
 
 class SourceError(Exception):
     """User-readable failure from a source (network, format, verification)."""
+
+
+class SourceLimited(SourceError):
+    """The source's host asked us to slow down; retry_after is in seconds."""
+
+    def __init__(self, message, retry_after=None):
+        super().__init__(message)
+        self.retry_after = retry_after

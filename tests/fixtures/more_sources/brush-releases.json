@@ -1,0 +1,88 @@
+[
+  {
+    "tag_name": "2.32.29",
+    "draft": false,
+    "prerelease": true,
+    "published_at": "2026-09-26T17:49:28Z",
+    "assets": [
+      {
+        "id": 591143285,
+        "name": "OpenBrush_Android_2.32.29.apk",
+        "size": 314602794,
+        "browser_download_url": "https://github.com/icosa-foundation/open-brush/releases/download/2.32.29/OpenBrush_Android_2.32.29.apk",
+        "digest": "sha256:f20361b830803a2bf53e2af648bba59ee17bc4615bde534dbf6c4f0012bbd291"
+      },
+      {
+        "id": 591143287,
+        "name": "OpenBrush_Desktop_2.32.29.zip",
+        "size": 380735034,
+        "browser_download_url": "https://github.com/icosa-foundation/open-brush/releases/download/2.32.29/OpenBrush_Desktop_2.32.29.zip",
+        "digest": "sha256:3b680b07ca0b8def579fe194916aa7db4d007c3094c4dea818124776098c9b9a"
+      },
+      {
+        "id": 591143282,
+        "name": "OpenBrush_Linux_2.32.29.zip",
+        "size": 364906490,
+        "browser_download_url": "https://github.com/icosa-foundation/open-brush/releases/download/2.32.29/OpenBrush_Linux_2.32.29.zip",
+        "digest": "sha256:e380934f77d2b1441179424193a75f7b4b5793b34761c04cbf2d87bad9f8fc16"
+      },
+      {
+        "id": 591143283,
+        "name": "OpenBrush_Mac_2.32.29.dmg",
+        "size": 373196471,
+        "browser_download_url": "https://github.com/icosa-foundation/open-brush/releases/download/2.32.29/OpenBrush_Mac_2.32.29.dmg",
+        "digest": "sha256:5d544d0a64bed1cae65173fcfa7ada069d4f81b42385e806e99cc4427ef3513c"
+      },
+      {
+        "id": 591143286,
+        "name": "OpenBrush_Quest_2.32.29.apk",
+        "size": 314603546,
+        "browser_download_url": "https://github.com/icosa-foundation/open-brush/releases/download/2.32.29/OpenBrush_Quest_2.32.29.apk",
+        "digest": "sha256:57cd7b9067689060451494e55dc06276f934a992f5cbbd44d965069903937ba6"
+      }
+    ]
+  },
+  {
+    "tag_name": "2.32.28",
+    "draft": false,
+    "prerelease": true,
+    "published_at": "2026-09-26T14:42:27Z",
+    "assets": [
+      {
+        "id": 590837298,
+        "name": "OpenBrush_Android_2.32.28.apk",
+        "size": 314603450,
+        "browser_download_url": "https://github.com/icosa-foundation/open-brush/releases/download/2.32.28/OpenBrush_Android_2.32.28.apk",
+        "digest": "sha256:1a3af1a194c4348ef67c8ea61d9a8258e2490cdfe1f760cbc3c69f2978a6a082"
+      },
+      {
+        "id": 590837301,
+        "name": "OpenBrush_Desktop_2.32.28.zip",
+        "size": 380738236,
+        "browser_download_url": "https://github.com/icosa-foundation/open-brush/releases/download/2.32.28/OpenBrush_Desktop_2.32.28.zip",
+        "digest": "sha256:c2de5424bc022951f0e0bdbd652ede549a1e60d9cfbf41c730ea43d16d97262f"
+      },
+      {
+        "id": 590837297,
+        "name": "OpenBrush_Linux_2.32.28.zip",
+        "size": 364907046,
+        "browser_download_url": "https://github.com/icosa-foundation/open-brush/releases/download/2.32.28/OpenBrush_Linux_2.32.28.zip",
+        "digest": "sha256:29daf410347b3ca36e47808e31172270df8040ba7decc83be2bdcd51de895e06"
+      },
+      {
+        "id": 590837296,
+        "name": "OpenBrush_Mac_2.32.28.dmg",
+        "size": 373195966,
+        "browser_download_url": "https://github.com/icosa-foundation/open-brush/releases/download/2.32.28/OpenBrush_Mac_2.32.28.dmg",
+        "digest": "sha256:2f352d766450c993fdcae8a8552878a6a976d32d675246b63c81bb1b326fd20d"
+      },
+      {
+        "id": 590837295,
+        "name": "OpenBrush_Quest_2.32.28.apk",
+        "size": 314604234,
+        "browser_download_url": "https://github.com/icosa-foundation/open-brush/releases/download/2.32.28/OpenBrush_Quest_2.32.28.apk",
+        "digest": "sha256:9a3af6a6e838dd8bd201e549c5570f67db794df940e960390aeeae93235d702e"
+      }
+    ]
+  }
+]

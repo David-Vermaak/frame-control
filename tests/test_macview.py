@@ -10,6 +10,7 @@ Run: python3 -m unittest discover -s tests
 import base64
 import http.client
 import json
+import io
 import os
 import shutil
 import socket
@@ -41,6 +42,43 @@ class Helpers(unittest.TestCase):
         w, h = frame_macview.fit(800, 1600)
         self.assertEqual(h, 1080)
         self.assertAlmostEqual(w / h, 0.5, places=2)
+
+    def test_the_tunnel_follows_the_headset(self):
+        mv = frame_macview.MacView(["ssh"], lambda *a, **k: "", "frame")
+        mv.retarget("frame", ["-o", "ControlPath=/tmp/x-%C", "-o", "HostName=192.0.2.1", "-o", "HostKeyAlias=frame-control-a"])
+        self.assertEqual(mv.host_opts, ["-o", "HostName=192.0.2.1", "-o", "HostKeyAlias=frame-control-a"])
+
+        class Tunnel:
+            ended = False
+            def poll(self): return None
+            def terminate(self): Tunnel.ended = True
+        mv.tunnel, mv.remote_port = Tunnel(), 47999
+        mv.retarget("frame", ["-o", "HostName=192.0.2.9"])  # another address, same headset: keep it
+        self.assertFalse(Tunnel.ended)
+        mv.retarget("frame-2", ["-o", "HostName=192.0.2.2"])  # another headset: never the old one's tunnel
+        self.assertTrue(Tunnel.ended)
+        self.assertIsNone(mv.tunnel)
+        self.assertEqual(mv.frame, "frame-2")
+
+    def test_a_switch_just_before_publishing_drops_the_old_headsets_tunnel(self):
+        mv = frame_macview.MacView(["ssh"], lambda *a, **k: "", "frame")
+        mv.port = 47000
+        ended = []
+
+        class Proc:
+            def poll(self): return None
+            def terminate(self): ended.append(self)
+            def wait(self): return 0
+            stderr = io.StringIO("")
+
+        def probe(port):
+            mv.retarget("frame-2", ["-o", "HostName=192.0.2.2"])  # the app switches right now
+            return True
+        with mock.patch.object(frame_macview.subprocess, "Popen", return_value=Proc()), \
+                mock.patch.object(frame_macview.time, "sleep"), mock.patch.object(mv, "_probe", probe):
+            self.assertFalse(mv._open_tunnel([], [47001]))
+        self.assertIsNone(mv.tunnel)
+        self.assertEqual(len(ended), 1)  # the tunnel to the old headset was closed
 
     @unittest.skipUnless(shutil.which("bash"), "needs bash")
     @unittest.skipIf(os.name == "nt", "Windows' bash.exe is WSL's launcher, and runners have no distribution")

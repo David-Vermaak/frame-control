@@ -38,6 +38,33 @@ after its container exited. No headset was worn and no host was connected.
 All test app files, compatdata, shortcuts and containers were removed afterwards.
 SteamVR's original process remained running. No global settings changed.
 
+### Locked repeat, 2026-09-29 (verified)
+
+Acquired `/tmp/frame-test.lock` before installing or launching anything and
+released it after cleanup. Battery was 44% and charging at preflight, 46–47%
+during the launches, and 47% at cleanup. The SteamOS version/build was unchanged.
+
+Reinstalled and launched both original APKs in immersive Lepton instances.
+WiVRn again failed at OpenXR 1.1 and 1.0 with the missing timespec extension;
+ALVR again panicked on `ERROR_EXTENSION_NOT_PRESENT`. This repeats the
+unmodified-client test, not the newer installer's automatic compatibility-layer
+path. Neither reached a session that could be paired or exercised further.
+Fresh [journal excerpts and cleanup evidence](evidence/linux-vr/2026-09-29.txt)
+record the failures.
+
+SteamVR's screenshot API returned a 1920×1080 headset capture after each
+launch. Both are uniformly dark: [WiVRn](evidence/linux-vr/2026-09-29-wivrn.png)
+and [ALVR](evidence/linux-vr/2026-09-29-alvr.png). These images do **not** prove
+rendering or a working client. The headset was unworn; visibility, controllers,
+frame rate and motion-to-photon latency could not be judged. The explicit
+OpenXR errors, rather than the dark captures, establish the client blocker.
+
+Both test installs, app data, shader caches, shortcuts, containers and temporary
+capture files were removed. The original Steam and SteamVR process IDs were
+unchanged. No reboot, power action or global setting change was used. Native
+clients remain untested, and no Linux gaming host was available for Valve's
+streaming path. The recommendation below is unchanged.
+
 ### Relation to the VR APK branch
 
 **Documented from source:** [PR #20](https://github.com/saphid/frame-control/pull/20)

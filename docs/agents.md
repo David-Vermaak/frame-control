@@ -168,6 +168,43 @@ on this branch (run 36421345682).
 **Verified on the same Frame/build:** both Ctrl-C and SIGTERM close the dedicated
 browser profile and SSH tunnel and remove the profile and panel log.
 
+**Verified end to end on the same Frame/build (2026-09-29), with mutations:**
+a stdio MCP client started `ui/frame_mcp.py` in its default mode (private
+backend, no API key, no prestarted server) and a human approved or rejected
+each change in the approval page in a real Chrome window:
+
+| Tool | Result on the Frame |
+|---|---|
+| `send_file` | Approved; the file arrived in `~/Downloads` with identical contents |
+| `install` | Approved; `io.github.fizzyizzy05.binary` job finished in about 35 s |
+| `panel` | Approved; gamescope listed a new panel window, and `computer_state` reported the same window ID and PID. The app rendered in that window (below) |
+| `launch` | Approved; Keep Talking and Nobody Explodes (341800) started under Proton and `computer_state` reported it as the focused app |
+| `uninstall` | Approved; app and locale removed |
+| `power` | Rejected in the page. Unapproved retries, the same token used for `uninstall`, and a retry after rejection were all refused. Nothing was powered off |
+| `send_text` | Approved, then refused because the Plasma desktop was not open (documented requirement) |
+| `keep_awake` | `status` reports the script unavailable until PR #16 lands |
+
+A separate Claude Code CLI session, with only this server configured, read
+status, `computer_state` and a headset capture, and requested an install. It
+received an approval URL and did not execute anything.
+
+The assistant opened as a Frame panel through `scripts/assistant-on-frame.py`.
+Against a loopback stub model, a send without consent made zero requests. With
+consent it made exactly one, carrying the text and a fresh Frame screenshot.
+Consent unticked itself after sending. SIGTERM removed the panel, profile, log
+and tunnel.
+
+**Not verified while unworn:** every headset capture was a uniform dark frame,
+so SteamVR's rendered view of panels and the game could not be checked; window
+captures (`xwd`) were used instead. MCP can launch a game or panel but has no
+tool to stop one: the tester stopped them over SSH. Removing an app leaves any
+runtime it pulled in; Flatpak may also remove related extensions when that
+runtime is removed by hand.
+
+![Approval page showing the exact install action](img/mcp-approval-install.png)
+
+![The installed Flatpak rendering in its own gamescope panel window](img/mcp-panel-binary.png)
+
 ![Assistant in Frame Chromium, after an opted-in request to the local test endpoint](img/assistant-panel.png)
 
 ## Computer-use coverage

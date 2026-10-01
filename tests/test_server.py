@@ -34,7 +34,9 @@ class ServerGuards(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.port = free_port()
-        env = {**os.environ, "FRAME_ALIAS": "frame-control-test.invalid", "PYTHONDONTWRITEBYTECODE": "1"}
+        cls.ssh_dir = tempfile.mkdtemp(prefix="frame-control-ssh-")  # an empty ~/.ssh: no headsets set up
+        env = {**os.environ, "FRAME_ALIAS": "frame-control-test.invalid", "PYTHONDONTWRITEBYTECODE": "1",
+               "FRAME_CONTROL_SSH_DIR": cls.ssh_dir}
         cls.log = tempfile.TemporaryFile()
         cls.proc = subprocess.Popen([sys.executable, str(ROOT / "ui" / "server.py"), "--port", str(cls.port)],
                                     env=env, stdout=cls.log, stderr=subprocess.STDOUT)
@@ -84,6 +86,7 @@ class ServerGuards(unittest.TestCase):
 
     def test_api_needs_custom_header(self):
         # <img src> and plain form posts from other sites can't set it.
+        self.assertEqual(self.request("POST", "/api/comfort", {"action": "start"})[0], 403)
         self.assertEqual(self.request("GET", "/api/status")[0], 403)
         self.assertEqual(self.request("GET", "/api/screenshot?view=headset")[0], 403)
         self.assertEqual(self.request("GET", "/api/shots")[0], 403)
@@ -99,6 +102,8 @@ class ServerGuards(unittest.TestCase):
 
     def test_input_validation(self):
         cases = [
+            ("/api/comfort", {"action": "poweroff"}),
+            ("/api/comfort", {"action": "start", "minutes": 0}),
             ("/api/launch", {"appid": "620; rm -rf ~"}),
             ("/api/launch", {"appid": ""}),
             ("/api/flatpak", {"id": "org.example.App;id", "action": "install"}),
@@ -106,6 +111,8 @@ class ServerGuards(unittest.TestCase):
             ("/api/volume", {"level": 1.5}),
             ("/api/clipboard", {"text": ""}),
             ("/api/open", {"what": "anything-else"}),
+            ("/api/open", {"what": "shot", "id": "1/250820/../../.ssh/id_ed25519"}),
+            ("/api/open", {"what": "shot"}),
             ("/api/shots/save", {"ids": []}),
             ("/api/shots/save", {"ids": "1/250820/20260925225208_1.jpg"}),
             ("/api/shots/save", {"ids": [1]}),
@@ -115,6 +122,10 @@ class ServerGuards(unittest.TestCase):
         for path, body in cases:
             status, payload = self.post(path, body)
             self.assertEqual(status, 400, f"{path} {body} -> {payload}")
+
+    def test_showing_a_shot_needs_it_saved_here(self):
+        status, payload = self.post("/api/open", {"what": "shot", "id": "1/250820/19990101000000_1.jpg"})
+        self.assertEqual(status, 404, payload)
 
     def test_screenshot_ids_checked_before_ssh(self):
         for shot in ("../../etc/passwd", "1/250820/x.jpg", "1/2/20260925225208_1.jpg;id", "1/250820/20260925225208_1.gif"):
@@ -233,6 +244,108 @@ class ServerGuards(unittest.TestCase):
     def test_unknown_routes(self):
         self.assertEqual(self.request("GET", "/nope")[0], 404)
         self.assertEqual(self.post("/api/nope", {})[0], 404)
+
+
+class OneServer(unittest.TestCase):
+    """Two servers for one user would each connect and edit headsets on their own."""
+
+    def start(self, env):
+        proc = subprocess.Popen([sys.executable, str(ROOT / "ui" / "server.py"), "--port", "0"], env=env,
+                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        self.addCleanup(lambda: (proc.terminate(), proc.wait(10), proc.stdout.close()))
+        return proc
+
+    def test_a_second_server_is_refused_until_the_first_exits(self):
+        data = tempfile.mkdtemp(prefix="frame-one-server-")
+        env = {**os.environ, "FRAME_CONTROL_DATA_DIR": data, "FRAME_ALIAS": "frame-control-test.invalid",
+               "FRAME_CONTROL_SERVER_WAIT": "1"}
+        first = self.start(env)
+        self.assertIn("Frame Control on", first.stdout.readline())
+        second = subprocess.run([sys.executable, str(ROOT / "ui" / "server.py"), "--port", "0"], env=env,
+                                capture_output=True, text=True, timeout=60)
+        self.assertEqual(second.returncode, 1)
+        self.assertIn("already running", second.stderr)
+        first.terminate()
+        first.wait(10)
+        self.assertIn("Frame Control on", self.start(env).stdout.readline())
+
+    def test_a_private_server_runs_alongside_but_cant_change_headsets(self):
+        """The MCP adapter starts its own server (FRAME_PRIVATE_SSH=1) while the app runs."""
+        data = tempfile.mkdtemp(prefix="frame-one-server-")
+        env = {**os.environ, "FRAME_CONTROL_DATA_DIR": data, "FRAME_ALIAS": "frame-control-test.invalid",
+               "FRAME_CONTROL_SERVER_WAIT": "1"}
+        self.assertIn("Frame Control on", self.start(env).stdout.readline())
+        private = self.start({**env, "FRAME_PRIVATE_SSH": "1"})
+        line = private.stdout.readline()
+        self.assertIn("Frame Control on", line)
+        port = int(line.split("http://127.0.0.1:")[1].split()[0])
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
+        conn.request("POST", "/api/devices", body=json.dumps({"action": "use", "id": "x"}),
+                     headers={"Content-Type": "application/json", "X-Frame-UI": "1", "Host": f"127.0.0.1:{port}"})
+        r = conn.getresponse()
+        self.assertEqual(r.status, 403, r.read())
+
+    @unittest.skipIf(os.name == "nt", "no SIGTERM on Windows")
+    def test_sigterm_while_the_app_holds_stdin_exits_cleanly(self):
+        """The app keeps stdin open; a stop signal used to abort Python (SIGABRT) at exit."""
+        env = {**os.environ, "FRAME_CONTROL_DATA_DIR": tempfile.mkdtemp(prefix="frame-one-server-"),
+               "FRAME_ALIAS": "frame-control-test.invalid"}
+        proc = subprocess.Popen([sys.executable, str(ROOT / "ui" / "server.py"), "--port", "0", "--exit-on-eof"],
+                                env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        self.addCleanup(lambda: (proc.stdin.close(), proc.stdout.close()))
+        self.assertIn("Frame Control on", proc.stdout.readline())
+        proc.terminate()
+        self.assertEqual(proc.wait(30), 0, proc.stdout.read())
+
+
+class ArtworkSettings(unittest.TestCase):
+    """The settings panel's endpoints, with and without the page's X-Frame-UI key."""
+
+    def test_settings_need_and_accept_the_ui_key(self):
+        with tempfile.TemporaryDirectory() as home:
+            port = free_port()
+            env = {**os.environ, "FRAME_ALIAS": "frame-control-test.invalid", "PYTHONDONTWRITEBYTECODE": "1",
+                   "HOME": home, "APPDATA": home, "XDG_DATA_HOME": home}
+            for name in ("STEAMGRIDDB_API_KEY", "FRAME_STEAMGRIDDB_API_KEY", "FRAME_UI_KEY"):
+                env.pop(name, None)
+            proc = subprocess.Popen([sys.executable, str(ROOT / "ui" / "server.py"), "--port", str(port)],
+                                    env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            try:
+                def request(method, path, body=None, headers=None):
+                    conn = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
+                    conn.request(method, path, body=json.dumps(body).encode() if body is not None else None,
+                                 headers=headers or {})
+                    r = conn.getresponse()
+                    payload = r.read()
+                    conn.close()
+                    return r.status, payload
+                for _ in range(100):
+                    try:
+                        if request("GET", "/")[0] == 200:
+                            break
+                    except OSError:
+                        time.sleep(0.05)
+                key = {"X-Frame-UI": "1", "Content-Type": "application/json"}
+                self.assertEqual(request("GET", "/api/settings/artwork")[0], 403)
+                self.assertEqual(request("POST", "/api/settings/artwork", {"steamgriddb_api_key": "abc"})[0], 403)
+                status, payload = request("GET", "/api/settings/artwork", headers=key)
+                self.assertEqual((status, json.loads(payload)["steamgriddb_configured"]), (200, False))
+                status, payload = request("POST", "/api/settings/artwork", {"steamgriddb_api_key": "abc_1"}, key)
+                self.assertEqual((status, json.loads(payload)["steamgriddb_configured"]), (200, True))
+                self.assertNotIn(b"abc_1", payload)
+                status, payload = request("GET", "/api/settings/artwork", headers=key)
+                self.assertTrue(json.loads(payload)["steamgriddb_configured"])
+                self.assertEqual(request("POST", "/api/settings/artwork", {"steamgriddb_api_key": "a b"}, key)[0], 400)
+            finally:
+                proc.terminate()
+                proc.wait(timeout=10)
+
+    def test_panel_script_uses_the_keyed_api_helper(self):
+        script = (ROOT / "ui" / "artwork-settings.js").read_text(encoding="utf-8")
+        self.assertNotIn("fetch(", script)
+        self.assertIn("api('/api/settings/artwork'", script)
+        page = (ROOT / "ui" / "index.html").read_text(encoding="utf-8")
+        self.assertLess(page.index("async function api("), page.index('<script src="/artwork-settings.js">'))
 
 
 @unittest.skipIf(os.name == "nt", "runs on the Frame (Linux); local-bin/ssh is a POSIX shell script")

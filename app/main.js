@@ -1,7 +1,7 @@
 // Frame Control as a desktop app (macOS, Windows, Linux): starts ui/server.py on
 // a free loopback port and shows it in a native window. The server does all the
 // work over the `frame` SSH alias; this file only hosts it.
-const { app, BrowserWindow, Menu, clipboard, dialog, ipcMain, shell } = require("electron");
+const { app, BrowserWindow, Menu, Notification, clipboard, dialog, ipcMain, nativeImage, shell } = require("electron");
 const { execFile, spawn } = require("child_process");
 const { promisify } = require("util");
 const fs = require("fs");
@@ -149,7 +149,7 @@ async function startServer() {
   const target = `http://127.0.0.1:${port}/`;
   for (let i = 0; i < 100; i++) {
     if (exited !== null) throw new Error(`The server exited (${exited}). See ${LOG}.`);
-    if (await ping(target)) { url = target; return; }
+    if (await ping(target)) { url = target; serverStarted = Date.now(); return; }
     await new Promise((r) => setTimeout(r, 100));
   }
   if (server === child) server = null;
@@ -159,51 +159,76 @@ async function startServer() {
 
 // Closing stdin lets server.py close its SSH connections and exit (the only clean
 // way on Windows); SIGTERM does the same elsewhere.
+// Resolves once it has exited (or after 20 s), so a replacement can take the server
+// lock: server.py allows one per user.
 function endServer(child) {
+  const gone = child.exitCode !== null || child.signalCode !== null ? Promise.resolve()
+    : new Promise((resolve) => child.once("exit", resolve));
   try { child.stdin.end(); } catch {}
   if (!IS_WIN) child.kill("SIGTERM");
-  setTimeout(() => { if (child.exitCode === null && child.signalCode === null) child.kill(); }, 5000).unref();
+  // server.py ignores a second SIGTERM while it shuts down, so the fallback is a hard kill.
+  setTimeout(() => { if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL"); }, 12000).unref();
+  return Promise.race([gone, new Promise((resolve) => setTimeout(resolve, 20000).unref())]);
 }
 
 function stopServer() {
   if (server) endServer(server);
 }
 
-function errorPage(message) {
+function errorPage(message, title = "Frame Control couldn't start") {
   const esc = (s) => s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
   const html = `<!doctype html><meta charset="utf-8"><body style="margin:0;height:100vh;display:grid;
     place-items:center;background:${BG};color:#e6edf3;font:14px -apple-system,sans-serif">
-    <div style="max-width:560px;padding:32px;line-height:1.5"><h2>Frame Control couldn't start</h2>
-    <p>${esc(message)}</p><p style="color:#8b98a8">Fix it, then choose Frame → Restart Server.</p></div>`;
+    <div style="max-width:560px;padding:32px;line-height:1.5"><h2>${esc(title)}</h2>
+    <p>${esc(message)}</p>
+    <p><button onclick="this.disabled = true; frameApp.restartServer()" style="font:inherit;padding:6px 16px;
+      border-radius:6px;border:1px solid #30363d;background:#21262d;color:inherit;cursor:pointer">Try Again</button></p>
+    <p style="color:#8b98a8">Frame → Restart Server does the same.</p></div>`;
   return "data:text/html;charset=utf-8," + encodeURIComponent(html);
 }
 
+// A server that had been running starts again by itself (something stopped it: a
+// signal, a crash). One that stops again within a minute shows the error instead,
+// so a server that can't stay up doesn't restart forever.
+let serverStarted = 0;
 function serverDied(why) {
   url = null;
-  if (win) win.loadURL(errorPage(`The server stopped unexpectedly (${why}). See ${LOG}.`));
+  if (!win) return;
+  if (Date.now() - serverStarted > 60000) restartServer();
+  else win.loadURL(errorPage(`Its server stopped unexpectedly (${why}). See ${LOG}.`, "Frame Control stopped"));
 }
 
-async function restartServer() {
-  const old = server;
-  server = null;
-  url = null;
-  if (old) endServer(old);
-  await load();
+// Restarts that overlap share one: two could each start a server, and the one
+// that lost the lock would leave the app pointing at nothing.
+let restarting = null;
+function restartServer() {
+  if (!restarting) {
+    restarting = (async () => {
+      const old = server;
+      server = null;
+      url = null;
+      if (old) await endServer(old);
+      if (starting) await starting.catch(() => {});  // a start it cut short: then start afresh
+      await load();
+    })().finally(() => { restarting = null; });
+  }
+  return restarting;
 }
 
 // On macOS the page's sticky header becomes the title bar, clear of the traffic lights.
 const CHROME_CSS = IS_MAC && `
   header { padding-left: 92px !important; -webkit-app-region: drag; user-select: none; }
-  header a, header button, header input, header .chip { -webkit-app-region: no-drag; }
+  header a, header button, header input, header select, header .chip { -webkit-app-region: no-drag; }
 `;
 
 // Restart Server can start a new load while an older one is still waiting for
 // its server; only the newest load may touch the window.
 let loadGen = 0;
+let starting = null;  // loads that overlap share one server start
 async function load() {
   const gen = ++loadGen;
   try {
-    if (!url) await startServer();
+    if (!url) await (starting ||= startServer().finally(() => { starting = null; }));
     if (gen === loadGen && win) { await win.loadURL(url); firstRunCheck(); }
   } catch (e) {
     if (gen === loadGen && win) await win.loadURL(errorPage(e.message));
@@ -247,12 +272,80 @@ function fromUi(e) {
   } catch { return false; }
 }
 
+// The error page's Try Again button. The error page is the only data: page the window
+// shows (`url` can still be set then: the server answered but the page failed to load).
+ipcMain.handle("server:restart", (e) => {
+  if (win && e.sender === win.webContents && e.senderFrame && e.senderFrame.url.startsWith("data:")) restartServer();
+});
 ipcMain.handle("clipboard:read", (e) => fromUi(e) ? clipboard.readText() : "");
+// A PNG or JPEG (a screenshot) onto the clipboard as an image.
+ipcMain.handle("clipboard:writeImage", (e, bytes) => {
+  if (!fromUi(e) || !(bytes instanceof Uint8Array)) return false;
+  const img = nativeImage.createFromBuffer(Buffer.from(bytes));
+  if (img.isEmpty()) throw new Error("not an image");
+  clipboard.writeImage(img);
+  return true;
+});
 ipcMain.handle("connection:setup", (e) => { if (fromUi(e)) setUpConnection(); });
 ipcMain.on("keys:capture", (e, on) => { if (fromUi(e)) win.webContents.setIgnoreMenuShortcuts(on === true); });
 ipcMain.handle("update:get", (e) => fromUi(e) ? publicUpdate() : null);
 ipcMain.handle("update:check", (e) => fromUi(e) ? checkForUpdate({ manual: true }).then(publicUpdate) : null);
 ipcMain.handle("update:install", (e) => { if (fromUi(e)) installUpdate(); });
+
+// The page reports the headsets it knows (the server's Devices tab), so the Frame
+// menu can switch between them. Only plain names and ids go into the menu.
+const ALIAS_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+let devices = [];
+ipcMain.on("devices:changed", (e, list) => {
+  if (!fromUi(e) || !Array.isArray(list)) return;
+  const next = list.slice(0, 20).filter(d => d && typeof d.id === "string" && ALIAS_RE.test(d.alias || ""))
+    .map(d => ({ id: d.id.slice(0, 80), name: String(d.name || d.alias).slice(0, 60), alias: d.alias, active: !!d.active }));
+  if (JSON.stringify(next) === JSON.stringify(devices)) return;
+  devices = next;
+  buildMenu();
+});
+const activeAlias = () => (devices.find(d => d.active) || {}).alias || FRAME;
+
+// SSH through the server, so it goes to the headset and address the app is using
+// (with its own pinned identity), and refuses when there's none.
+function openSsh() {
+  if (!url) return dialog.showErrorBox("Couldn't open SSH", "Frame Control's server isn't running.");
+  const body = JSON.stringify({ what: "terminal" });
+  const req = http.request(new URL("/api/open", url), {
+    method: "POST", timeout: 15000,
+    headers: { "Content-Type": "application/json", "X-Frame-UI": "1", "Content-Length": Buffer.byteLength(body) },
+  }, (res) => {
+    let data = "";
+    res.on("data", (c) => { data += c; });
+    res.on("end", () => {
+      if (res.statusCode === 200) return;
+      let why = `HTTP ${res.statusCode}`;
+      try { why = JSON.parse(data).error || why; } catch {}
+      dialog.showErrorBox("Couldn't open SSH", why);
+    });
+  });
+  req.on("error", (e) => dialog.showErrorBox("Couldn't open SSH", e.message));
+  req.on("timeout", () => req.destroy(new Error("the server didn't answer")));
+  req.end(body);
+}
+function showDevices() {
+  if (win && url) win.webContents.executeJavaScript('location.hash = "devices"').catch(() => {});
+}
+
+ipcMain.handle("comfort:notify", (e, message) => {
+  if (!fromUi(e) || typeof message !== "string" || message.length > 500) throw new Error("Invalid notification");
+  if (!Notification.isSupported()) throw new Error("System notifications are unavailable");
+  return new Promise((resolve, reject) => {
+    const notification = new Notification({title: "Frame Control", body: message});
+    const timer = setTimeout(() => reject(new Error("Notification delivery was not confirmed. Check system notification settings.")), 5000);
+    notification.once("show", () => { clearTimeout(timer); resolve(true); });
+    notification.once("failed", (_event, error) => {
+      clearTimeout(timer);
+      reject(new Error("Notification delivery failed. Check system notification settings: " + error));
+    });
+    notification.show();
+  });
+});
 
 // frame-control://install links from websites (docs/web-install.md). They can
 // arrive before the window or server exists (macOS open-url on a cold launch),
@@ -376,7 +469,7 @@ function createWindow() {
     title: "Frame Control", backgroundColor: BG, show: false,
     ...(IS_MAC ? { titleBarStyle: "hiddenInset", trafficLightPosition: { x: 18, y: 26 } }
                : { icon: path.join(__dirname, "build", "icon.png") }),
-    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true,
+    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, backgroundThrottling: false,
                       preload: path.join(__dirname, "preload.js") },
   });
   win.once("ready-to-show", () => win.show());
@@ -410,13 +503,14 @@ async function runInTerminal(argv) {
   }
 }
 
-async function setUpConnection() {
-  const alias = `FRAME_ALIAS=${FRAME}`;
+// Set Up Connection for the headset in use (or another alias, from the Devices tab).
+async function setUpConnection(name = activeAlias()) {
+  if (!ALIAS_RE.test(name)) return;
+  const alias = `FRAME_ALIAS=${name}`;
   if (IS_MAC) return runInTerminal(["env", alias, "zsh", path.join(SCRIPTS, "connect.sh")]);
   const py = python || await findPython({ ...process.env, PATH: await loginPath() });
-  const setup = [py || "python3", ...PY_FLAGS, path.join(ROOT, "ui", "frame_connect.py")];
-  // A new console inherits our environment on Windows; Linux terminals may not.
-  runInTerminal(IS_WIN ? setup : ["env", alias, ...setup]);
+  // --alias, since a new console on Windows (and some Linux terminals) doesn't get our environment.
+  runInTerminal([py || "python3", ...PY_FLAGS, path.join(ROOT, "ui", "frame_connect.py"), "--alias", name]);
 }
 
 function buildMenu() {
@@ -431,8 +525,15 @@ function buildMenu() {
     {
       label: "Frame",
       submenu: [
-        { label: "Set Up Connection…", click: setUpConnection },
-        { label: IS_MAC ? "Open SSH in Terminal" : "Open SSH in a Terminal", click: () => runInTerminal(["ssh", FRAME]) },
+        { label: "Set Up Connection…", click: () => setUpConnection() },
+        { label: IS_MAC ? "Open SSH in Terminal" : "Open SSH in a Terminal", click: openSsh },
+        { type: "separator" },
+        ...(devices.length > 1 ? [{
+          label: "Headset",
+          submenu: devices.map(d => ({ label: d.name, type: "radio", checked: d.active,
+                                       click: () => { if (win) win.webContents.send("use-device", d.id); } })),
+        }] : []),
+        { label: "Devices…", accelerator: "CmdOrCtrl+5", click: showDevices },
         { type: "separator" },
         { label: "Open in Browser", click: () => url && shell.openExternal(url) },
         { label: "Restart Server", click: () => win ? restartServer() : createWindow() },
