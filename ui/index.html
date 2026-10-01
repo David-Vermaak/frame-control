@@ -1264,6 +1264,7 @@
     <label class="popt"><input type="checkbox" id="bugFollowup"><b>The maintainer may contact me with follow-up questions</b>
       <span class="sub">Optional. Your email address goes with this report only when this is ticked, and is kept as your contact email in Privacy &amp; updates, where you can remove it.</span></label>
     <label class="field">Your email address<input type="email" id="bugContact" maxlength="254" placeholder="you@example.com" disabled></label>
+    <p class="hint" id="bugReplaces" role="status" hidden></p>
     <label class="popt"><input type="checkbox" id="bugDiag" checked><b>Include diagnostics</b>
       <span class="sub">Frame Control's version, your OS and the Frame's SteamOS build.</span></label>
     <label class="popt"><input type="checkbox" id="bugLogs"><b>Also include recent activity and the server log</b>
@@ -4092,6 +4093,7 @@ function openBugReport() {
   // A standing yes to follow-up questions (Privacy & updates) fills this in; it can be unticked.
   $("bugFollowup").checked = contact.followup; $("bugContact").value = contact.followup ? contact.email : "";
   $("bugContact").disabled = !contact.followup; $("bugContact").required = contact.followup;
+  bugReplaces();
   $("bugDlg").showModal();
   loadBugPreview();
 }
@@ -4102,7 +4104,17 @@ $("bugFollowup").onchange = () => {
   const on = $("bugFollowup").checked;
   $("bugContact").disabled = !on; $("bugContact").required = on;
   if (on && !$("bugContact").value) { $("bugContact").value = contact.email; $("bugContact").focus(); }
+  bugReplaces();
 };
+// Sending with another address replaces the saved one (ui/frame_contact.py from_report): say so first.
+function bugReplaces() {
+  const email = $("bugContact").value.trim(), old = contact.email;
+  const replaces = $("bugFollowup").checked && email && old && email.toLowerCase() !== old.toLowerCase();
+  $("bugReplaces").hidden = !replaces;
+  $("bugReplaces").textContent = !replaces ? "" : `Sending replaces ${old} as your contact email${contact.updates
+    ? ", and update notices stop until you turn them on again in Privacy & updates" : ""}.`;
+}
+$("bugContact").oninput = bugReplaces;
 $("bugCancel").onclick = () => $("bugDlg").close();
 $("bugCopy").onclick = async () => {
   const { title, body } = bugReportText();
@@ -4125,7 +4137,7 @@ $("bugForm").onsubmit = async e => {
     $("bugMsg").textContent = `Couldn't send it: ${err.message}. Try again later, or use Copy report.`;
     $("bugSend").disabled = false;
   }
-  if ($("bugFollowup").checked) api("/api/contact").then(renderContact).catch(() => {});
+  api("/api/contact").then(renderContact).catch(() => {});  // the report may have saved the address
 };
 if (window.frameApp && window.frameApp.onReportProblem) window.frameApp.onReportProblem(openBugReport);
 

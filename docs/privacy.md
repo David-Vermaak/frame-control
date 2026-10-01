@@ -108,8 +108,10 @@ email address goes with it only if you tick **The maintainer may contact me
 with follow-up questions** (the report then carries `contact_followup: true`);
 it's filled in from **Contact email** below when you've agreed there. It has its own random id, so it isn't linked to
 your analytics events. With that box ticked, the address also becomes your
-**Contact email** below with follow-up questions ticked (your update choice
-stays as it was), so you remove it there like any other. The report then also
+**Contact email** below with follow-up questions ticked, so you remove it there
+like any other. If it's a different address from the one saved there, it
+replaces it, and update notices stop until you turn them on again (they were
+agreed for the old address); the form says so before you send. The report then also
 carries this copy's contact id and change number (`contact_id`, `contact_rev`,
 see below), so removing or changing the address later takes back the
 follow-up permission given with the report too.
@@ -156,7 +158,10 @@ Frame Control's PostHog project, the same place as problem reports, as a
 `contact_consent` event with `email`, `updates`, `followup`, `action` (`set`
 or `withdraw`) and the common properties above. Only the maintainer can read
 that project, and nothing in it is published or shared. It's sent only when
-you save, whatever the analytics settings are, because you chose to. It
+you save, or when you send a problem report with follow-up questions ticked,
+whatever the analytics settings are, because you chose to. With a report, the
+address is saved and sent first, so it stands even if the report itself then
+fails to send. It
 carries its own random contact id, not the analytics id, so it isn't linked
 to your usage events, and a `rev` number that goes up with each change, so
 the newest choice always wins. Like everything else sent, it's listed under

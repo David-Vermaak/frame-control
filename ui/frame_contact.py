@@ -81,16 +81,19 @@ def flag(body, key):
 
 def from_report(email):
     """Follow-up questions agreed to with a problem report: the address becomes the contact
-    email with that choice ticked (the update choice stays as it was), so it shows in Settings
-    and is removed the same way. Returns (contact id, rev) for the report to carry: a later
-    change from this copy has a higher rev, and the newest such change decides whether the
-    report's follow-up permission still stands, whatever the clocks say."""
-    s = load()
-    if s['email'].lower() != email.lower() or not s['followup']:
-        save({'email': s['email'] if s['email'].lower() == email.lower() else email,
-              'updates': s['updates'], 'followup': True})
+    email with that choice ticked, so it shows in Settings and is removed the same way. Update
+    notices stay on only for the same address: a different one replaces the old address with
+    follow-up questions only (the report form says so before sending). Returns (contact id,
+    rev) for the report to carry, read together with the change itself: a later change from
+    this copy has a higher rev, and the newest such change decides whether the report's
+    follow-up permission still stands, whatever the clocks say."""
+    with _lock:
         s = load()
-    return s['id'], s['rev']
+        same = s['email'].lower() == email.lower()
+        changed, cid, rev = _apply({'email': s['email'] if same else email,
+                                    'updates': s['updates'] and same, 'followup': True})
+    _deliver(changed)
+    return cid, rev
 
 
 def state():
@@ -177,6 +180,12 @@ def redact_removed(event, started):
 def save(body):
     """Set, change or remove the address and the two choices. An address needs at least one
     choice ticked; an empty address (or neither ticked) removes it and withdraws both."""
+    _deliver(_apply(body)[0])
+    return state()
+
+
+def _apply(body):
+    """save()'s change, kept here and waiting to send. Returns (changed, contact id, rev)."""
     email = str(body.get('email') or '').strip()
     updates, followup = flag(body, 'updates'), flag(body, 'followup')
     if email and not valid_email(email):
@@ -203,9 +212,12 @@ def save(body):
                 _forget_locally(old)
             except OSError:
                 pass
+        return changed, s['id'], s['rev']
+
+
+def _deliver(changed):
     if changed and not _send_pending(block=False):
         _wake.set()  # offline, or a send under way that will take this change with it
-    return state()
 
 
 def prompt(body):

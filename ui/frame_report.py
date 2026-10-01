@@ -116,6 +116,7 @@ def send(body):
     contact = str(body.get('contact') or '').strip() if followup else ''
     if followup and not frame_contact.valid_email(contact):
         raise ValueError('add your email address for follow-up questions, or untick that box')
+    started = time.time()  # a removal from now on (even while saving the address) is redacted from the log
     # It becomes the contact email in Settings, where it's changed or removed like any other.
     contact_id, contact_rev = frame_contact.from_report(contact) if followup else ('', 0)
     ref = uuid.uuid4().hex[:8].upper()
@@ -127,7 +128,6 @@ def send(body):
     # Its own random id: a report can carry contact details, so it isn't linked to this copy's analytics.
     event = {'event': 'problem_report', 'distinct_id': str(uuid.uuid4()), 'uuid': str(uuid.uuid4()),
              'timestamp': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()), 'properties': props}
-    started = time.time()
     try:
         frame_telemetry.post([event], timeout=30)
     except frame_telemetry.SendError as e:

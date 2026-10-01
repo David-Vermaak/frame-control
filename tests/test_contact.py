@@ -281,12 +281,38 @@ class Contact(Base):
         logged = [e["properties"].get("contact") for e in tm._read_lines(tm.SENT) if e["event"] == "problem_report"]
         self.assertEqual(logged, ["<removed>", "<removed>"])
 
-    def test_a_report_to_another_address_keeps_the_update_choice(self):
+    def test_a_report_to_another_address_replaces_it_with_follow_up_only(self):
+        """Update notices were agreed for the old address, not the new one (the form says so)."""
         fc.save({"email": "old@example.com", "updates": True})
         fr.send({**REPORT, "contact": "new@example.com", "contactFollowup": True})
         s = fc.state()
-        self.assertEqual((s["email"], s["updates"], s["followup"]), ("new@example.com", True, True))
+        self.assertEqual((s["email"], s["updates"], s["followup"]), ("new@example.com", False, True))
         self.assertEqual(self.reports()[0]["contact_rev"], 2)
+        fc.save({"email": "new@example.com", "updates": True, "followup": False})
+        fr.send({**REPORT, "contact": "NEW@example.com", "contactFollowup": True})  # same address: kept
+        s = fc.state()
+        self.assertEqual((s["email"], s["updates"], s["followup"]), ("new@example.com", True, True))
+
+    def test_a_removal_while_the_report_saves_its_address_still_counts(self):
+        """Removed while the report's own consent is on its way: the report keeps that consent's
+        rev (so the removal is newer) and is logged without the address."""
+        post, removed = tm.post, []
+
+        def slow_post(events, **kw):
+            post(events, **kw)
+            if not removed and events[0]["event"] == "contact_consent":
+                removed.append(fc.save({"email": ""}))  # Remove my email, mid-send
+        with mock.patch.object(tm, "post", side_effect=slow_post):
+            fr.send({**REPORT, "contact": "me@example.com", "contactFollowup": True})
+        report = self.reports()[0]
+        self.assertEqual((report["contact_rev"], fc.load()["rev"], fc.state()["email"]), (1, 2, ""))
+        consents = [[e["distinct_id"], e["properties"]["email"], e["properties"]["followup"], e["properties"]["rev"]]
+                    for e in self.events() if e["event"] == "contact_consent"]
+        row = self.report_row(cid=report["contact_id"], rev=report["contact_rev"])
+        fr.mark_withdrawn([row], consents)
+        self.assertEqual(row[10], "withdrawn")
+        logged = [e["properties"]["contact"] for e in tm._read_lines(tm.SENT) if e["event"] == "problem_report"]
+        self.assertEqual(logged, ["<removed>"])
 
     def report_row(self, contact="me@example.com", followup=True, cid="copy", rev=1):
         return ["2026-09-10T10:00:00Z", "AB12CD34", "bug", "RDP", "It never connects.", contact,
