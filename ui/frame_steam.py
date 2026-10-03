@@ -8,6 +8,7 @@ JavaScript context ("SharedJSContext") answers the Chrome DevTools protocol on
 client for it, plus the few actions Frame Control needs.
 
 Usage: python3 - owned            # owned games + download status, JSON
+       python3 - live             # battery, download queue, controllers, running game
        python3 - install APPID    # start an install; reports the wizard state
        python3 - store APPID      # open the app's store page in the headset
 Prints one JSON object. Errors are {"error": "..."} with exit status 1.
@@ -156,6 +157,78 @@ UTILITIES_JS = """(() => {
 })()"""
 
 
+# What the headset itself shows, for the Device card: Steam's battery level
+# (the kernel's capacity reads lower; Steam scales it), the download queue,
+# controller batteries and the running game. Steam pushes the first three
+# through Register* callbacks that fire with the current value when registered
+# (as FrameMate, github.com/nailuj05/framemate, relies on); each is awaited once,
+# briefly, then unregistered. One that doesn't fire in time is null, not an error.
+# OpenVR property ids (openvr.h): 1001 model, 1002 serial, 1011 charging,
+# 1012 battery (0-1), 1029 device class (2 controller, 3 tracker).
+LIVE_JS = r"""
+(async () => {
+  const first = (register, ms = 1500) => new Promise(resolve => {
+    let handle = null, done = false, timer = null;
+    const finish = value => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      // A callback can fire inside register(), before handle is assigned.
+      Promise.resolve().then(() => { try { handle?.unregister(); } catch {} });
+      resolve(value);
+    };
+    timer = setTimeout(() => finish(null), ms);
+    try { handle = register((...args) => finish(args)); } catch { finish(null); }
+  });
+  const name = id => { try { return appStore.GetAppOverviewByAppID(Number(id))?.display_name ?? null; } catch { return null; } };
+  const S = SteamClient;
+  const [batt, items, paths] = await Promise.all([
+    first(cb => S.System.RegisterForBatteryStateChanges(cb)),
+    first(cb => S.Downloads.RegisterForDownloadItems(cb)),
+    first(cb => S.OpenVR.RegisterForVRTrackedDevices(cb)),
+  ]);
+
+  const b = batt?.[0];
+  const battery = b && b.bHasBattery && Number.isFinite(b.flLevel) ? {
+    percent: Math.round(b.flLevel * 100),
+    secondsLeft: b.nSecondsRemaining > 0 ? b.nSecondsRemaining : null,
+    onAC: b.eACState === 2 } : null;
+
+  // With Remote Downloads the account's other PCs are listed too; client "0" is this one.
+  const local = c => String(c?.remote_client_id) === "0";
+  const queue = items ? (items[1] || []).filter(local).flatMap(c => c.item_data || []).map(i => ({
+    appid: i.appid, name: name(i.appid), position: i.queue_index ?? null, active: !!i.active,
+    paused: !!i.paused, completed: !!i.completed, completedAt: i.completed_time || null,
+    percent: i.overall_percent_complete ?? null, error: i.update_error || null })) : null;
+  const o = new Map(downloadsStore.m_DownloadOverview || []).get("0");
+  const current = o && o.update_appid ? {
+    appid: o.update_appid, paused: !!o.paused, percent: o.overall_percent_complete ?? null,
+    eta: o.overall_estimated_time_remaining_sec ?? null, bps: o.update_network_bytes_per_second ?? null } : null;
+
+  const prop = async (fn, path, id) => {
+    try { return await S.OpenVR.DeviceProperties[fn](path, id); } catch { return null; }
+  };
+  const device = async path => {
+    let connected = null;
+    try { connected = !!(await S.OpenVR.Device.BIsConnected(path)); } catch {}
+    return { serial: await prop("GetStringDeviceProperty", path, 1002),
+             model: await prop("GetStringDeviceProperty", path, 1001),
+             kind: await prop("GetInt32DeviceProperty", path, 1029),
+             battery: await prop("GetFloatDeviceProperty", path, 1012),
+             charging: await prop("GetBoolDeviceProperty", path, 1011), connected };
+  };
+  const devices = Array.isArray(paths?.[0])
+    ? (await Promise.all(paths[0].map(device))).filter(d => d.kind === 2 || d.kind === 3) : null;
+
+  let running = null;
+  try {
+    running = Array.from(SteamUIStore.RunningApps ?? [], a => ({ appid: a.appid, name: a.display_name ?? name(a.appid) }));
+  } catch {}
+  return { battery, downloads: queue && { queue, current }, devices, running };
+})()
+"""
+
+
 WIZARD_JS = """SteamClient.Installs.GetInstallManagerInfo().then(i => ({
   state: i?.eInstallState ?? 0, app: i?.currentAppID ?? 0, need: i?.nDiskSpaceRequired || 0,
   free: i?.nDiskSpaceAvailable || 0, error: i?.eAppError, detail: i?.errorDetail }))"""
@@ -169,6 +242,10 @@ def steam_url(url):
 
 def owned():
     return Page().eval(OWNED_JS)
+
+
+def live():
+    return Page().eval(LIVE_JS)
 
 
 def install(appid):
@@ -235,12 +312,14 @@ def main():
         cmd = sys.argv[1] if len(sys.argv) > 1 else ""
         if cmd == "owned":
             out = owned()
+        elif cmd == "live":
+            out = live()
         elif cmd == "utilities":
             out = {"utilities": Page().eval(UTILITIES_JS)}
         elif cmd in ("install", "store") and len(sys.argv) == 3 and sys.argv[2].isdigit():
             out = (install if cmd == "install" else store)(int(sys.argv[2]))
         else:
-            raise Fail("usage: owned | install APPID | store APPID")
+            raise Fail("usage: owned | live | install APPID | store APPID")
     except (Fail, OSError) as e:
         print(json.dumps({"error": str(e)}))
         sys.exit(1)

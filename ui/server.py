@@ -53,6 +53,7 @@ import frame_comfort  # noqa: E402
 import frame_contact  # noqa: E402
 import frame_host  # noqa: E402
 import frame_link  # noqa: E402
+import frame_live  # noqa: E402
 import frame_macview  # noqa: E402
 import frame_media  # noqa: E402
 import frame_panels  # noqa: E402
@@ -362,11 +363,25 @@ def terminal(argv):
 # ---- actions ---------------------------------------------------------------
 
 def status(_body):
+    # Steam's own figures (frame_steam.py live) are asked for alongside. Steam can
+    # be stopped or still starting; then they're left out, never failing the status.
+    live = {}
+
+    def ask_steam():
+        try:
+            live["answer"] = steam_frame("live", timeout=10)
+        except (Failure, OSError, ValueError):
+            pass
+    asking = threading.Thread(target=ask_steam, daemon=True)
+    asking.start()
     s = json.loads(ssh("python3 -", stdin=(HERE / "frame_status.py").read_text(), timeout=20))
     osr = s.get("os") if isinstance(s, dict) else None
     if isinstance(osr, dict):
         frame_telemetry.frame_seen(osr.get("build"), osr.get("version"))
         frame_report.frame.update(build=osr.get("build"), version=osr.get("version"))
+    if isinstance(s, dict):
+        asking.join(10)
+        frame_live.merge(s, live.get("answer"))
     return s
 
 

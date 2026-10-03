@@ -783,6 +783,7 @@
           <div class="detail" id="battDetail">&nbsp;</div>
         </div>
       </div>
+      <div class="chips" id="controllers" hidden></div>
       <div class="stats">
         <div class="stat"><div class="k">Storage free</div><div class="v" id="sDisk">—</div><div class="meter"><i id="mDisk"></i></div></div>
         <div class="stat"><div class="k">Memory used</div><div class="v" id="sMem">—</div><div class="meter"><i id="mMem"></i></div></div>
@@ -792,6 +793,7 @@
         <div class="stat"><div class="k">SteamOS</div><div class="v" id="sOs">—</div><div class="d" id="dOs">&nbsp;</div></div>
       </div>
       <div class="chips" id="services"></div>
+      <div class="list" id="steamDl" style="margin-top:14px" hidden></div>
       <div class="vol">
         <button class="small" id="muteBtn" aria-label="Mute">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z"/><path id="volWaves" d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="2"/></svg>
@@ -1683,6 +1685,7 @@ function battery(b, power) {
   $("battFill").setAttribute("fill", color);
   $("battBolt").setAttribute("visibility", charging ? "visible" : "hidden");
   $("battPct").textContent = pct == null ? "—" : `${pct}%`;
+  $("battPct").title = b?.rawPercent != null ? `As the headset shows it. The battery gauge itself reads ${b.rawPercent}%.` : "";
 
   let label, cls, detail = [];
   if (!b) { label = "Battery unknown"; cls = "draining"; }
@@ -1711,9 +1714,38 @@ function battery(b, power) {
   $("battChip").hidden = pct == null;
 }
 
+// ---- what the Frame's Steam reports: controllers and downloads (ui/frame_live.py) ----
+function renderSteam(st) {
+  const ctl = st?.controllers || [];
+  $("controllers").hidden = !ctl.length;
+  $("controllers").innerHTML = ctl.map(c => {
+    const pct = c.battery == null ? "—" : `${Math.round(c.battery * 100)}%`;
+    const name = c.model || (c.kind === 3 ? "Tracker" : "Controller");
+    const state = c.connected ? (c.charging ? " · charging" : "") : ` · asleep${c.lastSeen ? ", seen " + ago(c.lastSeen) : ""}`;
+    return `<span class="chip" title="${c.connected ? "Connected" : "Not connected: last known level"}"><span class="dot ${c.connected ? "on" : ""}"></span>${esc(name)} ${pct}${esc(state)}</span>`;
+  }).join("");
+
+  const cur = st?.downloads?.current;
+  const queue = (st?.downloads?.queue || []).filter(i => !i.completed)
+    .sort((a, b) => (a.position ?? 1e9) - (b.position ?? 1e9));
+  $("steamDl").hidden = !queue.length;
+  $("steamDl").innerHTML = queue.map(i => {
+    const now = cur && cur.appid === i.appid ? cur : null;
+    const pct = now?.percent ?? i.percent;
+    const what = i.error ? `Error: ${i.error}` : i.paused || now?.paused ? "Paused" : now || i.active ? "Downloading" : "Queued";
+    const parts = [what + (pct != null ? ` · ${pct}%` : "")];
+    if (now && !now.paused) {
+      if (now.bps > 0) parts.push(`${(now.bps / 1e6).toFixed(1)} MB/s`);
+      if (now.eta > 0) parts.push(`${dur(now.eta)} left`);
+    }
+    return `<div class="item"><div class="grow"><div class="t">${esc(i.name || i.appid)}</div><div class="s">${esc(parts.join(" · "))}</div></div></div>`;
+  }).join("");
+}
+
 function render(s) {
   renderPerformance(s);
   battery(s.battery, s.power);
+  renderSteam(s.steam);
   $("devName").textContent = `${s.hostname} · ${s.ip ?? "no IP"}`;
   $("updated").textContent = new Date(s.time * 1000).toLocaleTimeString();
   const h = s.disk.home;
@@ -1730,7 +1762,8 @@ function render(s) {
   $("dOs").textContent = s.os.build ? `build ${s.os.build}` : "";
 
   const svc = [["SteamVR", s.services.steamvr], ["Desktop", s.services.desktop],
-               ["Lepton", s.services.lepton], ["RDP", s.services.rdp]];
+               ["Lepton", s.services.lepton], ["RDP", s.services.rdp],
+               ...(s.steam?.running || []).map(a => [`Playing ${a.name || a.appid}`, true])];
   $("services").innerHTML = svc.map(([n, on]) => `<span class="chip"><span class="dot ${on ? "on" : ""}"></span>${esc(n)}</span>`).join("");
 
   if (s.volume && !volTimer) setVolume(Math.round(s.volume.level * 100), s.volume.muted);

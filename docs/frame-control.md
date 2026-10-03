@@ -44,6 +44,13 @@ counts them while they run.
   save them to `~/Pictures/SteamFrame`.
 - **Battery** with charging state: charge rate in watts, time to full or empty,
   charger type and wattage (for example USB-C PD 20 W), and battery temperature.
+  The percentage is Steam's, the one the headset shows, when Steam answers;
+  otherwise the battery gauge's own, which reads lower.
+- **Controllers, downloads and what's playing**, from the Frame's Steam client
+  over its DevTools port (`frame_steam.py live`, merged by `ui/frame_live.py`):
+  each controller's battery, with ones that are asleep remembered from when
+  they were last seen; Steam's download queue with speed and time left; and
+  the running game.
 - **Status**: storage, memory, temperature, Wi-Fi, uptime, and whether SteamVR,
   the desktop, Lepton and xrdp are running.
 - **Library** shelf with Steam cover art and a Play button (`steam://rungameid`).
