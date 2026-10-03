@@ -33,6 +33,7 @@ import sys
 import tempfile
 import threading
 import time
+import zlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
@@ -521,23 +522,38 @@ def save_shots(body):
 
 # Live video of the headset view. SteamVR's steamvr-v4l2cam.service copies the
 # headset view (one undistorted 1920x1080 image) into the v4l2loopback device
-# /dev/video99. ffmpeg encodes it with x264 (the hardware encoder crashes
-# ffmpeg) and the raw H.264 comes back over SSH for the page to decode with
-# WebCodecs. An access unit delimiter starts every frame so the page can split
-# the stream, and repeated SPS/PPS let it start at any keyframe. ffmpeg runs in
-# the background while the shell waits for our stdin to close: when the local
-# ssh goes, the channel closes and the shell kills ffmpeg, even one that has
-# stopped writing (and so would never get SIGPIPE).
+# /dev/video99. ffmpeg captures and scales it, and the Frame's hardware encoder
+# (ui/frame_hwenc.py, sent along in the command) makes H.264 of it: about a
+# third less CPU than libx264 at 720p on an idle view, and flat however busy the
+# picture gets. ffmpeg's own h264_v4l2m2m deadlocks against that encoder. If it
+# can't be set up, the stream falls back to libx264 for the rest of the session.
+# The raw H.264 comes back over SSH for the page to decode with WebCodecs. An
+# access unit delimiter starts every frame so the page can split the stream,
+# and repeated SPS/PPS let it start at any keyframe. The pipeline runs in the
+# background while the shell waits for our stdin to close: when the local ssh
+# goes, the channel closes and the shell kills every process it started, even
+# one that has stopped writing (and so would never get SIGPIPE).
 STREAM_DEVICE = "/dev/video99"
 STREAM_HEIGHTS = (720, 1080)
 STREAM_FPS = (30, 60)
 STREAM_STALL = 10  # seconds without video before the stream is dropped
 _stream_lock = threading.Lock()
 _stream_proc = None
+# False once a hardware stream fails to set up: libx264 for the rest of the
+# session. FRAME_CONTROL_ENCODER=x264 chooses libx264 from the start.
+_hw_encoder = os.environ.get("FRAME_CONTROL_ENCODER", "hw") != "x264"
+HWENC_FAILED = "frame_hwenc:"  # how frame_hwenc.py's setup errors start
 
 
-def stream_command(query):
-    """The ffmpeg that streams H.264: the headset view, or one panel's own window (src=panel)."""
+def _inline_python(path, *args):
+    """A shell command running a local Python file on the Frame, its source in the command itself."""
+    packed = base64.b64encode(zlib.compress(path.read_bytes(), 9)).decode()
+    return (f"python3 -c \"import base64,zlib;exec(zlib.decompress(base64.b64decode('{packed}')))\" "
+            + " ".join(shlex.quote(str(a)) for a in args))
+
+
+def stream_command(query, hardware=None):
+    """The command that streams H.264: the headset view, or one panel's own window (src=panel)."""
     q = parse_qs(query)
     try:
         height = int((q.get("h") or ["720"])[0])
@@ -546,23 +562,33 @@ def stream_command(query):
         raise Failure("h and fps must be integers", 400)
     if height not in STREAM_HEIGHTS or fps not in STREAM_FPS:
         raise Failure(f"h must be one of {STREAM_HEIGHTS} and fps one of {STREAM_FPS}", 400)
+    hardware = _hw_encoder if hardware is None else hardware
     rate = 3 if height == 720 else 6  # Mbit/s
     if q.get("src") == ["panel"]:
         # The panel's own pixels (x11grab of its window: gamescope keeps them), fitted
         # to the height asked for. It stays still however the wearer moves their head.
         window, display = panel_target(q)
-        return (f"DISPLAY={display} ffmpeg -hide_banner -loglevel error -nostdin -f x11grab -framerate {fps} "
-                f"-window_id {window} -i {display} "
-                f"-vf \"scale=-2:'trunc(min({height},ih)/2)*2',format=yuv420p\" -c:v libx264 -preset ultrafast "
-                f"-tune zerolatency -g {fps * 2} -bf 0 -b:v {rate}M -maxrate {rate}M -bufsize {rate // 2 or 1}M "
-                f"-x264-params aud=1:repeat-headers=1 -f h264 - & p=$!; "
-                f"exec >&-; cat >/dev/null; kill $p 2>/dev/null; wait $p")
-    return (f"[ -e {STREAM_DEVICE} ] || {{ echo 'No headset view device ({STREAM_DEVICE}). Is SteamVR running?' >&2; exit 3; }}; "
-            f"ffmpeg -hide_banner -loglevel error -nostdin -f v4l2 -video_size 1920x1080 -i {STREAM_DEVICE} "
-            f"-vf fps={fps},scale=-2:{height},format=yuv420p -c:v libx264 -preset ultrafast -tune zerolatency "
-            f"-g {fps * 2} -bf 0 -b:v {rate}M -maxrate {rate}M -bufsize {rate // 2 or 1}M "
-            f"-x264-params aud=1:repeat-headers=1 -f h264 - & p=$!; "
-            f"exec >&-; cat >/dev/null; kill $p 2>/dev/null; wait $p")
+        check = ""
+        capture = (f"DISPLAY={display} ffmpeg -hide_banner -loglevel error -nostdin -f x11grab -framerate {fps} "
+                   f"-window_id {window} -i {display}")
+        size = f"scale=-2:'trunc(min({height},ih)/2)*2'"
+    else:
+        check = (f"[ -e {STREAM_DEVICE} ] || {{ echo 'No headset view device ({STREAM_DEVICE}). "
+                 f"Is SteamVR running?' >&2; exit 3; }}; ")
+        capture = (f"ffmpeg -hide_banner -loglevel error -nostdin -f v4l2 -video_size 1920x1080 "
+                   f"-i {STREAM_DEVICE}")
+        size = f"fps={fps},scale=-2:{height}"
+    if hardware:
+        # fast_bilinear: as sharp as bicubic here, for a third less CPU. BT.709, as
+        # frame_hwenc.py tags the stream (ffmpeg's default matrix is BT.601).
+        encode = (f"{capture} -vf \"{size}:flags=fast_bilinear:out_color_matrix=bt709:out_range=tv,"
+                  f"format=yuv420p\" -f yuv4mpegpipe - | "
+                  + _inline_python(HERE / "frame_hwenc.py", fps, rate * 1_000_000))
+    else:
+        encode = (f"{capture} -vf \"{size},format=yuv420p\" -c:v libx264 -preset ultrafast -tune zerolatency "
+                  f"-g {fps * 2} -bf 0 -b:v {rate}M -maxrate {rate}M -bufsize {rate // 2 or 1}M "
+                  f"-x264-params aud=1:repeat-headers=1 -f h264 -")
+    return f"{check}{encode} & exec >&-; cat >/dev/null; pkill -P $$ 2>/dev/null; wait"
 
 
 def launch(body):
@@ -2486,33 +2512,64 @@ class Handler(BaseHTTPRequestHandler):
         except OSError:
             pass  # the page went away
 
-    def stream_video(self, query):
-        """Raw H.264 of the headset view until the page disconnects (see stream_command)."""
+    @staticmethod
+    def _open_stream(remote):
+        """Start a stream command on the Frame: (ssh process, its stderr file, chunk queue, first chunk)."""
         global _stream_proc
-        remote = stream_command(query)
-        ensure_master()
         # stderr goes to a file: nothing reads it while streaming, and a full
         # pipe would stall ffmpeg. It's only read if the stream fails to start.
         errors = tempfile.TemporaryFile()
         proc = subprocess.Popen([*SSH, FRAME, remote], stdin=subprocess.PIPE,
                                 stdout=subprocess.PIPE, stderr=errors)
-        try:
-            _live_tunnels.add(proc)
-            # One viewer at a time: a new stream (another tab, a reload) ends the last one.
-            with _stream_lock:
-                old, _stream_proc = _stream_proc, proc
-            if old and old.poll() is None:
-                old.terminate()
-            chunks = _pipe_reader(proc.stdout)
-            # Nothing is sent until the first bytes arrive, so a failure to
-            # start still comes back as a JSON error.
-            first = _next_chunk(chunks, 20)
-            if not first:
+        _live_tunnels.add(proc)
+        # One viewer at a time: a new stream (another tab, a reload) ends the last one.
+        with _stream_lock:
+            old, _stream_proc = _stream_proc, proc
+        if old and old.poll() is None:
+            old.terminate()
+        chunks = _pipe_reader(proc.stdout)
+        return proc, errors, chunks, _next_chunk(chunks, 20)
+
+    @staticmethod
+    def _close_stream(proc, errors):
+        """End a stream command and return what it wrote to stderr."""
+        if proc.poll() is None:
+            proc.stdin.close()  # the remote shell ends its pipeline and exits, flushing stderr
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
                 proc.kill()
                 proc.wait()
-                errors.seek(0)
-                err = strip_ansi(errors.read().decode(errors="replace")).strip()
-                raise Failure(err or "The Frame sent no video for 20 s")
+        for f in (proc.stdin, proc.stdout):
+            f.close()
+        _live_tunnels.discard(proc)
+        errors.seek(0)
+        text = strip_ansi(errors.read().decode(errors="replace")).strip()
+        errors.close()
+        return text
+
+    def stream_video(self, query):
+        """Raw H.264 of the headset view until the page disconnects (see stream_command)."""
+        global _hw_encoder
+        hardware = _hw_encoder
+        remote = stream_command(query, hardware)  # validates the query before any SSH
+        ensure_master()
+        proc, errors, chunks, first = self._open_stream(remote)
+        closed = False
+        try:
+            # Nothing is sent until the first bytes arrive, so a failure to
+            # start still comes back as a JSON error.
+            if not first:
+                closed, err = True, self._close_stream(proc, errors)
+                if hardware and HWENC_FAILED in err:
+                    _hw_encoder = False
+                    print(f"Hardware encoder unavailable, using libx264 from now on: {err}", file=sys.stderr)
+                    proc, errors, chunks, first = self._open_stream(stream_command(query, False))
+                    closed = False
+                    if not first:
+                        closed, err = True, self._close_stream(proc, errors)
+                if not first:
+                    raise Failure(err or "The Frame sent no video for 20 s")
             chunk = first
             try:
                 self.send_response(200)
@@ -2531,16 +2588,8 @@ class Handler(BaseHTTPRequestHandler):
             except OSError:
                 pass  # the page stopped watching (or stopped reading); the body has started, so no JSON
         finally:
-            if proc.poll() is None:
-                proc.terminate()
-                try:
-                    proc.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    proc.kill()
-                    proc.wait()
-            for f in (proc.stdin, proc.stdout, errors):
-                f.close()
-            _live_tunnels.discard(proc)
+            if not closed:
+                self._close_stream(proc, errors)
 
     def upload(self):
         """Raw file body. X-Filename names it; X-Mode is 'push', 'apk' (install), 'apkinfo' (read only)

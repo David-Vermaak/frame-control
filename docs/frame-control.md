@@ -32,9 +32,10 @@ counts them while they run.
 - **Headset view**: what the lenses show, as SteamVR composites it (the room,
   floating panels, dashboard and controllers). Shows the left eye, like pointing
   a camera into one lens, or both eyes, as a single shot; saves as PNG. **Live**
-  is 720p video at about 30 fps: `ffmpeg` on the Frame encodes SteamVR's
-  headset-view device (`/dev/video99`) to H.264 over SSH, and the page decodes
-  it with WebCodecs. Live video is one eye; Capture still gets both. The viewer
+  is 720p video at about 30 fps: `ffmpeg` on the Frame captures SteamVR's
+  headset-view device (`/dev/video99`), the Frame's hardware video encoder
+  makes H.264 of it (`ui/frame_hwenc.py`, sent along with the command; libx264
+  if that can't start), and the page decodes it with WebCodecs. Live video is one eye; Capture still gets both. The viewer
   fits the whole frame; zoom with − / + (or scroll, or double-click), drag to
   pan, `0` to fit, `F` for full screen. Capture uses OpenVR's `IVRScreenshots`
   API through Python `ctypes` (`ui/frame_vrshot.py`). Nothing extra is
