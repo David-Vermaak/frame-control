@@ -79,6 +79,9 @@ counts them while they run.
   its own panel in the headset. Place it with the SteamVR dashboard, click and
   scroll with the laser, and type on the Mac. Streams hardware H.264 through
   an SSH tunnel; see [mac-in-headset.md](mac-in-headset.md).
+- **Desktop in the headset** (Linux): the same for a screen or window your
+  desktop's sharing dialog picks, with input through its remote-desktop
+  portal; see [desktop-in-headset.md](desktop-in-headset.md).
 - **Flatpaks**: install and remove them (quick picks: Moonlight, Firefox, VLC,
   Remmina).
 - **Devices**: several headsets, each with several addresses (LAN IPs per

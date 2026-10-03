@@ -22,7 +22,7 @@
 </head>
 <body>
 <canvas id="c" width="16" height="9"></canvas>
-<div id="note">Connecting to the Mac…</div>
+<div id="note">Connecting…</div>
 <div id="hud" hidden></div>
 <script>
 "use strict";
@@ -30,6 +30,8 @@ const q = new URLSearchParams(location.search);
 // t: a single-use ticket from Frame Control. After the first connection the
 // Mac sends a reconnect key, kept only in memory.
 const src = q.get("src") || "test", ticket = q.get("t") || "", tag = q.get("tag") || "";
+// "Mac", or "computer" for a Linux desktop (ui/frame_desktopview.py): for the messages below.
+const host = q.get("host") === "computer" ? "computer" : "Mac", theHost = host === "Mac" ? "the Mac" : "your computer";
 let reconnectKey = "";
 const c = document.getElementById("c"), ctx = c.getContext("2d", { alpha: false, desynchronized: true });
 const note = document.getElementById("note");
@@ -115,7 +117,7 @@ function onStats(m) {
 }
 showHud(q.get("stats") === "1");
 // Frame Control finds this window on the Frame by the tag in its title.
-document.title = tag ? `Mac [${tag}]` : "Mac";
+document.title = tag ? `${host} [${tag}]` : host;
 let failedStarts = 0;
 let ws = null, dec = null, codecString = "", needKey = true, closing = false, retry = 0, noteTimer = 0, lastError = "";
 
@@ -243,14 +245,14 @@ async function connect() {
     // Refused before ever getting a key: the ticket expired or was revoked,
     // and retrying can't help.
     if (!reconnectKey && ++failedStarts >= 3) {
-      show("This view has expired. Press Show in Frame Control on the Mac to open it again.");
+      show(`This view has expired. Press Show in Frame Control on ${theHost} to open it again.`);
       return;
     }
     hideNoteOnFrame = true;
     // The Mac may be asleep or the tunnel restarting: keep trying.
     retry = Math.min(retry + 1, 6);
     // Keep the Mac's reason (a missing permission, a closed window) on screen.
-    show(lastError ? `${lastError} Retrying…` : "Lost the Mac. Reconnecting…");
+    show(lastError ? `${lastError} Retrying…` : `Lost ${theHost}. Reconnecting…`);
     setTimeout(connect, 500 * 2 ** retry);
   };
 }
@@ -265,11 +267,12 @@ function control(m) {
   } else if (m.t === "info") {
     stats.info = m;
     warmMs = Math.max(0, +m.warm || 0);
-    const name = m.title && m.app && m.title !== m.app ? `${m.title} — ${m.app}` : (m.title || m.app || "Mac");
+    const name = m.title && m.app && m.title !== m.app ? `${m.title} — ${m.app}` : (m.title || m.app || host);
     document.title = tag ? `${name} [${tag}]` : name;
     if (!m.input) {
       hideNoteOnFrame = false;  // a warning, not a connection notice: let it stay its 8 s
-      show("Clicks and keys need Accessibility permission on the Mac (Frame Control asks for it).", 8000);
+      show(host === "Mac" ? "Clicks and keys need Accessibility permission on the Mac (Frame Control asks for it)."
+                          : "Clicks and keys weren't allowed when this was shared, so this view is look-only.", 8000);
     }
   } else if (m.t === "error") {
     stats.errors.push(m.message);
@@ -391,7 +394,7 @@ addEventListener("keydown", e => onKey(e, true));
 addEventListener("keyup", e => onKey(e, false));
 addEventListener("blur", () => send({ t: "release" }));
 
-show("Connecting to the Mac…");
+show(`Connecting to ${theHost}…`);
 connect();
 </script>
 </body>

@@ -31,6 +31,13 @@ import frame_macview  # noqa: E402
 
 
 class Helpers(unittest.TestCase):
+    """The Mac agent's flow, on any computer (Linux has its own: test_desktopview.py)."""
+
+    def setUp(self):
+        platform = mock.patch.multiple(frame_macview, MAC=True, LINUX=False, HOST="Mac")
+        platform.start()
+        self.addCleanup(platform.stop)
+
     def test_panel_id_is_stable_and_in_range(self):
         a = frame_macview.panel_id("window:123")
         self.assertEqual(a, frame_macview.panel_id("window:123"))

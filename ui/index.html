@@ -1117,24 +1117,24 @@
     </section>
 
     <section class="panel" id="macview" hidden>
-      <div class="shelf-head"><h2>Mac in the headset</h2><span class="count" id="mvCount"></span><span class="spacer"></span>
+      <div class="shelf-head"><h2 id="mvHeading">Mac in the headset</h2><span class="count" id="mvCount"></span><span class="spacer"></span>
         <select id="mvQuality" title="Picture quality and bandwidth">
           <option value="sharp">Sharp</option><option value="balanced" selected>Balanced</option>
           <option value="light">Light</option><option value="compatible">Compatible (JPEG)</option>
         </select>
         <button class="small" id="mvRefresh">Refresh</button></div>
-      <label class="mv-opt"><input type="checkbox" id="mvSeparate" checked> Give each window its own display
+      <label class="mv-opt" id="mvSeparateOpt"><input type="checkbox" id="mvSeparate" checked> Give each window its own display
         <span class="sub">its menus and sheets come along, nothing covers it, and it goes back when you stop</span></label>
       <div class="mv-perm" id="mvPerm" hidden></div>
       <div class="list" id="mvDisplays"></div>
-      <div class="shelf-head" style="margin-top:16px"><h2>Windows</h2><span class="count" id="mvWinCount"></span></div>
+      <div class="shelf-head" style="margin-top:16px"><h2 id="mvWinHeading">Windows</h2><span class="count" id="mvWinCount"></span></div>
       <div class="list mv-windows" id="mvWindows"><div class="sub">Loading…</div></div>
       <div class="row" style="margin-top:12px">
         <button class="small" data-mv="show" data-src="test" data-title="Test pattern">Test pattern</button>
         <button class="small danger" data-mv="stopall">Stop all</button>
       </div>
       <div class="hint">Each window or screen becomes its own panel in the headset. Place it with the SteamVR dashboard
-        (Float in World, Move, Size). Point and click with the laser, scroll with the thumbstick, and type on the Mac's keyboard.</div>
+        (Float in World, Move, Size). Point and click with the laser, scroll with the thumbstick, and type on the <span id="mvKeyboard">Mac's</span> keyboard.</div>
     </section>
 
     <section class="panel" id="privacy">
@@ -3833,6 +3833,13 @@ async function loadMacView(restart) {
   if (err) { box.hidden = false; return failed($("mvWindows"), err); }
   if (!s.available) { box.hidden = true; return; }
   box.hidden = false;
+  // Linux (ui/frame_desktopview.py): the desktop's own dialog picks a screen or
+  // window, so there's no list to choose from, only what's been shared.
+  const linux = s.platform === "linux";
+  $("mvHeading").textContent = linux ? "Desktop in the headset" : "Mac in the headset";
+  $("mvSeparateOpt").hidden = linux;
+  $("mvWinHeading").textContent = linux ? "Shared" : "Windows";
+  $("mvKeyboard").textContent = linux ? "computer's" : "Mac's";
   const live = new Set((s.streams || []).map(x => x.src));
   const byStream = src => (s.streams || []).find(x => x.src === src);
   $("mvCount").textContent = live.size ? `${live.size} showing${s.route === "usb" ? " · over USB-C" : ""}` : "";
@@ -3843,13 +3850,17 @@ async function loadMacView(restart) {
   $("mvPerm").innerHTML = perm.join(" ") + `<div class="row"><button class="small action" data-mv="perm">Allow…</button>
     <span class="sub">Then press Refresh. macOS may ask you to reopen Frame Control.</span></div>`;
   const liveAs = src => live.has(src) ? src : src.startsWith("window:") && live.has("separate:" + src.slice(7)) ? "separate:" + src.slice(7) : "";
-  $("mvDisplays").innerHTML = (s.displays || []).map(d =>
+  $("mvDisplays").innerHTML = s.picker
+    ? mvRow("pick", "Choose a screen or window…", "Your desktop asks which, on this computer, then it goes to the headset", 0, 0, "", null)
+    : (s.displays || []).map(d =>
     mvRow(d.src, `Whole screen: ${d.name}`, `${d.w}×${d.h}${d.main ? " · main display" : ""}`, d.w, d.h, liveAs(d.src), byStream(liveAs(d.src)))).join("");
   const wins = s.windows || [];
   $("mvWinCount").textContent = wins.length ? `${wins.length}` : "";
+  // A share's title is already "Window 1280×720": no second size after it.
+  const winSub = w => linux ? "" : `${w.title ? w.app + " · " : ""}${w.w}×${w.h}`;
   $("mvWindows").innerHTML = !s.screen ? `<div class="sub">Windows appear here once Screen Recording is allowed.</div>`
-    : wins.length ? wins.map(w => mvRow(w.src, w.title || w.app, `${w.title ? w.app + " · " : ""}${w.w}×${w.h}`, w.w, w.h, liveAs(w.src), byStream(liveAs(w.src)))).join("")
-    : `<div class="sub">No windows open on this Mac's current desktop.</div>`;
+    : wins.length ? wins.map(w => mvRow(w.src, w.title || w.app, winSub(w), w.w, w.h, liveAs(w.src), byStream(liveAs(w.src)))).join("")
+    : `<div class="sub">${linux ? "Nothing shared yet." : "No windows open on this Mac's current desktop."}</div>`;
   // Keep the numbers fresh while something is in the headset and the card is on screen.
   clearTimeout(mvTimer);
   const tick = () => { mvTimer = document.hidden || !box.offsetParent ? setTimeout(tick, 3000) : (loadMacView(), 0); };
@@ -3863,10 +3874,12 @@ $("macview").onclick = async e => {
   const src = b.dataset.src;
   if (b.dataset.mv === "show") {
     const as = $("mvSeparate").checked && src.startsWith("window:") ? "separate:" + src.slice(7) : src;
-    await act(`Show ${b.dataset.title} in the headset`, async () => {
+    const label = src === "pick" ? "your screen or window" : b.dataset.title;
+    await act(`Show ${label} in the headset`, async () => {
       const r = await api("/api/macview", { action: "show", src: as, quality: $("mvQuality").value,
                                             w: +b.dataset.w || undefined, h: +b.dataset.h || undefined });
-      return { message: `${b.dataset.title} is a panel in the headset now. Float it with the SteamVR dashboard.`, ...r };
+      const name = r.title || label;
+      return { message: `${name[0].toUpperCase() + name.slice(1)} is a panel in the headset now. Float it with the SteamVR dashboard.`, ...r };
     }, b);
   } else if (b.dataset.mv === "stop") {
     await act("Stop showing it", () => api("/api/macview", { action: "stop", src }), b);

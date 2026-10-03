@@ -14,6 +14,13 @@ Runs on the Mac, inside Frame Control's server. The pieces:
   docs/panels.md). Chromium XR (~/chromium-xr) is preferred because it's
   built with H.264; Flathub Chromium is the fallback.
 
+On Linux the agent is ui/frame_desktopview.py instead, with the same
+protocol: the desktop's portal picks a screen or window (POST /pick, which
+shows its dialog on this computer), PipeWire and GStreamer capture and encode
+it, and the portal's RemoteDesktop session plays input back. It runs on the
+system's python3, which has PyGObject and GStreamer; the app's own Python
+doesn't.
+
 Stdlib only. MacView gets a plain ssh argv for the tunnel (its own
 connection) and the server's `run(remote, stdin=, timeout=)` for commands.
 """
@@ -38,8 +45,20 @@ ROOT = HERE.parent
 PAGE = HERE / "mac-view.html"
 SOURCES = ROOT / "mac" / "frame-mac-view"
 AGENT = Path(os.environ.get("FRAME_MAC_VIEW") or ROOT / "mac" / "bin" / "frame-mac-view")
+LINUX_AGENT = HERE / "frame_desktopview.py"
 REMOTE_PORTS = range(47900, 47920)
-SUPPORTED = sys.platform == "darwin"
+MAC, LINUX = sys.platform == "darwin", sys.platform.startswith("linux")
+SUPPORTED = MAC or LINUX
+# What this computer is called in messages, here and on the viewer page.
+HOST = "Mac" if MAC else "computer"
+# The Linux agent's prerequisites, checked with the system python3 it runs on.
+LINUX_CHECK = """import gi
+gi.require_version("Gst", "1.0")
+from gi.repository import Gst
+Gst.init(None)
+missing = [e for e in ("pipewiresrc", "videoconvertscale", "h264parse") if not Gst.ElementFactory.find(e)]
+print("missing " + " ".join(missing) if missing else "ok")
+"""
 
 # Stream settings by name: long side in pixels, frames per second, H.264 bits
 # per pixel per frame, codec. JPEG is for a Frame browser without H.264.
@@ -145,17 +164,50 @@ class MacView:
         self.shown = set()  # sources with a viewer out there, connected or retrying
         self.browser_flags = list(BROWSER_FLAGS)
 
-    # ---- the agent on this Mac ----
+    # ---- the agent on this computer ----
 
     def unavailable(self):
         """Why this can't work here, or None."""
         if not SUPPORTED:
-            return "Streaming your computer into the headset needs macOS."
+            return "Streaming your computer into the headset needs macOS or Linux."
+        if LINUX:
+            return self._linux_unavailable()
         if not AGENT.exists() and not (SOURCES.exists() and shutil.which("xcrun")):
             return "The Mac streaming helper is missing from this copy of Frame Control."
         return None
 
+    _linux_reason = None  # checked once per run: the answer comes from installed packages
+
+    def _linux_unavailable(self):
+        if self._linux_reason is None:
+            py = system_python()
+            if not py:
+                reason = "Showing your desktop in the headset needs python3."
+            else:
+                try:
+                    out = subprocess.run([py, "-c", LINUX_CHECK], capture_output=True, text=True, timeout=20,
+                                         env=system_env(), stdin=subprocess.DEVNULL).stdout.strip()
+                except (OSError, subprocess.SubprocessError):
+                    out = ""
+                if out == "ok":
+                    reason = ""
+                elif out.startswith("missing"):
+                    reason = (f"Showing your desktop in the headset needs GStreamer's {out[8:]} "
+                              "(on Fedora: gstreamer1-plugins-good, pipewire-gstreamer).")
+                else:
+                    reason = "Showing your desktop in the headset needs PyGObject and GStreamer (python3-gobject)."
+            self._linux_reason = reason
+        return self._linux_reason or None
+
+    def _command(self, port):
+        if LINUX:
+            return [system_python(), str(LINUX_AGENT), "serve", "--port", str(port), "--page", str(PAGE),
+                    "--exit-on-eof"]
+        return [str(AGENT), "serve", "--port", str(port), "--page", str(PAGE), "--exit-on-eof"]
+
     def build(self):
+        if LINUX:
+            return
         if AGENT.exists() and not self._stale():
             return
         if not (SOURCES / "build.sh").exists():
@@ -182,12 +234,11 @@ class MacView:
             if reason:
                 raise MacViewError(reason)
             self.build()
-            env = {**os.environ, "FRAME_MAC_VIEW_TOKEN": self.token}
+            env = {**(system_env() if LINUX else os.environ), "FRAME_MAC_VIEW_TOKEN": self.token}
             # The same port as before when restarting, so a running tunnel still
             # fits; otherwise (or if it's gone) whatever the system gives.
             for port in dict.fromkeys([self.port or 0, 0]):
-                self.agent = subprocess.Popen([str(AGENT), "serve", "--port", str(port), "--page", str(PAGE),
-                                               "--exit-on-eof"], env=env, stdin=subprocess.PIPE,
+                self.agent = subprocess.Popen(self._command(port), env=env, stdin=subprocess.PIPE,
                                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
                 line = self.agent.stdout.readline()
                 m = re.search(r"listening on 127\.0\.0\.1:(\d+)", line)
@@ -195,23 +246,29 @@ class MacView:
                     break
                 self.agent.kill()
             else:
-                raise MacViewError(f"The Mac streaming helper didn't start: {line.strip() or 'no output'}")
+                raise MacViewError(f"The {HOST} streaming helper didn't start: {line.strip() or 'no output'}")
             if self.port != int(m.group(1)):
                 self._drop_tunnel()
             self.port = int(m.group(1))
             self.track(self.agent)
             threading.Thread(target=self.agent.stdout.read, daemon=True).start()  # drain
 
-    def call(self, path, method="GET", **query):
+    def call(self, path, method="GET", timeout=10, **query):
         """A request to the agent; starts it if needed."""
         self.ensure_agent()
         url = f"http://127.0.0.1:{self.port}{path}?{urlencode({**query, 'k': self.token}, quote_via=quote)}"
         req = urllib.request.Request(url, method=method, data=b"" if method == "POST" else None)
         try:
-            with urllib.request.urlopen(req, timeout=10) as r:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
                 return json.load(r)
+        except urllib.error.HTTPError as e:
+            try:
+                reason = json.load(e).get("error")  # the agent's own words, e.g. the dialog was cancelled
+            except (ValueError, AttributeError, OSError):
+                reason = None
+            raise MacViewError(reason or f"The {HOST} streaming helper refused: {e}")
         except (urllib.error.URLError, OSError, ValueError) as e:
-            raise MacViewError(f"The Mac streaming helper didn't answer: {e}")
+            raise MacViewError(f"The {HOST} streaming helper didn't answer: {e}")
 
     # ---- the tunnel from the Frame ----
 
@@ -377,7 +434,13 @@ class MacView:
                 self.launching -= 1
 
     def _show(self, src, quality, width, height):
-        if src != "test" and not src.startswith(("window:", "display:", "separate:")):
+        title = None
+        if LINUX and src == "pick":
+            # The desktop's own dialog, on this computer: it says what's shared.
+            picked = self.call("/pick", method="POST", timeout=200)
+            src, title = picked["src"], picked.get("title")
+            width, height = picked.get("w") or width, picked.get("h") or height
+        if src != "test" and not src.startswith(("portal:",) if LINUX else ("window:", "display:", "separate:")):
             raise MacViewError("Pick a window or display to show.")
         self.shows += 1
         q = QUALITY.get(quality) or QUALITY["balanced"]
@@ -403,7 +466,7 @@ class MacView:
         # is visible in the Frame's process list.
         ticket = self.call("/ticket", method="POST", src=src)["ticket"]
         params = {"src": src, "t": ticket, "tag": tag, "codec": q["codec"], "max": q["max"], "fps": q["fps"],
-                  "bpp": q["bpp"]}
+                  "bpp": q["bpp"], "host": HOST}
         url = f"http://127.0.0.1:{self.remote_port}/view?{urlencode(params)}"
         w, h = fit(width or 1280, height or 720)
         args = " ".join(_quote(str(a)) for a in (appid, url, w, h, tag, *self.browser_flags))
@@ -415,7 +478,8 @@ class MacView:
                                    "org.chromium.Chromium) or Chromium XR.")
             raise MacViewError(str(e))
         self.shown.add(src)
-        return {"panel": f"valve.steam.desktopgame.{appid}", "src": src, "detail": out.strip()}
+        out = {"panel": f"valve.steam.desktopgame.{appid}", "src": src, "detail": out.strip()}
+        return {**out, "title": title} if title else out
 
     def stop(self, src=None):
         if src:
@@ -452,7 +516,7 @@ class MacView:
         return {"available": True, "screen": status.get("screen", False),
                 "accessibility": status.get("accessibility", False), "streams": status.get("streams", []),
                 "windows": windows, "displays": displays, "tunnel": self.tunnel_up(),
-                "route": self.route}
+                "route": self.route, "platform": "mac" if MAC else "linux", "picker": bool(status.get("picker"))}
 
     def restart_agent(self):
         """Only if it's missing a permission: a running stream would stop."""
@@ -484,6 +548,20 @@ class MacView:
                 self.agent.wait(3)
             except subprocess.TimeoutExpired:
                 self.agent.kill()
+
+
+def system_python():
+    """The distribution's python3, which has PyGObject: not the app's bundled one."""
+    for cand in ("/usr/bin/python3", shutil.which("python3", path="/usr/local/bin:/usr/bin:/bin")):
+        if cand and os.access(cand, os.X_OK):
+            return cand
+    return None
+
+
+def system_env():
+    """This environment without what points Python at the app's own copy."""
+    return {k: v for k, v in os.environ.items() if k not in ("PYTHONHOME", "PYTHONPATH", "PYTHONNOUSERSITE",
+                                                             "PYTHONSAFEPATH")}
 
 
 def _quote(s):
