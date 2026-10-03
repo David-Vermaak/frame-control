@@ -53,7 +53,7 @@ digest is missing or doesn't match. Then:
 | macOS `.dmg`, app in a writable folder such as Applications | The `.zip` is unpacked next to the app and its version checked. After the app quits, a small script swaps the new app in, putting the old one back if that fails, and reopens it. Updates don't get the download quarantine, so there's no `xattr` step. |
 | Windows installer | The new `Setup` runs silently over the install (`/S --force-run`) and reopens the app. |
 | Linux AppImage | The new AppImage replaces the old file and is started. |
-| macOS app still on the disk image or translocated, Windows `.zip`, Linux `.deb` | The banner opens the release page instead. |
+| macOS app still on the disk image or translocated, Windows `.zip`, Linux `.deb` or `.rpm` | The banner opens the release page instead. |
 
 Version 0.3.1 and earlier have no updater, so people on them have to download
 the new version once by hand.

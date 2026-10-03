@@ -170,7 +170,8 @@
     "linux": {
       "target": [
         "AppImage",
-        "deb"
+        "deb",
+        "rpm"
       ],
       "category": "Utility",
       "icon": "build/icon.png",
@@ -186,6 +187,11 @@
     "deb": {
       "depends": [
         "openssh-client"
+      ]
+    },
+    "rpm": {
+      "depends": [
+        "openssh-clients"
       ]
     },
     "win": {

@@ -9,7 +9,8 @@ tag="${1:?usage: $0 vX.Y.Z}"
 repo=saphid/frame-control
 expected="Frame-Control-mac-arm64.dmg Frame-Control-mac-arm64.zip Frame-Control-Setup-x64.exe
 Frame-Control-win-x64.zip Frame-Control-linux-x86_64.AppImage Frame-Control-linux-arm64.AppImage
-Frame-Control-linux-amd64.deb Frame-Control-linux-arm64.deb"
+Frame-Control-linux-amd64.deb Frame-Control-linux-arm64.deb
+Frame-Control-linux-x86_64.rpm Frame-Control-linux-aarch64.rpm"
 
 info=$(gh release view "$tag" -R "$repo" --json isDraft,isPrerelease,assets)
 version=$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "$(dirname "$0")/../app/package.json")

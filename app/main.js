@@ -90,9 +90,28 @@ async function hasSsh(env) {
 
 const PYTHON_HELP = app.isPackaged ? "The bundled Python is missing; reinstall Frame Control."
   : "Install Python 3.8 or later, then reopen the app.";
+// The OpenSSH client's install command for this Linux distribution, by os-release's
+// ID and ID_LIKE (as frame_host.linux_family does for adb).
+function linuxSshInstall() {
+  let ids = [];
+  try {
+    for (const line of fs.readFileSync("/etc/os-release", "utf8").split("\n")) {
+      const m = line.match(/^(ID|ID_LIKE)=["']?([^"'\n]*)/);
+      if (m) ids = ids.concat(m[2].toLowerCase().split(/\s+/));
+    }
+  } catch { return null; }
+  const has = (...names) => names.some((n) => ids.includes(n));
+  if (has("debian", "ubuntu")) return "sudo apt install openssh-client";
+  if (has("fedora", "rhel", "centos")) return "sudo dnf install openssh-clients";
+  if (has("arch")) return "sudo pacman -S openssh";
+  if (has("suse")) return "sudo zypper install openssh-clients";
+  return null;
+}
+
 const SSH_HELP = IS_WIN
   ? "Turn on Windows' OpenSSH client: Settings → System → Optional features → Add a feature → OpenSSH Client."
-  : "Install the OpenSSH client (e.g. sudo apt install openssh-client).";
+  : IS_MAC ? "Install the OpenSSH client."
+  : `Install the OpenSSH client (${linuxSshInstall() || "your distribution's openssh package"}).`;
 
 function freePort() {
   return new Promise((resolve, reject) => {

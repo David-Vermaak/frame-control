@@ -79,14 +79,39 @@ def which(name, *extra):
     return None
 
 
-def install_hint(tool):
+def linux_family(os_release="/etc/os-release"):
+    """debian, fedora, arch or suse from os-release's ID and ID_LIKE, or None."""
+    ids = []
+    try:
+        with open(os_release, encoding="utf-8") as f:
+            for line in f:
+                key, _, value = line.strip().partition("=")
+                if key in ("ID", "ID_LIKE"):
+                    ids += value.strip("\"'").lower().split()
+    except OSError:
+        return None
+    # Nobara and Bazzite say ID_LIKE=fedora, Mint and Pop say ubuntu, openSUSE says suse.
+    for family, names in (("debian", ("debian", "ubuntu")), ("fedora", ("fedora", "rhel", "centos")),
+                          ("arch", ("arch",)), ("suse", ("suse",))):
+        if any(i in names for i in ids):
+            return family
+    return None
+
+
+def install_hint(tool, family=None):
     """How to get a missing command-line tool on this computer."""
     hints = {
         "adb": {"mac": "brew install android-platform-tools",
                 "win": "winget install Google.PlatformTools",
-                "linux": "install your distribution's adb package (e.g. sudo apt install adb)"},
+                "debian": "sudo apt install adb",
+                "fedora": "sudo dnf install android-tools",
+                "arch": "sudo pacman -S android-tools",
+                "suse": "sudo zypper install android-tools",
+                "linux": "install your distribution's adb package (often called android-tools)"},
     }
-    return hints[tool]["mac" if MAC else "win" if WINDOWS else "linux"]
+    if MAC or WINDOWS:
+        return hints[tool]["mac" if MAC else "win"]
+    return hints[tool].get(family or linux_family(), hints[tool]["linux"])
 
 
 def android_sdk_dirs():

@@ -109,8 +109,8 @@ already ships (sideloading a game copies Valve's own devkit scripts to
 |---|---|---|
 | **macOS** (Apple Silicon) | [Frame-Control-mac-arm64.dmg](https://github.com/saphid/steam-frame/releases/latest/download/Frame-Control-mac-arm64.dmg) | Nothing extra |
 | **Windows** 10 / 11 (x64) | [Frame-Control-Setup-x64.exe](https://github.com/saphid/steam-frame/releases/latest/download/Frame-Control-Setup-x64.exe) · [portable .zip](https://github.com/saphid/steam-frame/releases/latest/download/Frame-Control-win-x64.zip) | Nothing extra |
-| **Linux** (x64) | [AppImage](https://github.com/saphid/steam-frame/releases/latest/download/Frame-Control-linux-x86_64.AppImage) · [.deb](https://github.com/saphid/steam-frame/releases/latest/download/Frame-Control-linux-amd64.deb) | `ssh` (most desktops have it) |
-| **Linux** (arm64) | [AppImage](https://github.com/saphid/steam-frame/releases/latest/download/Frame-Control-linux-arm64.AppImage) · [.deb](https://github.com/saphid/steam-frame/releases/latest/download/Frame-Control-linux-arm64.deb) | `ssh`, and `adb` for Android apps (`sudo apt install adb`) |
+| **Linux** (x64) | [AppImage](https://github.com/saphid/steam-frame/releases/latest/download/Frame-Control-linux-x86_64.AppImage) · [.deb](https://github.com/saphid/steam-frame/releases/latest/download/Frame-Control-linux-amd64.deb) · [.rpm](https://github.com/saphid/steam-frame/releases/latest/download/Frame-Control-linux-x86_64.rpm) | `ssh` (most desktops have it) |
+| **Linux** (arm64) | [AppImage](https://github.com/saphid/steam-frame/releases/latest/download/Frame-Control-linux-arm64.AppImage) · [.deb](https://github.com/saphid/steam-frame/releases/latest/download/Frame-Control-linux-arm64.deb) · [.rpm](https://github.com/saphid/steam-frame/releases/latest/download/Frame-Control-linux-aarch64.rpm) | `ssh`, and `adb` for Android apps (`sudo apt install adb` or `sudo dnf install android-tools`) |
 
 **iPhone and iPad:** the same features from your phone, with nothing to install on
 a computer. Build it from [`ios/`](ios) in Xcode; see [docs/iphone.md](docs/iphone.md).
