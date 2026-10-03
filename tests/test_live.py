@@ -139,7 +139,8 @@ const SteamClient = {
     setTimeout(() => cb(true, [
       { remote_client_id: "0", item_data: [
         { appid: 620, queue_index: 0, active: true, paused: false, completed: false, overall_percent_complete: 41 },
-        { appid: 400, queue_index: 1, active: false, paused: false, completed: false }] },
+        { appid: 400, queue_index: 1, active: false, paused: false, completed: false },
+        { appid: 4427310, queue_index: -1, active: false, paused: false, completed: false, deferred_time: 4e9 }] },
       { remote_client_id: "123456", item_data: [{ appid: 999, queue_index: 0, active: true }] }]), 5);
     return handle(); } },
   OpenVR: {
@@ -167,8 +168,9 @@ class LiveJavaScript(unittest.TestCase):
         r = got["r"]
         self.assertEqual(r["battery"], {"percent": 80, "secondsLeft": 5400, "onAC": False})
         # The other PC's download (Remote Downloads) is left out.
-        self.assertEqual([(i["appid"], i["name"], i["position"]) for i in r["downloads"]["queue"]],
-                         [(620, "Portal 2", 0), (400, "Portal", 1)])
+        self.assertEqual([(i["appid"], i["position"], i["scheduledFor"]) for i in r["downloads"]["queue"]],
+                         [(620, 0, None), (400, 1, None), (4427310, -1, 4e9)])
+        self.assertEqual(r["downloads"]["queue"][0]["name"], "Portal 2")
         self.assertEqual(r["downloads"]["current"], {"appid": 620, "paused": False, "percent": 41,
                                                      "eta": 90, "bps": 12000000})
         # Controllers only, not the headset itself.
@@ -182,7 +184,7 @@ class LiveJavaScript(unittest.TestCase):
                         "() => { throw Error('gone'); }")["r"]
         self.assertIsNone(r["battery"])
         self.assertIsNone(r["devices"])
-        self.assertEqual(len(r["downloads"]["queue"]), 2)
+        self.assertEqual(len(r["downloads"]["queue"]), 3)
 
 
 class StatusRoute(unittest.TestCase):

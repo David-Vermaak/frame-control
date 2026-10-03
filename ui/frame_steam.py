@@ -161,7 +161,8 @@ UTILITIES_JS = """(() => {
 # (the kernel's capacity reads lower; Steam scales it), the download queue,
 # controller batteries and the running game. Steam pushes the first three
 # through Register* callbacks that fire with the current value when registered
-# (as FrameMate, github.com/nailuj05/framemate, relies on); each is awaited once,
+# (as FrameMate, github.com/nailuj05/framemate, relies on; verified on the Frame
+# 2026-10-03); each is awaited once,
 # briefly, then unregistered. One that doesn't fire in time is null, not an error.
 # OpenVR property ids (openvr.h): 1001 model, 1002 serial, 1011 charging,
 # 1012 battery (0-1), 1029 device class (2 controller, 3 tracker).
@@ -199,6 +200,8 @@ LIVE_JS = r"""
   const queue = items ? (items[1] || []).filter(local).flatMap(c => c.item_data || []).map(i => ({
     appid: i.appid, name: name(i.appid), position: i.queue_index ?? null, active: !!i.active,
     paused: !!i.paused, completed: !!i.completed, completedAt: i.completed_time || null,
+    // An update Steam put off until later (queue_index -1); seen on the Frame 2026-10-03.
+    scheduledFor: !i.completed && i.deferred_time > Date.now() / 1000 ? i.deferred_time : null,
     percent: i.overall_percent_complete ?? null, error: i.update_error || null })) : null;
   const o = new Map(downloadsStore.m_DownloadOverview || []).get("0");
   const current = o && o.update_appid ? {
