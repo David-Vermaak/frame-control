@@ -50,10 +50,10 @@ dialog. Delete that file to be asked again.
 
 ## Status
 
-- **Verified 2026-10-03** on Nobara (Plasma 6.7, Wayland, RTX 3090 and
-  Raphael iGPU): the agent starts from Frame Control, its tunnel answers from
-  the Frame, and the Frame gets the viewer page through it. The test
-  pattern streams to a WebSocket client as H.264 (NVENC), scaled to the
-  quality setting.
-- **Not yet tried:** the portal dialog and input from the headset, and the
-  panel itself (the test Frame had no Chromium installed).
+- **Verified 2026-10-03** on Nobara (Plasma 6.7, Wayland, RTX 3090) with a
+  Frame on SteamOS 0.4.3 and Flathub Chromium 154: **Test pattern** opens as
+  its own panel in the headset, decoded and drawn by Chromium, at 60 fps and
+  about 12 Mbit/s on Balanced (NVENC); **Stop** closes the panel and ends the
+  viewer's Chromium.
+- **Not yet tried:** the portal dialog with a real screen or window, and
+  input from the headset.
